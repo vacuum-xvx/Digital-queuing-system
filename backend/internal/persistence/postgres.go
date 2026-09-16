@@ -53,14 +53,14 @@ func dbError(err error) error {
 
 const ticketColumns = `t.id::text, t.public_number, t.branch_id::text, t.service_id::text,
  t.source, t.status, w.id::text, w.number, t.created_at, t.queue_entered_at,
- t.called_at, t.service_started_at, t.completed_at`
+ t.called_at, t.service_started_at, t.completed_at, t.scheduled_time`
 const ticketSelect = `SELECT ` + ticketColumns + ` FROM tickets t LEFT JOIN windows w ON w.id=t.window_id `
 
 func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	var t domain.Ticket
 	var wid *string
 	var number *int
-	err := row.Scan(&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status, &wid, &number, &t.CreatedAt, &t.QueueEnteredAt, &t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt)
+	err := row.Scan(&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status, &wid, &number, &t.CreatedAt, &t.QueueEnteredAt, &t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledTime)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
 	}
@@ -69,7 +69,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	}
 	t.CreatedAt = t.CreatedAt.UTC()
 	t.QueueEnteredAt = t.QueueEnteredAt.UTC()
-	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt} {
+	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt, t.ScheduledTime} {
 		if v != nil {
 			*v = v.UTC()
 		}
@@ -346,3 +346,24 @@ func (p *Postgres) transition(ctx context.Context, ticketID string, from, to dom
 	}
 	return t, nil
 }
+
+func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateQRTicketResult, error) {
+	return application.CreateQRTicketResult{}, errors.New("not implemented")
+}
+
+func (p *Postgres) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) ReturnTicket(ctx context.Context, ticketID, windowID string) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) RedirectTicket(ctx context.Context, ticketID, windowID, targetServiceID string) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+

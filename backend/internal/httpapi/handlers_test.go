@@ -18,12 +18,19 @@ type FakeUseCases struct {
 	ListBranchServicesFunc func(ctx context.Context, branchID string) ([]domain.Service, error)
 	ListBranchWindowsFunc  func(ctx context.Context, branchID string) ([]domain.Window, error)
 	CreateQRTicketFunc     func(ctx context.Context, cmd application.CreateQRTicketCommand) (application.CreateQRTicketResult, error)
+	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateQRTicketResult, error)
+	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error)
+	CancelTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
+	ReturnTicketFunc       func(ctx context.Context, ticketID, windowID string) (domain.Ticket, error)
+	RedirectTicketFunc     func(ctx context.Context, ticketID, windowID, targetServiceID string) (domain.Ticket, error)
 	GetTicketFunc          func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetCurrentTicketFunc   func(ctx context.Context, windowID string) (*domain.Ticket, error)
 	CallNextFunc           func(ctx context.Context, windowID string) (domain.Ticket, error)
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
 }
+
+var _ application.UseCases = (*FakeUseCases)(nil)
 
 func (f *FakeUseCases) ListBranches(ctx context.Context) ([]domain.Branch, error) {
 	return f.ListBranchesFunc(ctx)
@@ -39,6 +46,41 @@ func (f *FakeUseCases) ListBranchWindows(ctx context.Context, branchID string) (
 
 func (f *FakeUseCases) CreateQRTicket(ctx context.Context, cmd application.CreateQRTicketCommand) (application.CreateQRTicketResult, error) {
 	return f.CreateQRTicketFunc(ctx, cmd)
+}
+
+func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateQRTicketResult, error) {
+	if f.CreateAppointmentFunc != nil {
+		return f.CreateAppointmentFunc(ctx, cmd)
+	}
+	return application.CreateQRTicketResult{}, nil
+}
+
+func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
+	if f.CreateLiveTicketFunc != nil {
+		return f.CreateLiveTicketFunc(ctx, cmd)
+	}
+	return domain.Ticket{}, nil
+}
+
+func (f *FakeUseCases) CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	if f.CancelTicketFunc != nil {
+		return f.CancelTicketFunc(ctx, ticketID)
+	}
+	return domain.Ticket{}, nil
+}
+
+func (f *FakeUseCases) ReturnTicket(ctx context.Context, ticketID, windowID string) (domain.Ticket, error) {
+	if f.ReturnTicketFunc != nil {
+		return f.ReturnTicketFunc(ctx, ticketID, windowID)
+	}
+	return domain.Ticket{}, nil
+}
+
+func (f *FakeUseCases) RedirectTicket(ctx context.Context, ticketID, windowID, targetServiceID string) (domain.Ticket, error) {
+	if f.RedirectTicketFunc != nil {
+		return f.RedirectTicketFunc(ctx, ticketID, windowID, targetServiceID)
+	}
+	return domain.Ticket{}, nil
 }
 
 func (f *FakeUseCases) GetTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {

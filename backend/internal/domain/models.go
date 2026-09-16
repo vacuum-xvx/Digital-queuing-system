@@ -63,4 +63,5 @@ type Ticket struct {
 	CalledAt         *time.Time
 	ServiceStartedAt *time.Time
 	CompletedAt      *time.Time
+	ScheduledTime    *time.Time
 }
