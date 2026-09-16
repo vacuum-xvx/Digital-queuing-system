@@ -36,6 +36,7 @@ export function ClientWorkspace() {
   const [pollError, setPollError] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
   const pollController = useRef<AbortController | null>(null);
+  const createController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,7 +88,11 @@ export function ClientWorkspace() {
       });
   }, []);
 
-  useEffect(() => stopPolling, [stopPolling]);
+  useEffect(() => () => {
+    stopPolling();
+    createController.current?.abort();
+    createController.current = null;
+  }, [stopPolling]);
 
   const createTicket = async (event: FormEvent) => {
     event.preventDefault();
@@ -97,6 +102,7 @@ export function ClientWorkspace() {
     setError(null);
     setPollError(null);
     const controller = new AbortController();
+    createController.current = controller;
     try {
       const created = await api.createQrTicket(branchId, serviceId, makeIdempotencyKey(), controller.signal);
       setTicket(created);
@@ -104,6 +110,7 @@ export function ClientWorkspace() {
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : 'Не удалось получить талон');
     } finally {
+      if (createController.current === controller) createController.current = null;
       setCreating(false);
     }
   };
