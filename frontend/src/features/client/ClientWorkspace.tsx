@@ -6,6 +6,10 @@ import './client.css';
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
 
+const STORAGE_BRANCH_KEY = 'client_selected_branch_id';
+const STORAGE_SERVICE_KEY = 'client_selected_service_id';
+const STORAGE_TICKET_KEY = 'client_active_ticket_id';
+
 function makeIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -26,8 +30,8 @@ function statusMessage(ticket: Ticket): string {
 export function ClientWorkspace() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [branchId, setBranchId] = useState('');
-  const [serviceId, setServiceId] = useState('');
+  const [branchId, setBranchId] = useState(() => sessionStorage.getItem(STORAGE_BRANCH_KEY) || '');
+  const [serviceId, setServiceId] = useState(() => sessionStorage.getItem(STORAGE_SERVICE_KEY) || '');
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [loadingServices, setLoadingServices] = useState(false);
@@ -48,13 +52,16 @@ export function ClientWorkspace() {
   }, []);
 
   useEffect(() => {
-    setServices([]);
-    setServiceId('');
+    if (!sessionStorage.getItem(STORAGE_SERVICE_KEY)) {
+      setServices([]);
+      setServiceId('');
+    }
     setError(null);
     if (!branchId) {
       setLoadingServices(false);
       return;
     }
+    sessionStorage.setItem(STORAGE_BRANCH_KEY, branchId);
     const controller = new AbortController();
     setLoadingServices(true);
     api.listServices(branchId, controller.signal)
@@ -63,6 +70,14 @@ export function ClientWorkspace() {
       .finally(() => { if (!controller.signal.aborted) setLoadingServices(false); });
     return () => controller.abort();
   }, [branchId]);
+
+  useEffect(() => {
+    if (serviceId) {
+      sessionStorage.setItem(STORAGE_SERVICE_KEY, serviceId);
+    } else {
+      sessionStorage.removeItem(STORAGE_SERVICE_KEY);
+    }
+  }, [serviceId]);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current !== null) window.clearTimeout(pollTimer.current);
@@ -78,7 +93,10 @@ export function ClientWorkspace() {
         setTicket(nextTicket);
         setPollError(null);
         if (!terminalStatuses.has(nextTicket.status)) {
+          sessionStorage.setItem(STORAGE_TICKET_KEY, nextTicket.id);
           pollTimer.current = window.setTimeout(() => poll(ticketId), POLL_INTERVAL_MS);
+        } else {
+          sessionStorage.removeItem(STORAGE_TICKET_KEY);
         }
       })
       .catch((reason: unknown) => {
@@ -88,11 +106,17 @@ export function ClientWorkspace() {
       });
   }, []);
 
-  useEffect(() => () => {
-    stopPolling();
-    createController.current?.abort();
-    createController.current = null;
-  }, [stopPolling]);
+  useEffect(() => {
+    const savedTicketId = sessionStorage.getItem(STORAGE_TICKET_KEY);
+    if (savedTicketId) {
+      poll(savedTicketId);
+    }
+    return () => {
+      stopPolling();
+      createController.current?.abort();
+      createController.current = null;
+    };
+  }, [poll, stopPolling]);
 
   const createTicket = async (event: FormEvent) => {
     event.preventDefault();
@@ -106,7 +130,10 @@ export function ClientWorkspace() {
     try {
       const created = await api.createQrTicket(branchId, serviceId, makeIdempotencyKey(), controller.signal);
       setTicket(created);
-      if (!terminalStatuses.has(created.status)) poll(created.id);
+      if (!terminalStatuses.has(created.status)) {
+        sessionStorage.setItem(STORAGE_TICKET_KEY, created.id);
+        poll(created.id);
+      }
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : 'Не удалось получить талон');
     } finally {

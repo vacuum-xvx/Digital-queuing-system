@@ -31,13 +31,13 @@ const (
 )
 
 type Branch struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 type Service struct {
-	ID   string
-	Code string
-	Name string
+	ID   string `json:"id"`
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
 type Window struct {
 	ID       string

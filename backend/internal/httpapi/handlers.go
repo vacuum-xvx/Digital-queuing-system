@@ -24,6 +24,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/branches", a.ListBranches)
 		r.Get("/branches/{branchId}/services", a.ListBranchServices)
 		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
+		r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
+		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 
 		r.Route("/operator", func(r chi.Router) {
@@ -32,6 +34,14 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/windows/{windowId}/call-next", a.CallNext)
 			r.Post("/tickets/{ticketId}/start", a.StartService)
 			r.Post("/tickets/{ticketId}/complete", a.CompleteService)
+			r.Post("/tickets/{ticketId}/return", a.ReturnTicket)
+			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
+		})
+
+		r.Route("/admin", func(r chi.Router) {
+			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
+			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
+			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 		})
 	})
 }
@@ -85,6 +95,11 @@ type WindowDTO struct {
 	Status   string       `json:"status"`
 	Services []ServiceDTO `json:"services"`
 }
+
+type ListWindowsResponse struct {
+	Items []WindowDTO `json:"items"`
+}
+
 
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
@@ -144,6 +159,9 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, application.ErrInvalidState):
 		status = http.StatusConflict
 		code = "INVALID_TICKET_STATE"
+	case errors.Is(err, application.ErrWindowClosed):
+		status = http.StatusConflict
+		code = "WINDOW_CLOSED"
 	default:
 		status = http.StatusInternalServerError
 		code = "INTERNAL_ERROR"
@@ -170,145 +188,4 @@ func writeJSONResponse(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-// -----------------------------------------------------------------------------
-// Handlers
-// -----------------------------------------------------------------------------
-
-func (a *API) ListBranches(w http.ResponseWriter, r *http.Request) {
-	branches, err := a.usecases.ListBranches(r.Context())
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	res := ListBranchesResponse{Items: make([]BranchDTO, len(branches))}
-	for i, b := range branches {
-		res.Items[i] = BranchDTO{ID: b.ID, Name: b.Name}
-	}
-	writeJSONResponse(w, http.StatusOK, res)
-}
-
-func (a *API) ListBranchServices(w http.ResponseWriter, r *http.Request) {
-	branchID := chi.URLParam(r, "branchId")
-	services, err := a.usecases.ListBranchServices(r.Context(), branchID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	res := ListServicesResponse{Items: make([]ServiceDTO, len(services))}
-	for i, s := range services {
-		res.Items[i] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
-	}
-	writeJSONResponse(w, http.StatusOK, res)
-}
-
-type CreateQRTicketRequest struct {
-	ServiceID string `json:"serviceId"`
-}
-
-func (a *API) CreateQRTicket(w http.ResponseWriter, r *http.Request) {
-	branchID := chi.URLParam(r, "branchId")
-	idempotencyKey := r.Header.Get("Idempotency-Key")
-	if idempotencyKey == "" {
-		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing Idempotency-Key header")
-		return
-	}
-
-	var req CreateQRTicketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
-		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
-		return
-	}
-
-	res, err := a.usecases.CreateQRTicket(r.Context(), application.CreateQRTicketCommand{
-		BranchID:       branchID,
-		ServiceID:      req.ServiceID,
-		IdempotencyKey: idempotencyKey,
-	})
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-
-	status := http.StatusCreated
-	if res.Replayed {
-		status = http.StatusOK
-	}
-	writeJSONResponse(w, status, mapTicket(res.Ticket))
-}
-
-func (a *API) GetTicket(w http.ResponseWriter, r *http.Request) {
-	ticketID := chi.URLParam(r, "ticketId")
-	ticket, err := a.usecases.GetTicket(r.Context(), ticketID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
-}
-
-func (a *API) ListBranchWindows(w http.ResponseWriter, r *http.Request) {
-	branchID := chi.URLParam(r, "branchId")
-	windows, err := a.usecases.ListBranchWindows(r.Context(), branchID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	res := make([]WindowDTO, len(windows))
-	for i, wnd := range windows {
-		services := make([]ServiceDTO, len(wnd.Services))
-		for j, s := range wnd.Services {
-			services[j] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
-		}
-		res[i] = WindowDTO{
-			ID:       wnd.ID,
-			Number:   wnd.Number,
-			Status:   string(wnd.Status),
-			Services: services,
-		}
-	}
-	writeJSONResponse(w, http.StatusOK, res)
-}
-
-func (a *API) GetCurrentTicket(w http.ResponseWriter, r *http.Request) {
-	windowID := chi.URLParam(r, "windowId")
-	ticket, err := a.usecases.GetCurrentTicket(r.Context(), windowID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	if ticket == nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	writeJSONResponse(w, http.StatusOK, mapTicket(*ticket))
-}
-
-func (a *API) CallNext(w http.ResponseWriter, r *http.Request) {
-	windowID := chi.URLParam(r, "windowId")
-	ticket, err := a.usecases.CallNext(r.Context(), windowID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
-}
-
-func (a *API) StartService(w http.ResponseWriter, r *http.Request) {
-	ticketID := chi.URLParam(r, "ticketId")
-	ticket, err := a.usecases.StartService(r.Context(), ticketID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
-}
-
-func (a *API) CompleteService(w http.ResponseWriter, r *http.Request) {
-	ticketID := chi.URLParam(r, "ticketId")
-	ticket, err := a.usecases.CompleteService(r.Context(), ticketID)
-	if err != nil {
-		a.respondError(w, r, err)
-		return
-	}
-	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
-}
+// Handlers are located in client_handlers.go, operator_handlers.go, and admin_handlers.go
