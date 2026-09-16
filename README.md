@@ -118,6 +118,7 @@ docker compose down -v
 - `backend/internal/httpapi`: chi router, health/readiness, request ID, logs, recovery, CORS.
 - `backend/internal/observability`: JSON slog logger.
 - `backend/migrations`: SQL migrations без бизнес-схемы.
+- `qa/sprint1`: независимый black-box HTTP verification suite для Спринта №1.
 - `frontend/src/api`: общий health API helper.
 - `frontend/src/pages`: отдельные Client/Operator/Admin placeholders.
 - `frontend/src/App.tsx`: health indicator и простое разделение страниц по pathname.
@@ -151,6 +152,18 @@ docker compose run --rm --no-deps frontend npm run build
 
 Go API tests используют `httptest`: health при отказавшей БД, readiness success/failure,
 безопасный panic response, CORS и request logs. Config test проверяет обязательные значения и escaping пароля.
+
+### Black-box QA тестирование (Спринт №1)
+
+Сквозное тестирование сценариев Спринта №1 (Happy path, идемпотентность, маршрутизация, конкурентный вызов) против работающего стенда:
+
+```bash
+cd qa/sprint1
+go test -v -count=1 ./...
+# или запуск CLI-раннера с проверкой повторяемости:
+go run ./cmd/runner -repeat=3
+```
+Подробное описание: [qa/sprint1/README.md](qa/sprint1/README.md).
 
 ### Compose smoke / persistence
 
