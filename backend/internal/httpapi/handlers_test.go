@@ -96,7 +96,7 @@ func TestCreateQRTicket(t *testing.T) {
 				return application.CreateQRTicketResult{}, application.ErrIdempotencyConflict
 			}
 			return application.CreateQRTicketResult{
-				Ticket:   domain.Ticket{ID: "t1", Status: domain.StatusWaiting},
+				Ticket:   domain.Ticket{ID: "t1", Status: domain.TicketStatusWaiting},
 				Replayed: cmd.IdempotencyKey == "replay",
 			}, nil
 		},

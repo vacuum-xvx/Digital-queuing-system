@@ -1,1 +1,5 @@
-export function OperatorPage() { return <h2>Operator UI — Foundation</h2>; }
+import { OperatorWorkspace } from '../features/operator/OperatorWorkspace';
+
+export function OperatorPage() {
+  return <OperatorWorkspace />;
+}

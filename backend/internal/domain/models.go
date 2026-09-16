@@ -5,21 +5,21 @@ import "time"
 type TicketSource string
 
 const (
-	SourceAppointment TicketSource = "APPOINTMENT"
-	SourceQR          TicketSource = "QR"
-	SourceLive        TicketSource = "LIVE"
+	TicketSourceAppointment TicketSource = "APPOINTMENT"
+	TicketSourceQR          TicketSource = "QR"
+	TicketSourceLive        TicketSource = "LIVE"
 )
 
 type TicketStatus string
 
 const (
-	StatusScheduled TicketStatus = "SCHEDULED"
-	StatusWaiting   TicketStatus = "WAITING"
-	StatusCalled    TicketStatus = "CALLED"
-	StatusServing   TicketStatus = "SERVING"
-	StatusCompleted TicketStatus = "COMPLETED"
-	StatusCancelled TicketStatus = "CANCELLED"
-	StatusNoShow    TicketStatus = "NO_SHOW"
+	TicketStatusScheduled TicketStatus = "SCHEDULED"
+	TicketStatusWaiting   TicketStatus = "WAITING"
+	TicketStatusCalled    TicketStatus = "CALLED"
+	TicketStatusServing   TicketStatus = "SERVING"
+	TicketStatusCompleted TicketStatus = "COMPLETED"
+	TicketStatusCancelled TicketStatus = "CANCELLED"
+	TicketStatusNoShow    TicketStatus = "NO_SHOW"
 )
 
 type WindowStatus string
@@ -34,13 +34,11 @@ type Branch struct {
 	ID   string
 	Name string
 }
-
 type Service struct {
 	ID   string
 	Code string
 	Name string
 }
-
 type Window struct {
 	ID       string
 	BranchID string
@@ -48,12 +46,10 @@ type Window struct {
 	Status   WindowStatus
 	Services []Service
 }
-
 type WindowRef struct {
 	ID     string
 	Number int
 }
-
 type Ticket struct {
 	ID               string
 	PublicNumber     string
