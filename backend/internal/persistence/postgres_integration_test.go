@@ -78,7 +78,7 @@ func integration(t *testing.T) (context.Context, *Postgres, *migrate.Migrate) {
 		t.Fatal(err)
 	}
 	version, dirty, err := m.Version()
-	if err != nil || version != 2 || dirty {
+	if err != nil || version != 3 || dirty {
 		t.Fatalf("migration version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	pool, err := pgxpool.New(ctx, u.String())
@@ -149,7 +149,7 @@ func TestPostgresCatalogAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, dirty, err := m.Version()
-	if err != nil || version != 1 || dirty {
+	if err != nil || version != 2 || dirty {
 		t.Fatalf("down: %d %v %v", version, dirty, err)
 	}
 	if err = m.Up(); err != nil {
@@ -450,4 +450,359 @@ func TestPostgresConcurrentDistinctClaims(t *testing.T) {
 			t.Fatal("unexpected ticket")
 		}
 	}
+}
+
+func TestPostgresAppointment(t *testing.T) {
+	ctx, p, _ := integration(t)
+	schedTime := time.Now().UTC().Add(30 * time.Minute).Truncate(time.Second)
+	cmd := application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      parcels,
+		ScheduledTime:  schedTime,
+		IdempotencyKey: "apt-1",
+	}
+	res, err := p.CreateAppointment(ctx, cmd)
+	if err != nil {
+		t.Fatalf("create appointment: %v", err)
+	}
+	if res.Replayed {
+		t.Fatal("expected not replayed")
+	}
+	ticket := res.Ticket
+	if ticket.Source != domain.TicketSourceAppointment || ticket.Status != domain.TicketStatusScheduled {
+		t.Fatalf("unexpected ticket source/status: %+v", ticket)
+	}
+	if ticket.ScheduledTime == nil || !ticket.ScheduledTime.Equal(schedTime) {
+		t.Fatalf("expected scheduled_time %v, got %v", schedTime, ticket.ScheduledTime)
+	}
+
+	// Idempotent replay
+	replayRes, err := p.CreateAppointment(ctx, cmd)
+	if err != nil || !replayRes.Replayed || replayRes.Ticket.ID != ticket.ID {
+		t.Fatalf("expected idempotent replay: %+v %v", replayRes, err)
+	}
+
+	// Conflict replay with different scheduled time
+	conflictCmd := cmd
+	conflictCmd.ScheduledTime = schedTime.Add(15 * time.Minute)
+	_, err = p.CreateAppointment(ctx, conflictCmd)
+	wantError(t, err, application.ErrIdempotencyConflict)
+
+	// Conflict replay with different service
+	conflictCmd = cmd
+	conflictCmd.ServiceID = payments
+	_, err = p.CreateAppointment(ctx, conflictCmd)
+	wantError(t, err, application.ErrIdempotencyConflict)
+
+	// Unsupported service
+	_, err = p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      missing,
+		ScheduledTime:  schedTime,
+		IdempotencyKey: "apt-unsupported",
+	})
+	wantError(t, err, application.ErrNotFound)
+}
+
+func TestPostgresLiveTicket(t *testing.T) {
+	ctx, p, _ := integration(t)
+	cmd := application.CreateLiveTicketCommand{
+		BranchID:       demoBranch,
+		WindowID:       window1,
+		ServiceID:      parcels,
+		IdempotencyKey: "live-1",
+	}
+	ticket, err := p.CreateLiveTicket(ctx, cmd)
+	if err != nil {
+		t.Fatalf("create live ticket: %v", err)
+	}
+	if ticket.Source != domain.TicketSourceLive || ticket.Status != domain.TicketStatusWaiting {
+		t.Fatalf("unexpected ticket source/status: %+v", ticket)
+	}
+	if ticket.Window != nil {
+		t.Fatalf("expected window to be nil for WAITING ticket: %+v", ticket.Window)
+	}
+
+	// Replay
+	replayed, err := p.CreateLiveTicket(ctx, cmd)
+	if err != nil || replayed.ID != ticket.ID {
+		t.Fatalf("expected replay of live ticket: %+v %v", replayed, err)
+	}
+
+	// Conflict on key
+	conflictCmd := cmd
+	conflictCmd.ServiceID = payments
+	_, err = p.CreateLiveTicket(ctx, conflictCmd)
+	wantError(t, err, application.ErrIdempotencyConflict)
+
+	// Window does not support service (window1 supports PARCELS, not PAYMENTS)
+	_, err = p.CreateLiveTicket(ctx, application.CreateLiveTicketCommand{
+		BranchID:       demoBranch,
+		WindowID:       window1,
+		ServiceID:      payments,
+		IdempotencyKey: "live-unsupported",
+	})
+	wantError(t, err, application.ErrNotFound)
+
+	// Window closed
+	execSQL(t, ctx, p, `UPDATE windows SET status='CLOSED' WHERE id=$1::uuid`, window3)
+	_, err = p.CreateLiveTicket(ctx, application.CreateLiveTicketCommand{
+		BranchID:       demoBranch,
+		WindowID:       window3,
+		ServiceID:      parcels,
+		IdempotencyKey: "live-closed",
+	})
+	wantError(t, err, application.ErrInvalidState)
+}
+
+func TestPostgresCancelTicket(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// 1. Cancel SCHEDULED
+	apt, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      parcels,
+		ScheduledTime:  time.Now().UTC().Add(time.Hour),
+		IdempotencyKey: "apt-cancel",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelledApt, err := p.CancelTicket(ctx, apt.Ticket.ID)
+	if err != nil || cancelledApt.Status != domain.TicketStatusCancelled {
+		t.Fatalf("cancel scheduled: %+v %v", cancelledApt, err)
+	}
+
+	// Cannot cancel already cancelled
+	_, err = p.CancelTicket(ctx, apt.Ticket.ID)
+	wantError(t, err, application.ErrInvalidState)
+
+	// 2. Cancel WAITING
+	waiting := create(t, ctx, p, parcels, "wait-cancel")
+	cancelledWaiting, err := p.CancelTicket(ctx, waiting.ID)
+	if err != nil || cancelledWaiting.Status != domain.TicketStatusCancelled {
+		t.Fatalf("cancel waiting: %+v %v", cancelledWaiting, err)
+	}
+
+	// 3. Cancel CALLED (frees window)
+	calledTicket := create(t, ctx, p, parcels, "call-cancel")
+	called, err := p.CallNext(ctx, window1)
+	if err != nil || called.ID != calledTicket.ID {
+		t.Fatalf("call: %+v %v", called, err)
+	}
+	cancelledCalled, err := p.CancelTicket(ctx, called.ID)
+	if err != nil || cancelledCalled.Status != domain.TicketStatusCancelled || cancelledCalled.Window != nil {
+		t.Fatalf("cancel called: %+v %v", cancelledCalled, err)
+	}
+	// Window is now free!
+	current, err := p.GetCurrentTicket(ctx, window1)
+	if err != nil || current != nil {
+		t.Fatalf("expected window to be free: %v %v", current, err)
+	}
+
+	// 4. Cannot cancel SERVING
+	servingTicket := create(t, ctx, p, parcels, "serv-cancel")
+	called, err = p.CallNext(ctx, window1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.StartService(ctx, called.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.CancelTicket(ctx, servingTicket.ID)
+	wantError(t, err, application.ErrInvalidState)
+
+	// Complete it, cannot cancel COMPLETED
+	_, err = p.CompleteService(ctx, servingTicket.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.CancelTicket(ctx, servingTicket.ID)
+	wantError(t, err, application.ErrInvalidState)
+
+	// Cancel missing ticket
+	_, err = p.CancelTicket(ctx, missing)
+	wantError(t, err, application.ErrNotFound)
+}
+
+func TestPostgresReturnTicket(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// Cannot return ticket in WAITING state
+	waiting := create(t, ctx, p, parcels, "wait-ret")
+	_, err := p.ReturnTicket(ctx, waiting.ID, window1)
+	wantError(t, err, application.ErrInvalidState)
+
+	// Call ticket at window 1
+	called, err := p.CallNext(ctx, window1)
+	if err != nil || called.ID != waiting.ID {
+		t.Fatalf("call: %+v %v", called, err)
+	}
+
+	// Wrong window returns ErrInvalidState
+	_, err = p.ReturnTicket(ctx, called.ID, window2)
+	wantError(t, err, application.ErrInvalidState)
+
+	// Return ticket from window 1
+	returned, err := p.ReturnTicket(ctx, called.ID, window1)
+	if err != nil || returned.Status != domain.TicketStatusWaiting || returned.Window != nil {
+		t.Fatalf("return ticket: %+v %v", returned, err)
+	}
+	if !returned.QueueEnteredAt.Equal(waiting.QueueEnteredAt) {
+		t.Fatalf("queue_entered_at changed: was %v, now %v", waiting.QueueEnteredAt, returned.QueueEnteredAt)
+	}
+
+	// Window 1 is now free
+	current, err := p.GetCurrentTicket(ctx, window1)
+	if err != nil || current != nil {
+		t.Fatalf("window should be free: %v %v", current, err)
+	}
+
+	// Can return ticket in SERVING state too
+	calledAgain, err := p.CallNext(ctx, window1)
+	if err != nil || calledAgain.ID != waiting.ID {
+		t.Fatalf("call again: %+v %v", calledAgain, err)
+	}
+	_, err = p.StartService(ctx, calledAgain.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	returnedFromServing, err := p.ReturnTicket(ctx, calledAgain.ID, window1)
+	if err != nil || returnedFromServing.Status != domain.TicketStatusWaiting || returnedFromServing.Window != nil {
+		t.Fatalf("return from serving: %+v %v", returnedFromServing, err)
+	}
+}
+
+func TestPostgresRedirectTicket(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// Call ticket at window 1 (PARCELS)
+	tk := create(t, ctx, p, parcels, "tk-redir")
+	called, err := p.CallNext(ctx, window1)
+	if err != nil || called.ID != tk.ID {
+		t.Fatalf("call: %+v %v", called, err)
+	}
+
+	// Wrong window returns ErrInvalidState
+	_, err = p.RedirectTicket(ctx, called.ID, window2, payments)
+	wantError(t, err, application.ErrInvalidState)
+
+	// Redirect to unsupported service returns ErrNotFound
+	_, err = p.RedirectTicket(ctx, called.ID, window1, missing)
+	wantError(t, err, application.ErrNotFound)
+
+	// Redirect from window 1 to PAYMENTS
+	redirected, err := p.RedirectTicket(ctx, called.ID, window1, payments)
+	if err != nil || redirected.Status != domain.TicketStatusWaiting || redirected.ServiceID != payments || redirected.Window != nil {
+		t.Fatalf("redirect: %+v %v", redirected, err)
+	}
+	if !redirected.QueueEnteredAt.Equal(tk.QueueEnteredAt) {
+		t.Fatalf("queue_entered_at changed: was %v, now %v", tk.QueueEnteredAt, redirected.QueueEnteredAt)
+	}
+
+	// Window 1 is now free
+	current, err := p.GetCurrentTicket(ctx, window1)
+	if err != nil || current != nil {
+		t.Fatalf("window 1 should be free: %v %v", current, err)
+	}
+
+	// Window 2 (PAYMENTS) can now call the redirected ticket
+	calledAtWin2, err := p.CallNext(ctx, window2)
+	if err != nil || calledAtWin2.ID != tk.ID {
+		t.Fatalf("window 2 call redirected ticket: %+v %v", calledAtWin2, err)
+	}
+}
+
+func TestPostgresPriorityScheduling(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// Create regular WAITING ticket entered queue at T0
+	waiting := create(t, ctx, p, parcels, "prio-wait")
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2026-01-01T10:00:00Z' WHERE id=$1::uuid`, waiting.ID)
+
+	// Create APPOINTMENT whose scheduled_time has already arrived (e.g. 5 minutes ago)
+	schedPast := time.Now().UTC().Add(-5 * time.Minute)
+	aptPast, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      parcels,
+		ScheduledTime:  schedPast,
+		IdempotencyKey: "prio-apt-past",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2026-01-01T11:00:00Z' WHERE id=$1::uuid`, aptPast.Ticket.ID)
+
+	// Create APPOINTMENT scheduled far in the future (20 minutes ahead)
+	schedFar := time.Now().UTC().Add(20 * time.Minute)
+	aptFar, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      parcels,
+		ScheduledTime:  schedFar,
+		IdempotencyKey: "prio-apt-far",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create APPOINTMENT scheduled 2 minutes in the future (within 5 minutes window)
+	schedNear := time.Now().UTC().Add(2 * time.Minute)
+	aptNear, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+		BranchID:       demoBranch,
+		ServiceID:      parcels,
+		ScheduledTime:  schedNear,
+		IdempotencyKey: "prio-apt-near",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call 1: aptPast MUST be called first (rank 0: scheduled_time <= now), beating waiting (rank 1)
+	c1, err := p.CallNext(ctx, window1)
+	if err != nil || c1.ID != aptPast.Ticket.ID {
+		t.Fatalf("first call: expected past appointment %s, got %+v (err=%v)", aptPast.Ticket.ID, c1, err)
+	}
+	_, err = p.StartService(ctx, c1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.CompleteService(ctx, c1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call 2: waiting ticket MUST be called second (rank 1: WAITING), beating aptNear (rank 2: SCHEDULED within 5m)
+	c2, err := p.CallNext(ctx, window1)
+	if err != nil || c2.ID != waiting.ID {
+		t.Fatalf("second call: expected waiting ticket %s, got %+v (err=%v)", waiting.ID, c2, err)
+	}
+	_, err = p.StartService(ctx, c2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.CompleteService(ctx, c2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call 3: aptNear MUST be called third (rank 2: SCHEDULED within 5m)
+	c3, err := p.CallNext(ctx, window1)
+	if err != nil || c3.ID != aptNear.Ticket.ID {
+		t.Fatalf("third call: expected near appointment %s, got %+v (err=%v)", aptNear.Ticket.ID, c3, err)
+	}
+	_, err = p.StartService(ctx, c3.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.CompleteService(ctx, c3.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call 4: aptFar is NOT eligible (> 5 min in future), so ErrNoEligibleTickets
+	_, err = p.CallNext(ctx, window1)
+	wantError(t, err, application.ErrNoEligibleTickets)
+
+	_ = aptFar
 }
