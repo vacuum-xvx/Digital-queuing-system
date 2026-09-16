@@ -343,3 +343,66 @@
   font-size: 13px;
   color: #4b5563;
 }
+
+/* Queue Policy Editor (Sprint 2) */
+.queue-policy-card {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.queue-policy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.policy-version-badge {
+  background: #e6f0fa;
+  color: #003b73;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  border: 1px solid #bfdbfe;
+}
+
+.policy-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+  margin-bottom: 6px;
+}
+
+.label-hint {
+  font-weight: 400;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.policy-input {
+  max-width: 240px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.validation-error-text {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+.policy-updated-text {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 12px;
+}

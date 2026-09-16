@@ -144,6 +144,14 @@ export function ClientWorkspace() {
 
   const selectedService = services.find((service) => service.id === ticket?.serviceId || service.id === serviceId);
 
+  const resetTicket = () => {
+    stopPolling();
+    sessionStorage.removeItem(STORAGE_TICKET_KEY);
+    setTicket(null);
+    setError(null);
+    setPollError(null);
+  };
+
   return <section className="client-card" aria-labelledby="client-title">
     <h2 id="client-title">Получить талон</h2>
     {error && <p className="client-message client-error" role="alert">{error}</p>}
@@ -169,6 +177,16 @@ export function ClientWorkspace() {
       <div className="client-status">{statusMessage(ticket)}</div>
       {ticket.status === 'CALLED' && ticket.window && <div>Окно №{ticket.window.number}</div>}
       {pollError && <div className="client-message client-error">Обновление: {pollError}</div>}
+      {terminalStatuses.has(ticket.status) && (
+        <button
+          type="button"
+          className="client-button"
+          style={{ marginTop: '12px' }}
+          onClick={resetTicket}
+        >
+          Взять новый талон
+        </button>
+      )}
     </div>}
   </section>;
 }
