@@ -24,14 +24,19 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/branches", a.ListBranches)
 		r.Get("/branches/{branchId}/services", a.ListBranchServices)
 		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
+		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
+		r.Post("/tickets/{ticketId}/cancel", a.CancelTicket)
 
 		r.Route("/operator", func(r chi.Router) {
 			r.Get("/branches/{branchId}/windows", a.ListBranchWindows)
 			r.Get("/windows/{windowId}/current-ticket", a.GetCurrentTicket)
+			r.Post("/windows/{windowId}/tickets/live", a.CreateLiveTicket)
 			r.Post("/windows/{windowId}/call-next", a.CallNext)
 			r.Post("/tickets/{ticketId}/start", a.StartService)
 			r.Post("/tickets/{ticketId}/complete", a.CompleteService)
+			r.Post("/tickets/{ticketId}/return", a.ReturnTicket)
+			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
 		})
 	})
 }
@@ -236,9 +241,62 @@ func (a *API) CreateQRTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, status, mapTicket(res.Ticket))
 }
 
+type CreateAppointmentRequest struct {
+	ServiceID     string `json:"serviceId"`
+	ScheduledTime string `json:"scheduledTime"`
+}
+
+func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+	if idempotencyKey == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing Idempotency-Key header")
+		return
+	}
+
+	var req CreateAppointmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	scheduledTime, err := time.Parse(time.RFC3339, req.ScheduledTime)
+	if err != nil || req.ScheduledTime == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid scheduledTime format (expected RFC3339)")
+		return
+	}
+
+	res, err := a.usecases.CreateAppointment(r.Context(), application.CreateAppointmentCommand{
+		BranchID:       branchID,
+		ServiceID:      req.ServiceID,
+		ScheduledTime:  scheduledTime,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	status := http.StatusCreated
+	if res.Replayed {
+		status = http.StatusOK
+	}
+	writeJSONResponse(w, status, mapTicket(res.Ticket))
+}
+
 func (a *API) GetTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID := chi.URLParam(r, "ticketId")
 	ticket, err := a.usecases.GetTicket(r.Context(), ticketID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}
+
+func (a *API) CancelTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	ticket, err := a.usecases.CancelTicket(r.Context(), ticketID)
 	if err != nil {
 		a.respondError(w, r, err)
 		return
@@ -312,3 +370,80 @@ func (a *API) CompleteService(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
+
+type CreateLiveTicketRequest struct {
+	BranchID  string `json:"branchId"`
+	ServiceID string `json:"serviceId"`
+}
+
+func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
+	windowID := chi.URLParam(r, "windowId")
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+	if idempotencyKey == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing Idempotency-Key header")
+		return
+	}
+
+	var req CreateLiveTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	ticket, err := a.usecases.CreateLiveTicket(r.Context(), application.CreateLiveTicketCommand{
+		BranchID:       req.BranchID,
+		WindowID:       windowID,
+		ServiceID:      req.ServiceID,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket))
+}
+
+type ReturnTicketRequest struct {
+	WindowID string `json:"windowId"`
+}
+
+func (a *API) ReturnTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	var req ReturnTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.WindowID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing windowId")
+		return
+	}
+
+	ticket, err := a.usecases.ReturnTicket(r.Context(), ticketID, req.WindowID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}
+
+type RedirectTicketRequest struct {
+	WindowID        string `json:"windowId"`
+	TargetServiceID string `json:"targetServiceId"`
+}
+
+func (a *API) RedirectTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	var req RedirectTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.WindowID == "" || req.TargetServiceID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing windowId or targetServiceId")
+		return
+	}
+
+	ticket, err := a.usecases.RedirectTicket(r.Context(), ticketID, req.WindowID, req.TargetServiceID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}
+
