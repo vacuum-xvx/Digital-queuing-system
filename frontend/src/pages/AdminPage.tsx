@@ -1,1 +1,5 @@
-export function AdminPage() { return <h2>Admin UI — Foundation</h2>; }
+import { AdminWorkspace } from '../features/admin/AdminWorkspace';
+
+export function AdminPage() {
+  return <AdminWorkspace />;
+}
