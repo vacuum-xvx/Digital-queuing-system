@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.local
+bin/
+dist/
+coverage/
+coverage*
+*.test
+*.out
+node_modules/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+*.swp
