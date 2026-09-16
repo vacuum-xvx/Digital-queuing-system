@@ -1,84 +1,109 @@
-# Sprint #1 Black-Box QA Verification Suite
+# Black-Box Тестирование и Верификация (Спринт №1)
 
-## Overview
-This directory contains the independent black-box verification suite for Sprint #1 of the next-generation digital queue system (`tsifrovaya-ochered-novogo-pokoleniya`).
+## Описание
+В данной директории расположен независимый тестовый модуль black-box верификации для Спринта №1 системы цифровой очереди нового поколения (`tsifrovaya-ochered-novogo-pokoleniya`).
 
-The suite verifies the end-to-end functionality of the system exclusively over HTTP against the frozen Sprint #1 public API contracts without importing any internal domain, application, or persistence packages.
+Тестирование осуществляется **исключительно по протоколу HTTP** против публичного API системы (`/health`, `/ready`, `/api/v1/*`), без прямого доступа к БД и без импорта внутренних пакетов домена, бизнес-логики или персистентности бэкенда (`backend/internal/*`).
 
-## Frozen Contract Compliance
-- **Black-Box HTTP Only**: Interacts solely via HTTP endpoints under `/health`, `/ready`, and `/api/v1/*`.
-- **Exact DTOs**:
-  - `GET /api/v1/branches` validates exact fields `items`, `id`, `name`.
-  - `GET /api/v1/branches/{branchId}/services` validates exact fields `items`, `id`, `code`, `name`.
-  - `TicketDTO` and `ErrorResponse` validate standard camelCase and RFC3339 UTC fields.
-- **Frozen Demo Identifiers**:
-  - Branch: `11111111-1111-1111-1111-111111111111`
-  - PARCELS Service: `22222222-2222-2222-2222-222222222222`
-  - PAYMENTS Service: `55555555-5555-5555-5555-555555555555`
-  - Window 1 (PARCELS): `33333333-3333-3333-3333-333333333333`
-  - Window 2 (PAYMENTS): `44444444-4444-4444-4444-444444444444`
-  - Window 3 (PARCELS): `66666666-6666-6666-6666-666666666666`
+---
 
-## Verification Scenarios
-1. **Foundation Regression**:
-   - Validates `GET /health` returns `200 OK` (`{"status":"ok"}`).
-   - Validates `GET /ready` returns `200 OK` (`{"status":"ready","database":"ok"}`).
-   - Executed both before and after test suites.
-2. **Scenario A — Happy Path**:
-   - Verifies demo branch and PARCELS / PAYMENTS service catalog.
-   - Issues QR ticket for PARCELS (`201 Created`, state `WAITING`).
-   - Window 1 calls ticket (`200 OK`, state `CALLED`, Window 1 assigned).
-   - Starts service (`200 OK`, state `SERVING`).
-   - Completes service (`200 OK`, state `COMPLETED`).
-   - Verifies ticket state persistence and window release (`204 No Content`).
-3. **Scenario B — Idempotency**:
-   - Creates ticket with key `K` (`201 Created`, state `WAITING`).
-   - Replays request with key `K` (`200 OK`, identical ticket ID and public number).
-   - Requests different service with key `K` (`409 Conflict`, error code `IDEMPOTENCY_CONFLICT`).
-   - Cleans up ticket via public API to `COMPLETED`.
-4. **Scenario C — Service Routing**:
-   - Creates PARCELS ticket (`201 Created`, state `WAITING`).
-   - Window 2 (PAYMENTS only) calls next (`409 Conflict`, error code `NO_ELIGIBLE_TICKETS`).
-   - Verifies ticket remains `WAITING` with no window assigned.
-   - Window 1 (PARCELS supported) calls next (`200 OK`, state `CALLED`).
-   - Starts and completes service to `COMPLETED`.
-5. **Scenario D — Concurrent Claim**:
-   - Verifies Window 1 and Window 3 both support PARCELS and are initially idle (`204`).
-   - Creates exactly one PARCELS ticket (`WAITING`).
-   - Concurrently dispatches `call-next` from Window 1 and Window 3 using goroutines synchronized by a release barrier.
-   - Asserts atomic claim: exactly one window receives `200 OK` with the ticket, while the other window receives `409 Conflict` (`NO_ELIGIBLE_TICKETS`).
-   - Winning window serves and completes the ticket.
-   - Verifies both windows are idle (`204`).
+## Соответствие замороженным контрактам (Frozen Contracts)
+- **Только Black-Box HTTP**: взаимодействие с тестируемой системой происходит как с внешним сервисом.
+- **Точные структуры DTO**:
+  - `GET /api/v1/branches`: валидирует строго поля контракта `items`, `id`, `name`.
+  - `GET /api/v1/branches/{branchId}/services`: валидирует строго поля контракта `items`, `id`, `code`, `name`.
+  - `TicketDTO`: camelCase JSON, время в RFC3339 UTC.
+  - `ErrorResponse`: `{"error": {"code": "...", "message": "...", "requestId": "..."}}`.
+- **Зафиксированные идентификаторы демо-стенда**:
+  - Демо-отделение: `11111111-1111-1111-1111-111111111111` («Демо-отделение №1»)
+  - Услуга «Посылки» (PARCELS): `22222222-2222-2222-2222-222222222222`
+  - Услуга «Платежи» (PAYMENTS): `55555555-5555-5555-5555-555555555555`
+  - Окно 1 (PARCELS): `33333333-3333-3333-3333-333333333333`, номер 1, статус `OPEN`
+  - Окно 2 (PAYMENTS): `44444444-4444-4444-4444-444444444444`, номер 2, статус `OPEN`
+  - Окно 3 (PARCELS): `66666666-6666-6666-6666-666666666666`, номер 3, статус `OPEN`
 
-## Repeatability & Non-Destructive Cleanup
-- **No Database Reset**: Automatic QA code **NEVER** runs `docker compose down -v`.
-- **Public-API Cleanup**:
-  - `settleCurrent(windowID)`: Inspects `/operator/windows/{windowId}/current-ticket`. If `CALLED`, starts and completes; if `SERVING`, completes.
-  - `drainWindow(windowID)`: Settles active ticket, then repeatedly calls `call-next` and completes tickets until `NO_ELIGIBLE_TICKETS` is received.
-  - `preflightCleanEnvironment()`: Cleans all windows and queues in deterministic order before each scenario.
-  - Deferred post-scenario cleanup guarantees active tickets created by tests are completed even upon assertion failures.
-- **Multiple Runs**: The suite can be run repeatedly against persistent storage. Historical completed tickets remain in the database; ticket counters continue incrementally.
+---
 
-> [!CAUTION]
-> **Manual Recovery Only**: `docker compose down -v` permanently destroys PostgreSQL data volumes. It must NEVER be called by automated QA scripts or continuous integration routines.
+## Сценарии верификации
 
-## How to Run
+### 1. Регрессия фундамента (Foundation Regression)
+- Проверка `GET /health` возвращает `200 OK` (`{"status":"ok"}`).
+- Проверка `GET /ready` возвращает `200 OK` (`{"database":"ok","status":"ready"}`).
+- Выполняется до начала сьюта и повторно после завершения всех сценариев.
 
-### Option 1: Standard Go Test
+### 2. Сценарий A — Основной путь (Happy Path)
+- Проверка наличия демо-отделения и услуг в каталоге.
+- Выпуск QR-талона на услугу «Посылки» с уникальным `Idempotency-Key` -> `201 Created`, статус `WAITING`, источник `QR`.
+- Вызов Окном 1 (`POST /call-next`) -> `200 OK`, статус `CALLED`, окну назначен `Window 1`, номер 1.
+- Проверка состояния талона через `GET /api/v1/tickets/{id}` -> статус `CALLED`.
+- Начало обслуживания (`POST /start`) -> `200 OK`, статус `SERVING`, выставлен `serviceStartedAt`.
+- Завершение обслуживания (`POST /complete`) -> `200 OK`, статус `COMPLETED`, выставлен `completedAt`.
+- Финальная проверка талона -> `COMPLETED`. Окно 1 освобождено (`204 No Content` на эндпоинте `current-ticket`).
+
+### 3. Сценарий B — Идемпотентность (Idempotency)
+- Создание талона с уникальным ключом идемпотентности $K$ -> `201 Created`, статус `WAITING`.
+- Точный повторный запрос с тем же ключом $K$ -> `200 OK` (возвращается тот же `id` и `publicNumber`).
+- Конфликтный запрос с тем же ключом $K$, но другой услугой (`PAYMENTS`) -> `409 Conflict`, код ошибки `IDEMPOTENCY_CONFLICT`.
+- Очистка: исходный талон переводится через публичный API в `COMPLETED`.
+
+### 4. Сценарий C — Маршрутизация по услугам (Service Routing)
+- Создание талона на «Посылки» -> `201 Created`, статус `WAITING`.
+- Вызов из Окна 2 (окно поддерживает только «Платежи») -> `409 Conflict`, код ошибки `NO_ELIGIBLE_TICKETS`.
+- Проверка талона: остался в статусе `WAITING`, окно не назначено (`window = null`).
+- Вызов из Окна 1 (поддерживает «Посылки») -> `200 OK`, статус `CALLED`, назначено Окно 1.
+- Успешный старт и завершение обслуживания -> `COMPLETED`. Окно 2 осталось свободным (`204`).
+
+### 5. Сценарий D — Конкурентный вызов (Concurrent Claim)
+- Предварительная проверка: Окно 1 и Окно 3 оба поддерживают услугу «Посылки» и свободны (`204`).
+- Создание ровно одного талона на «Посылки» -> `WAITING`.
+- Одновременный вызов `call-next` из двух параллельных горутин (синхронизированных через барьер).
+- **Проверка атомарности захвата**:
+  - Ровно один запрос возвращает `200 OK` с назначением талона победившему окну.
+  - Ровно один запрос возвращает `409 Conflict` с ошибкой `NO_ELIGIBLE_TICKETS`.
+  - Исключена ситуация двойного захвата одного талона двумя окнами.
+- Победившее окно начинает и завершает обслуживание -> `COMPLETED`.
+- Оба окна возвращаются в состояние покоя (`204 No Content`).
+
+---
+
+## Требования к повторяемости и недеструктивная очистка
+
+### ⚠️ Запрет на сброс базы данных
+Автоматический запуск тестов **НИКОГДА** не вызывает `docker compose down -v`. Команда `down -v` полностью уничтожает том PostgreSQL с данными и разрешена только как крайняя мера ручного восстановления.
+
+### Очистка через публичный API
+Очистка выполняется исключительно через штатные публичные эндпоинты:
+- `settleCurrent(windowID)`: опрашивает `GET /operator/windows/{windowId}/current-ticket`. Если талон `CALLED`, вызывает `start`, затем `complete`. Если `SERVING`, вызывает `complete`.
+- `drainWindow(windowID)`: вызывает `settleCurrent`, затем в цикле вызывает `call-next`, `start` и `complete` до получения `409 NO_ELIGIBLE_TICKETS`.
+- `PreflightCleanEnvironment()`: очищает и сливает очереди Окна 1, Окна 2 и Окна 3 перед началом каждого сценария.
+- `defer / t.Cleanup`: гарантирует перевод созданных тестом талонов в статус `COMPLETED` даже в случае падения проверок.
+
+Благодаря этому весь сьют может выполняться **многократно подряд** на постоянном томе PostgreSQL:
+- Запуск 1 -> PASS
+- Запуск 2 (без сброса БД) -> PASS
+- Запуск 3 (без сброса БД) -> PASS
+Исторические талоны со статусом `COMPLETED` сохраняются в базе данных, счетчик публичных номеров талонов продолжает увеличиваться (`Q-000001`, `Q-000002`...), тесты не завязываются на начальное значение счетчика.
+
+---
+
+## Инструкция по запуску
+
+### Запуск тестов через Go Test
 ```bash
 cd qa/sprint1
 go test -v -count=1 ./...
 ```
-Or with custom `BASE_URL`:
+С указанием адреса сервера:
 ```bash
 BASE_URL=http://localhost:8080 go test -v -count=1 ./...
 ```
 
-### Option 2: Standalone CLI Runner
+### Запуск автономного CLI-раннера
+CLI-раннер автоматически проверяет состояние Foundation, выполняет заданное количество повторений всех сценариев подряд и выводит детальный журнал:
 ```bash
 cd qa/sprint1
 go run ./cmd/runner -base-url=http://localhost:8080 -repeat=3
 ```
-Options:
-- `-base-url string`: URL of the backend service (default: `http://localhost:8080` or `$BASE_URL`).
-- `-repeat int`: Number of complete sequential suite repetitions without database reset (default: `3`).
+Параметры:
+- `-base-url`: URL бэкенда (по умолчанию `http://localhost:8080` или переменная `$BASE_URL`).
+- `-repeat`: количество полных повторных прогонов подряд без очистки БД (по умолчанию `3`).
