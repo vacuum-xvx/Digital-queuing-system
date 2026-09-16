@@ -76,6 +76,7 @@ type TicketDTO struct {
 	ServiceID        string        `json:"serviceId"`
 	Source           string        `json:"source"`
 	Status           string        `json:"status"`
+	ScheduledTime    *time.Time    `json:"scheduledTime,omitempty"`
 	Window           *WindowRefDTO `json:"window"`
 	CreatedAt        time.Time     `json:"createdAt"`
 	QueueEnteredAt   time.Time     `json:"queueEnteredAt"`
@@ -120,6 +121,7 @@ func mapTicket(t domain.Ticket) TicketDTO {
 		ServiceID:        t.ServiceID,
 		Source:           string(t.Source),
 		Status:           string(t.Status),
+		ScheduledTime:    t.ScheduledTime,
 		Window:           window,
 		CreatedAt:        t.CreatedAt,
 		QueueEnteredAt:   t.QueueEnteredAt,
