@@ -1,1 +1,5 @@
-export function ClientPage() { return <h2>Client UI — Foundation</h2>; }
+import { ClientWorkspace } from '../features/client/ClientWorkspace';
+
+export function ClientPage() {
+  return <ClientWorkspace />;
+}

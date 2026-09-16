@@ -33,7 +33,7 @@ func TestHealthAndReadiness(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &fakeDB{err: tc.dbErr}
 			var logs bytes.Buffer
-			router := NewRouter(db, slog.New(slog.NewJSONHandler(&logs, nil)), "http://localhost:5173")
+			router := NewRouter(db, nil, slog.New(slog.NewJSONHandler(&logs, nil)), "http://localhost:5173")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			if response.Code != tc.status || strings.TrimSpace(response.Body.String()) != tc.body {
@@ -75,7 +75,7 @@ func TestPanicRecovery(t *testing.T) {
 
 func TestCORS(t *testing.T) {
 	for _, origin := range []string{"http://localhost:5173", "http://untrusted.example"} {
-		router := NewRouter(&fakeDB{}, slog.Default(), "http://localhost:5173")
+		router := NewRouter(&fakeDB{}, nil, slog.Default(), "http://localhost:5173")
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/health", nil)
 		request.Header.Set("Origin", origin)
