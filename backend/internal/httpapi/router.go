@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"postcode/backend/internal/application"
 )
 
 // Pinger is the small boundary needed to test readiness without PostgreSQL.
 type Pinger interface{ Ping(context.Context) error }
 
-func NewRouter(db Pinger, logger *slog.Logger, origin string) http.Handler {
+func NewRouter(db Pinger, usecases application.UseCases, logger *slog.Logger, origin string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestLog(logger), recoverPanic(logger), cors(origin))
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +31,10 @@ func NewRouter(db Pinger, logger *slog.Logger, origin string) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready", "database": "ok"})
 	})
+
+	api := NewAPI(usecases)
+	api.RegisterRoutes(r)
+
 	return r
 }
 
