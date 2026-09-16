@@ -4,6 +4,7 @@ import {
   OperatorWindow,
   Ticket,
   OperatorApiError,
+  WindowService,
 } from '../../api/operator/types';
 import * as api from '../../api/operator/operatorApi';
 import { BranchSelector } from './BranchSelector';
@@ -30,8 +31,15 @@ export const OperatorWorkspace: React.FC = () => {
 
   const [windows, setWindows] = useState<OperatorWindow[]>([]);
   const [selectedWindow, setSelectedWindow] = useState<OperatorWindow | null>(null);
+  const [branchServices, setBranchServices] = useState<WindowService[]>([]);
 
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
+
+  const [isLiveModalOpen, setIsLiveModalOpen] = useState<boolean>(false);
+  const [selectedLiveServiceId, setSelectedLiveServiceId] = useState<string>('');
+
+  const [isRedirectModalOpen, setIsRedirectModalOpen] = useState<boolean>(false);
+  const [selectedRedirectServiceId, setSelectedRedirectServiceId] = useState<string>('');
 
   const [isLoadingBranches, setIsLoadingBranches] = useState<boolean>(false);
   const [isLoadingWindows, setIsLoadingWindows] = useState<boolean>(false);
@@ -77,12 +85,13 @@ export const OperatorWorkspace: React.FC = () => {
     };
   }, []);
 
-  // 2. Load windows when selectedBranchId changes
+  // 2. Load windows and branch services when selectedBranchId changes
   useEffect(() => {
     if (!selectedBranchId) {
       setWindows([]);
       setSelectedWindow(null);
       setCurrentTicket(null);
+      setBranchServices([]);
       sessionStorage.removeItem(STORAGE_WINDOW_KEY);
       return;
     }
@@ -90,6 +99,17 @@ export const OperatorWorkspace: React.FC = () => {
     let active = true;
     setIsLoadingWindows(true);
     setNotice(null);
+
+    // Load branch services for live queue / redirection
+    api
+      .listBranchServices(selectedBranchId)
+      .then((items) => {
+        if (!active) return;
+        setBranchServices(items);
+      })
+      .catch(() => {
+        // Graceful fallback to window-level services
+      });
 
     api
       .listWindows(selectedBranchId)
@@ -305,6 +325,162 @@ export const OperatorWorkspace: React.FC = () => {
     }
   };
 
+  // Action 4: Create Live Queue Ticket
+  const executeCreateLiveTicket = async (serviceId: string) => {
+    if (!selectedWindow || !selectedBranchId) return;
+    setIsActionPending(true);
+    setNotice(null);
+
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `live-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    try {
+      const created = await api.createLiveTicket(
+        selectedWindow.id,
+        selectedBranchId,
+        serviceId,
+        idempotencyKey
+      );
+      setIsLiveModalOpen(false);
+      setNotice({
+        type: 'success',
+        message: `Талон живой очереди ${created.publicNumber} успешно добавлен в очередь.`,
+      });
+    } catch (err) {
+      if (err instanceof OperatorApiError) {
+        setNotice({
+          type: 'error',
+          message: `Ошибка создания талона: ${err.message}`,
+        });
+      } else {
+        setNotice({
+          type: 'error',
+          message: 'Не удалось связаться с сервером при создании талона.',
+        });
+      }
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleCreateLiveClick = () => {
+    if (!selectedWindow) return;
+    const services =
+      selectedWindow.services.length > 0 ? selectedWindow.services : branchServices;
+
+    if (services.length === 0) {
+      setNotice({
+        type: 'warning',
+        message: 'Для данного окна не настроены услуги.',
+      });
+      return;
+    }
+
+    if (services.length === 1) {
+      executeCreateLiveTicket(services[0].id);
+    } else {
+      setSelectedLiveServiceId(services[0].id);
+      setIsLiveModalOpen(true);
+    }
+  };
+
+  // Action 5: Return Ticket to Queue
+  const handleReturnTicket = async () => {
+    if (!currentTicket || !selectedWindow) return;
+    setIsActionPending(true);
+    setNotice(null);
+
+    try {
+      const ticketNumber = currentTicket.publicNumber;
+      await api.returnTicket(currentTicket.id, selectedWindow.id);
+      setCurrentTicket(null);
+      setNotice({
+        type: 'success',
+        message: `Талон ${ticketNumber} возвращён в очередь.`,
+      });
+    } catch (err) {
+      if (err instanceof OperatorApiError) {
+        if (err.code === 'INVALID_TICKET_STATE' || err.code === 'NOT_FOUND') {
+          setNotice({
+            type: 'warning',
+            message: 'Состояние талона изменилось на сервере. Синхронизируем...',
+          });
+          await restoreCurrentTicket(selectedWindow.id);
+        } else {
+          setNotice({
+            type: 'error',
+            message: `Ошибка возврата талона: ${err.message}`,
+          });
+        }
+      } else {
+        setNotice({
+          type: 'error',
+          message: 'Не удалось связаться с сервером.',
+          retryAction: handleReturnTicket,
+        });
+      }
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  // Action 6: Redirect Ticket
+  const handleOpenRedirect = () => {
+    if (!currentTicket || !selectedWindow) return;
+    const services = branchServices.length > 0 ? branchServices : selectedWindow.services;
+    if (services.length === 0) {
+      setNotice({
+        type: 'warning',
+        message: 'Нет доступных услуг для перенаправления.',
+      });
+      return;
+    }
+    const defaultService = services.find((s) => s.id !== currentTicket.serviceId) || services[0];
+    setSelectedRedirectServiceId(defaultService.id);
+    setIsRedirectModalOpen(true);
+  };
+
+  const handleConfirmRedirect = async () => {
+    if (!currentTicket || !selectedWindow || !selectedRedirectServiceId) return;
+    setIsActionPending(true);
+    setNotice(null);
+
+    try {
+      await api.redirectTicket(currentTicket.id, selectedWindow.id, selectedRedirectServiceId);
+      setCurrentTicket(null);
+      setIsRedirectModalOpen(false);
+      setNotice({
+        type: 'success',
+        message: 'Талон успешно перенаправлен.',
+      });
+    } catch (err) {
+      if (err instanceof OperatorApiError) {
+        if (err.code === 'INVALID_TICKET_STATE' || err.code === 'NOT_FOUND') {
+          setNotice({
+            type: 'warning',
+            message: 'Состояние талона изменилось на сервере. Синхронизируем...',
+          });
+          setIsRedirectModalOpen(false);
+          await restoreCurrentTicket(selectedWindow.id);
+        } else {
+          setNotice({
+            type: 'error',
+            message: `Ошибка перенаправления талона: ${err.message}`,
+          });
+        }
+      } else {
+        setNotice({
+          type: 'error',
+          message: 'Не удалось связаться с сервером при перенаправлении.',
+        });
+      }
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
   return (
     <div className="operator-container">
       <header className="operator-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -435,7 +611,16 @@ export const OperatorWorkspace: React.FC = () => {
                     {selectedWindow.services.map((s) => s.name).join(', ') || 'Все'}
                   </p>
                 </div>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    type="button"
+                    id="btn-create-live-ticket"
+                    className="btn btn-create-live"
+                    disabled={isActionPending}
+                    onClick={handleCreateLiveClick}
+                  >
+                    + Выдать талон (Живая очередь)
+                  </button>
                   <span className="window-badge badge-open">АКТИВНО</span>
                 </div>
               </div>
@@ -459,11 +644,145 @@ export const OperatorWorkspace: React.FC = () => {
                 onCallNext={handleCallNext}
                 onStartService={handleStartService}
                 onCompleteService={handleCompleteService}
+                onReturnTicket={handleReturnTicket}
+                onOpenRedirect={handleOpenRedirect}
               />
             </>
           )}
         </main>
       </div>
+
+      {/* Live Queue Ticket Modal (when multiple services) */}
+      {isLiveModalOpen && (
+        <div
+          className="operator-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="live-modal-title"
+        >
+          <div className="operator-modal">
+            <div className="operator-modal-header">
+              <h3 id="live-modal-title">Выдача талона живой очереди</h3>
+              <button
+                type="button"
+                className="operator-modal-close"
+                onClick={() => setIsLiveModalOpen(false)}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            <div className="operator-modal-body">
+              <p>Выберите услугу для оформления талона в Окно №{selectedWindow?.number}:</p>
+              <div className="operator-modal-field">
+                <label htmlFor="select-live-service">Услуга:</label>
+                <select
+                  id="select-live-service"
+                  className="operator-select"
+                  value={selectedLiveServiceId}
+                  onChange={(e) => setSelectedLiveServiceId(e.target.value)}
+                >
+                  {(selectedWindow && selectedWindow.services.length > 0
+                    ? selectedWindow.services
+                    : branchServices
+                  ).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="operator-modal-actions">
+              <button
+                type="button"
+                id="btn-cancel-create-live"
+                className="btn btn-secondary"
+                onClick={() => setIsLiveModalOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-create-live"
+                className="btn btn-primary"
+                disabled={!selectedLiveServiceId || isActionPending}
+                onClick={() => executeCreateLiveTicket(selectedLiveServiceId)}
+              >
+                {isActionPending ? <span className="spinner" /> : null}
+                <span>Выдать талон</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Redirection Modal */}
+      {isRedirectModalOpen && (
+        <div
+          className="operator-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="redirect-modal-title"
+        >
+          <div className="operator-modal">
+            <div className="operator-modal-header">
+              <h3 id="redirect-modal-title">
+                Перенаправление талона {currentTicket?.publicNumber}
+              </h3>
+              <button
+                type="button"
+                className="operator-modal-close"
+                onClick={() => setIsRedirectModalOpen(false)}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            <div className="operator-modal-body">
+              <p>Выберите целевую услугу отделения для перенаправления талона:</p>
+              <div className="operator-modal-field">
+                <label htmlFor="select-redirect-service">Целевая услуга:</label>
+                <select
+                  id="select-redirect-service"
+                  className="operator-select"
+                  value={selectedRedirectServiceId}
+                  onChange={(e) => setSelectedRedirectServiceId(e.target.value)}
+                >
+                  {(branchServices.length > 0
+                    ? branchServices
+                    : selectedWindow?.services || []
+                  ).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="operator-modal-actions">
+              <button
+                type="button"
+                id="btn-cancel-redirect"
+                className="btn btn-secondary"
+                onClick={() => setIsRedirectModalOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-redirect"
+                className="btn btn-primary"
+                disabled={!selectedRedirectServiceId || isActionPending}
+                onClick={handleConfirmRedirect}
+              >
+                {isActionPending ? <span className="spinner" /> : null}
+                <span>Перенаправить</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

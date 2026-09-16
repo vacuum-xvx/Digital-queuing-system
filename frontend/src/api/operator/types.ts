@@ -15,6 +15,12 @@ export type WindowService = {
   name: string;
 };
 
+export type Service = WindowService;
+
+export type ServiceListResponse = {
+  items: Service[];
+};
+
 export type OperatorWindow = {
   id: string;
   number: number;
@@ -50,6 +56,7 @@ export type Ticket = {
   source: TicketSource;
   status: TicketStatus;
   window: TicketWindow | null;
+  scheduledTime?: string | null;
   createdAt: string;
   queueEnteredAt: string;
   calledAt: string | null;

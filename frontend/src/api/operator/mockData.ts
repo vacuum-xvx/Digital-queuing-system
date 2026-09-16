@@ -80,3 +80,40 @@ export function createMockTicket(
     completedAt: status === 'COMPLETED' ? now : null,
   };
 }
+
+export const DEMO_SERVICES = [
+  {
+    id: '22222222-2222-2222-2222-222222222222',
+    code: 'PARCELS',
+    name: 'Посылки',
+  },
+  {
+    id: '55555555-5555-5555-5555-555555555555',
+    code: 'PAYMENTS',
+    name: 'Платежи',
+  },
+  {
+    id: '77777777-7777-7777-7777-777777777777',
+    code: 'LETTERS',
+    name: 'Письма и переводы',
+  },
+];
+
+export function createMockLiveTicket(branchId: string, serviceId: string): Ticket {
+  const now = new Date().toISOString();
+  const numStr = String(mockTicketSeq++).padStart(6, '0');
+  return {
+    id: `99999999-9999-9999-9999-${numStr.slice(-12).padStart(12, '0')}`,
+    publicNumber: `Q-${numStr}`,
+    branchId,
+    serviceId,
+    source: 'LIVE',
+    status: 'WAITING',
+    window: null,
+    createdAt: now,
+    queueEnteredAt: now,
+    calledAt: null,
+    serviceStartedAt: null,
+    completedAt: null,
+  };
+}

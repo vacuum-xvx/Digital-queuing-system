@@ -290,14 +290,15 @@
 /* Action Buttons Container */
 .action-buttons-group {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   margin-top: 24px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .btn {
-  padding: 14px 28px;
-  font-size: 16px;
+  padding: 12px 22px;
+  font-size: 15px;
   font-weight: 600;
   border-radius: 10px;
   border: none;
@@ -307,7 +308,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-width: 200px;
+  min-width: 170px;
 }
 
 .btn:disabled {
@@ -324,6 +325,35 @@
 .btn-primary:hover:not(:disabled) {
   background: #003b73;
   box-shadow: 0 4px 10px rgba(0, 59, 115, 0.25);
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.btn-create-live {
+  min-width: auto;
+  padding: 8px 16px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #003b73;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+}
+
+.btn-create-live:hover:not(:disabled) {
+  background: #f0f7ff;
+  border-color: #93c5fd;
+  color: #00264d;
 }
 
 .btn-warning {
@@ -422,3 +452,98 @@
     transform: rotate(360deg);
   }
 }
+
+/* Modals */
+.operator-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.operator-modal {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  width: 90%;
+  max-width: 480px;
+  padding: 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.operator-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
+}
+
+.operator-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #003b73;
+}
+
+.operator-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.operator-modal-close:hover {
+  color: #0f172a;
+}
+
+.operator-modal-body {
+  font-size: 14px;
+  color: #475569;
+}
+
+.operator-modal-body p {
+  margin: 0 0 12px 0;
+}
+
+.operator-modal-field {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.operator-modal-field label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.operator-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.operator-modal-actions .btn {
+  min-width: 120px;
+  padding: 10px 20px;
+  font-size: 14px;
+}
+

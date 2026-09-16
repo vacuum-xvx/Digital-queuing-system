@@ -41,6 +41,11 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
         <div>
           Назначено: <strong>Окно №{ticket.window?.number ?? selectedWindow.number}</strong>
         </div>
+        {ticket.scheduledTime && (
+          <div style={{ marginTop: '4px' }}>
+            Время записи: {new Date(ticket.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
         {ticket.calledAt && (
           <div style={{ marginTop: '4px' }}>
             Время вызова: {new Date(ticket.calledAt).toLocaleTimeString()}

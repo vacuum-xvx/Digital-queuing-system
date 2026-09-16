@@ -6,13 +6,16 @@ import {
   Ticket,
   ApiErrorResponse,
   OperatorApiError,
+  WindowService,
 } from './types';
 import {
   DEMO_BRANCH,
   DEMO_WINDOWS,
+  DEMO_SERVICES,
   getMockActiveTicket,
   setMockActiveTicket,
   createMockTicket,
+  createMockLiveTicket,
 } from './mockData';
 
 export function isMockEnabled(): boolean {
@@ -184,3 +187,111 @@ export async function completeService(ticketId: string): Promise<Ticket> {
 
   return await handleResponse<Ticket>(res);
 }
+
+export async function createLiveTicket(
+  windowId: string,
+  branchId: string,
+  serviceId: string,
+  idempotencyKey: string
+): Promise<Ticket> {
+  if (isMockEnabled()) {
+    return createMockLiveTicket(branchId, serviceId);
+  }
+
+  const base = getApiBaseUrl();
+  const res = await fetch(
+    `${base}/operator/windows/${encodeURIComponent(windowId)}/tickets/live`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify({ branchId, serviceId }),
+    }
+  );
+
+  return await handleResponse<Ticket>(res);
+}
+
+export async function returnTicket(ticketId: string, windowId: string): Promise<Ticket> {
+  if (isMockEnabled()) {
+    const current = getMockActiveTicket();
+    if (!current || current.id !== ticketId) {
+      throw new OperatorApiError('NOT_FOUND', 'Ticket not found', 404);
+    }
+    if (current.status !== 'CALLED' && current.status !== 'SERVING') {
+      throw new OperatorApiError('INVALID_TICKET_STATE', 'Ticket is not in CALLED or SERVING status', 409);
+    }
+    const returned: Ticket = {
+      ...current,
+      status: 'WAITING',
+      window: null,
+    };
+    setMockActiveTicket(null);
+    return returned;
+  }
+
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/operator/tickets/${encodeURIComponent(ticketId)}/return`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ windowId }),
+  });
+
+  return await handleResponse<Ticket>(res);
+}
+
+export async function redirectTicket(
+  ticketId: string,
+  windowId: string,
+  targetServiceId: string
+): Promise<Ticket> {
+  if (isMockEnabled()) {
+    const current = getMockActiveTicket();
+    if (!current || current.id !== ticketId) {
+      throw new OperatorApiError('NOT_FOUND', 'Ticket not found', 404);
+    }
+    if (current.status !== 'CALLED' && current.status !== 'SERVING') {
+      throw new OperatorApiError('INVALID_TICKET_STATE', 'Ticket is not in CALLED or SERVING status', 409);
+    }
+    const redirected: Ticket = {
+      ...current,
+      status: 'WAITING',
+      serviceId: targetServiceId,
+      window: null,
+    };
+    setMockActiveTicket(null);
+    return redirected;
+  }
+
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/operator/tickets/${encodeURIComponent(ticketId)}/redirect`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ windowId, targetServiceId }),
+  });
+
+  return await handleResponse<Ticket>(res);
+}
+
+export async function listBranchServices(branchId: string): Promise<WindowService[]> {
+  if (isMockEnabled()) {
+    return DEMO_SERVICES;
+  }
+
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/branches/${encodeURIComponent(branchId)}/services`, {
+    headers: { Accept: 'application/json' },
+  });
+  const data = await handleResponse<{ items: WindowService[] }>(res);
+  return data.items ?? [];
+}
+

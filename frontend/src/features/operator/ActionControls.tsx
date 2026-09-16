@@ -7,6 +7,8 @@ interface ActionControlsProps {
   onCallNext: () => void;
   onStartService: () => void;
   onCompleteService: () => void;
+  onReturnTicket: () => void;
+  onOpenRedirect: () => void;
 }
 
 export const ActionControls: React.FC<ActionControlsProps> = ({
@@ -15,6 +17,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   onCallNext,
   onStartService,
   onCompleteService,
+  onReturnTicket,
+  onOpenRedirect,
 }) => {
   const isNoTicket = currentTicket === null;
   const isCalled = currentTicket?.status === 'CALLED';
@@ -27,6 +31,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   const canCallNext = isNoTicket && !isPending;
   const canStart = isCalled && !isPending;
   const canComplete = isServing && !isPending;
+
+  const canReturnOrRedirect = (isCalled || isServing) && !isPending;
 
   return (
     <div className="action-buttons-group">
@@ -61,6 +67,26 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
       >
         {isPending && isServing ? <span className="spinner" /> : null}
         <span>Завершить обслуживание</span>
+      </button>
+
+      <button
+        type="button"
+        id="btn-return-ticket"
+        className="btn btn-secondary"
+        disabled={!canReturnOrRedirect}
+        onClick={onReturnTicket}
+      >
+        <span>Вернуть в очередь</span>
+      </button>
+
+      <button
+        type="button"
+        id="btn-redirect-ticket"
+        className="btn btn-secondary"
+        disabled={!canReturnOrRedirect}
+        onClick={onOpenRedirect}
+      >
+        <span>Перенаправить</span>
       </button>
     </div>
   );
