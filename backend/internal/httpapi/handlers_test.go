@@ -29,6 +29,8 @@ type FakeUseCases struct {
 	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
+	GetAdminOverviewFunc   func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
+	SavePriorityRulesFunc  func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
 }
 
 func (f *FakeUseCases) ListBranches(ctx context.Context) ([]domain.Branch, error) {
@@ -85,6 +87,14 @@ func (f *FakeUseCases) ReturnTicket(ctx context.Context, ticketID string) (domai
 
 func (f *FakeUseCases) RedirectTicket(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error) {
 	return f.RedirectTicketFunc(ctx, cmd)
+}
+
+func (f *FakeUseCases) GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error) {
+	return f.GetAdminOverviewFunc(ctx, branchID)
+}
+
+func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error {
+	return f.SavePriorityRulesFunc(ctx, branchID, rules)
 }
 
 func setupTest(usecases *FakeUseCases) http.Handler {

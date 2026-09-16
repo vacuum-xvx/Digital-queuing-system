@@ -275,7 +275,7 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 		return empty, dbError(err)
 	}
 	if status != domain.WindowStatusOpen {
-		return empty, application.ErrInvalidState
+		return empty, application.ErrWindowClosed
 	}
 	var busy bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE window_id=$1 AND status IN ('CALLED','SERVING'))`, id).Scan(&busy)
@@ -289,7 +289,7 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 	err = tx.QueryRow(ctx, `WITH candidate AS (
  SELECT t.id FROM tickets t WHERE t.branch_id=$2::uuid AND t.status='WAITING'
  AND EXISTS(SELECT 1 FROM window_services ws WHERE ws.window_id=$1 AND ws.service_id=t.service_id)
- ORDER BY t.queue_entered_at,t.id FOR UPDATE OF t SKIP LOCKED LIMIT 1
+ ORDER BY (t.source = 'APPOINTMENT') DESC, t.queue_entered_at, t.id FOR UPDATE OF t SKIP LOCKED LIMIT 1
  ) UPDATE tickets t SET status='CALLED',window_id=$1,called_at=clock_timestamp()
  FROM candidate c WHERE t.id=c.id RETURNING t.id::text`, id, branch).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -347,22 +347,155 @@ func (p *Postgres) transition(ctx context.Context, ticketID string, from, to dom
 	return t, nil
 }
 
+func (p *Postgres) createAnyTicket(ctx context.Context, branchID, serviceID, source, idempotencyKey string, scheduledAt *time.Time) (domain.Ticket, error) {
+	var empty domain.Ticket
+	b, err := uuid(branchID)
+	if err != nil {
+		return empty, err
+	}
+	s, err := uuid(serviceID)
+	if err != nil {
+		return empty, err
+	}
+	if strings.TrimSpace(idempotencyKey) == "" {
+		return empty, fmt.Errorf("idempotency key required: %w", application.ErrInvalidState)
+	}
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return empty, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+	
+	existing, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, idempotencyKey))
+	if err == nil {
+		if string(existing.Source) != source {
+			return empty, application.ErrIdempotencyConflict
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, application.ErrNotFound) {
+		return empty, err
+	}
+	
+	var enabled bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM branch_services WHERE branch_id=$1 AND service_id=$2)`, b, s).Scan(&enabled)
+	if err != nil {
+		return empty, dbError(err)
+	}
+	if !enabled {
+		return empty, application.ErrNotFound
+	}
+
+	var tid string
+	if scheduledAt == nil {
+		err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key) VALUES($1,$2,$3,'WAITING',$4)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, source, idempotencyKey).Scan(&tid)
+	} else {
+		err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at) VALUES($1,$2,$3,'WAITING',$4,$5)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, source, idempotencyKey, *scheduledAt).Scan(&tid)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, idempotencyKey))
+		if err != nil {
+			return empty, err
+		}
+		if string(existing.Source) != source {
+			return empty, application.ErrIdempotencyConflict
+		}
+		return existing, nil
+	}
+	if err != nil {
+		return empty, dbError(err)
+	}
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, tid))
+	if err != nil {
+		return empty, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return empty, dbError(err)
+	}
+	return t, nil
+}
+
 func (p *Postgres) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
-	return domain.Ticket{}, errors.New("not implemented")
+	return p.createAnyTicket(ctx, cmd.BranchID, cmd.ServiceID, string(domain.TicketSourceLive), cmd.IdempotencyKey, nil)
 }
 
 func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error) {
-	return domain.Ticket{}, errors.New("not implemented")
+	t, err := time.Parse(time.RFC3339, cmd.ScheduledAt)
+	if err != nil {
+		return domain.Ticket{}, fmt.Errorf("invalid scheduled_at: %w", application.ErrInvalidState)
+	}
+	return p.createAnyTicket(ctx, cmd.BranchID, cmd.ServiceID, string(domain.TicketSourceAppointment), cmd.IdempotencyKey, &t)
 }
 
 func (p *Postgres) ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error) {
-	return domain.Window{}, errors.New("not implemented")
+	id, err := uuid(windowID)
+	if err != nil {
+		return domain.Window{}, err
+	}
+	var branchID string
+	err = p.pool.QueryRow(ctx, `UPDATE windows SET status=$1 WHERE id=$2 RETURNING branch_id::text`, string(status), id).Scan(&branchID)
+	if err != nil {
+		return domain.Window{}, dbError(err)
+	}
+	windows, err := p.ListBranchWindows(ctx, branchID)
+	if err != nil {
+		return domain.Window{}, err
+	}
+	for _, w := range windows {
+		if w.ID == windowID {
+			return w, nil
+		}
+	}
+	return domain.Window{}, application.ErrNotFound
 }
 
 func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
-	return domain.Ticket{}, errors.New("not implemented")
+	id, err := uuid(ticketID)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	tag, err := p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND status IN ('CALLED', 'SERVING')`, id)
+	if err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Ticket{}, application.ErrInvalidState
+	}
+	return p.GetTicket(ctx, ticketID)
 }
 
 func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error) {
-	return domain.Ticket{}, errors.New("not implemented")
+	id, err := uuid(cmd.TicketID)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	ns, err := uuid(cmd.NewServiceID)
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	
+	var nw *pgtype.UUID
+	if cmd.NewWindowID != "" {
+		parsed, err := uuid(cmd.NewWindowID)
+		if err != nil {
+			return domain.Ticket{}, err
+		}
+		nw = &parsed
+	}
+	
+	var tag pgconn.CommandTag
+	if nw != nil {
+		tag, err = p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2 WHERE id=$3 AND status IN ('CALLED', 'SERVING')`, nw, ns, id)
+	} else {
+		tag, err = p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1 WHERE id=$2 AND status IN ('CALLED', 'SERVING')`, ns, id)
+	}
+	if err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.Ticket{}, application.ErrInvalidState
+	}
+	return p.GetTicket(ctx, cmd.TicketID)
 }

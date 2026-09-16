@@ -10,6 +10,7 @@ import (
 var (
 	ErrNotFound            = errors.New("not found")
 	ErrInvalidState        = errors.New("invalid state")
+	ErrWindowClosed        = errors.New("window closed")
 	ErrWindowBusy          = errors.New("window busy")
 	ErrNoEligibleTickets   = errors.New("no eligible tickets")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
@@ -26,14 +27,16 @@ type CreateQRTicketResult struct {
 }
 
 type CreateLiveTicketCommand struct {
-	BranchID  string
-	ServiceID string
+	BranchID       string
+	ServiceID      string
+	IdempotencyKey string
 }
 
 type CreateAppointmentCommand struct {
-	BranchID    string
-	ServiceID   string
-	ScheduledAt string // ISO8601 or similar
+	BranchID       string
+	ServiceID      string
+	ScheduledAt    string // ISO8601 or similar
+	IdempotencyKey string
 }
 
 type RedirectTicketCommand struct {
@@ -59,4 +62,6 @@ type UseCases interface {
 	CompleteService(ctx context.Context, ticketID string) (domain.Ticket, error)
 	ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
+	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
+	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
 }
