@@ -19,6 +19,7 @@ interface NoticeState {
   type: 'info' | 'warning' | 'error' | 'success';
   message: string;
   retryAction?: () => void;
+  demoAction?: () => void;
 }
 
 export const OperatorWorkspace: React.FC = () => {
@@ -51,13 +52,20 @@ export const OperatorWorkspace: React.FC = () => {
       })
       .catch((err) => {
         if (!active) return;
+        const isBackend404 = err instanceof OperatorApiError && err.status === 404;
         setNotice({
-          type: 'error',
-          message:
-            err instanceof OperatorApiError
-              ? `Ошибка загрузки отделений: ${err.message}`
-              : 'Не удалось загрузить список отделений',
+          type: 'warning',
+          message: isBackend404
+            ? 'Сервер запущен, но HTTP-эндпоинт /api/v1/branches еще не реализован бэкендом (HTTP 404). Включите демо-режим для проверки UI.'
+            : err instanceof OperatorApiError
+            ? `Ошибка загрузки отделений: ${err.message}`
+            : 'Не удалось загрузить список отделений',
           retryAction: () => window.location.reload(),
+          demoAction: () => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('mock', '1');
+            window.location.href = url.toString();
+          },
         });
       })
       .finally(() => {
@@ -299,9 +307,45 @@ export const OperatorWorkspace: React.FC = () => {
 
   return (
     <div className="operator-container">
-      <header className="operator-header">
-        <h1>Рабочее место оператора</h1>
-        <p>Электронная очередь ПочтаТех — Управление обслуживанием клиентов</p>
+      <header className="operator-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1>Рабочее место оператора</h1>
+          <p>Электронная очередь ПочтаТех — Управление обслуживанием клиентов</p>
+        </div>
+        <div>
+          {api.isMockEnabled() ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="window-badge badge-open" style={{ padding: '6px 12px', fontSize: '12px' }}>
+                ● Демо-режим активен
+              </span>
+              <button
+                type="button"
+                className="btn btn-retry"
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('mock');
+                  window.location.href = url.toString();
+                }}
+              >
+                К реальному серверу
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ minWidth: 'auto', padding: '8px 16px', fontSize: '13px' }}
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('mock', '1');
+                window.location.href = url.toString();
+              }}
+            >
+              Включить демо-режим
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Notice / Alert Banners */}
@@ -318,13 +362,23 @@ export const OperatorWorkspace: React.FC = () => {
               : 'alert-error'
           }`}
         >
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <span>{notice.message}</span>
+            {notice.demoAction && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ minWidth: 'auto', padding: '6px 14px', fontSize: '13px' }}
+                onClick={notice.demoAction}
+              >
+                Включить демо-режим
+              </button>
+            )}
             {notice.retryAction && (
               <button
                 type="button"
                 className="btn btn-retry"
-                style={{ marginLeft: '12px' }}
+                style={{ padding: '6px 14px', fontSize: '13px' }}
                 onClick={notice.retryAction}
               >
                 Повторить
