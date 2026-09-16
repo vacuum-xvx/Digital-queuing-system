@@ -81,6 +81,7 @@ function parseTicket(value: unknown): Ticket {
     serviceId: requireString(value.serviceId, 'serviceId'),
     source: value.source as Ticket['source'],
     status: value.status as Ticket['status'],
+    scheduledTime: value.scheduledTime ? requireString(value.scheduledTime, 'scheduledTime') : null,
     window: window === null ? null : {
       id: requireString(window.id, 'window.id'),
       number: window.number as number,
@@ -142,4 +143,28 @@ export async function createQrTicket(branchId: string, serviceId: string, idempo
 export async function getTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
   return request(`/tickets/${encodeURIComponent(ticketId)}`, { signal }, parseTicket);
 }
+
+export async function createAppointmentTicket(
+  branchId: string,
+  serviceId: string,
+  scheduledTime: string,
+  idempotencyKey: string,
+  signal?: AbortSignal
+): Promise<Ticket> {
+  return request(`/branches/${encodeURIComponent(branchId)}/tickets/appointment`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ serviceId, scheduledTime }),
+  }, parseTicket);
+}
+
+export async function cancelTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
+  return request(`/tickets/${encodeURIComponent(ticketId)}/cancel`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json' },
+  }, parseTicket);
+}
+
 

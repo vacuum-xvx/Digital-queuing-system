@@ -40,6 +40,7 @@ export type Ticket = {
   serviceId: string;
   source: TicketSource;
   status: TicketStatus;
+  scheduledTime?: string | null;
   window: TicketWindow | null;
   createdAt: string;
   queueEnteredAt: string;

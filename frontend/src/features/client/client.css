@@ -1,13 +1,244 @@
-.client-card { max-width: 520px; margin-top: 24px; padding: 24px; border: 1px solid #dbe3ec; border-radius: 12px; background: #fff; }
-.client-form { display: grid; gap: 16px; }
-.client-field { display: grid; gap: 6px; font-weight: 600; }
-.client-select, .client-button { min-height: 42px; padding: 8px 12px; border: 1px solid #b8c4d1; border-radius: 6px; font: inherit; }
-.client-button { border: 0; background: #1d4ed8; color: #fff; cursor: pointer; font-weight: 700; }
-.client-button:disabled, .client-select:disabled { cursor: not-allowed; opacity: .6; }
-.client-message { margin: 12px 0 0; color: #475569; }
-.client-error { color: #b91c1c; }
-.client-ticket { display: grid; gap: 10px; margin-top: 20px; padding: 20px; border-radius: 10px; background: #eff6ff; }
-.client-ticket-number { font-size: 2rem; font-weight: 800; }
-.client-status { font-size: 1.25rem; font-weight: 700; }
-.client-retry { margin-top: 10px; }
+.client-card {
+  max-width: 520px;
+  width: 100%;
+  margin-top: 24px;
+  padding: 24px;
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  background: #fff;
+  box-sizing: border-box;
+}
 
+.client-mode-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.client-mode-btn {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.client-mode-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.client-mode-btn.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.client-mode-btn:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.client-mode-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.client-form {
+  display: grid;
+  gap: 16px;
+}
+
+.client-field {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.client-select,
+.client-input,
+.client-button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #b8c4d1;
+  border-radius: 6px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.client-input {
+  width: 100%;
+  background: #ffffff;
+  color: #1e293b;
+}
+
+.client-input:focus,
+.client-select:focus {
+  outline: 2px solid #1d4ed8;
+  outline-offset: -1px;
+  border-color: #1d4ed8;
+}
+
+.client-slots-section {
+  display: grid;
+  gap: 12px;
+}
+
+.client-quick-slots {
+  display: grid;
+  gap: 6px;
+}
+
+.client-slots-label {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.client-slot-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.client-slot-pill {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.client-slot-pill:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.client-slot-pill.selected {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.client-slot-pill:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.client-slot-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.client-button {
+  border: 0;
+  background: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
+
+.client-button:hover:not(:disabled) {
+  background: #1e40af;
+}
+
+.client-button:disabled,
+.client-select:disabled,
+.client-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.client-message {
+  margin: 12px 0 0;
+  color: #475569;
+}
+
+.client-error {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.client-ticket {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.client-ticket-number {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  letter-spacing: -0.02em;
+}
+
+.client-scheduled-time {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 6px 12px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.client-status {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.client-button-cancel {
+  background: #dc2626;
+  color: #fff;
+  margin-top: 6px;
+}
+
+.client-button-cancel:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.client-retry {
+  margin-top: 10px;
+  background: #0284c7;
+}
+
+.client-retry:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+@media (max-width: 480px) {
+  .client-card {
+    padding: 16px;
+  }
+  .client-mode-btn {
+    font-size: 0.875rem;
+    padding: 6px 8px;
+  }
+  .client-ticket-number {
+    font-size: 1.75rem;
+  }
+}
