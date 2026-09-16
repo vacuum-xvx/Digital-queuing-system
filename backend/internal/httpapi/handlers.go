@@ -24,14 +24,19 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/branches", a.ListBranches)
 		r.Get("/branches/{branchId}/services", a.ListBranchServices)
 		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
+		r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
+		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 
 		r.Route("/operator", func(r chi.Router) {
 			r.Get("/branches/{branchId}/windows", a.ListBranchWindows)
+			r.Post("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Get("/windows/{windowId}/current-ticket", a.GetCurrentTicket)
 			r.Post("/windows/{windowId}/call-next", a.CallNext)
 			r.Post("/tickets/{ticketId}/start", a.StartService)
 			r.Post("/tickets/{ticketId}/complete", a.CompleteService)
+			r.Post("/tickets/{ticketId}/return", a.ReturnTicket)
+			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
 		})
 	})
 }
@@ -306,6 +311,126 @@ func (a *API) StartService(w http.ResponseWriter, r *http.Request) {
 func (a *API) CompleteService(w http.ResponseWriter, r *http.Request) {
 	ticketID := chi.URLParam(r, "ticketId")
 	ticket, err := a.usecases.CompleteService(r.Context(), ticketID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}
+
+type CreateLiveTicketRequest struct {
+	ServiceID string `json:"serviceId"`
+}
+
+func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	
+	var req CreateLiveTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	ticket, err := a.usecases.CreateLiveTicket(r.Context(), application.CreateLiveTicketCommand{
+		BranchID:  branchID,
+		ServiceID: req.ServiceID,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket))
+}
+
+type CreateAppointmentRequest struct {
+	ServiceID   string `json:"serviceId"`
+	ScheduledAt string `json:"scheduledAt"`
+}
+
+func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+
+	var req CreateAppointmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" || req.ScheduledAt == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	ticket, err := a.usecases.CreateAppointment(r.Context(), application.CreateAppointmentCommand{
+		BranchID:    branchID,
+		ServiceID:   req.ServiceID,
+		ScheduledAt: req.ScheduledAt,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket))
+}
+
+type ChangeWindowStatusRequest struct {
+	Status string `json:"status"`
+}
+
+func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
+	windowID := chi.URLParam(r, "windowId")
+
+	var req ChangeWindowStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Status == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	wnd, err := a.usecases.ChangeWindowStatus(r.Context(), windowID, domain.WindowStatus(req.Status))
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	services := make([]ServiceDTO, len(wnd.Services))
+	for j, s := range wnd.Services {
+		services[j] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
+	}
+	
+	writeJSONResponse(w, http.StatusOK, WindowDTO{
+		ID:       wnd.ID,
+		Number:   wnd.Number,
+		Status:   string(wnd.Status),
+		Services: services,
+	})
+}
+
+func (a *API) ReturnTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	ticket, err := a.usecases.ReturnTicket(r.Context(), ticketID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}
+
+type RedirectTicketRequest struct {
+	NewServiceID string `json:"newServiceId"`
+	NewWindowID  string `json:"newWindowId"`
+}
+
+func (a *API) RedirectTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+
+	var req RedirectTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewServiceID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body, newServiceId is required")
+		return
+	}
+
+	ticket, err := a.usecases.RedirectTicket(r.Context(), application.RedirectTicketCommand{
+		TicketID:     ticketID,
+		NewServiceID: req.NewServiceID,
+		NewWindowID:  req.NewWindowID,
+	})
 	if err != nil {
 		a.respondError(w, r, err)
 		return

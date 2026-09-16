@@ -23,6 +23,12 @@ type FakeUseCases struct {
 	CallNextFunc           func(ctx context.Context, windowID string) (domain.Ticket, error)
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
+	
+	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error)
+	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error)
+	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
+	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
+	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
 }
 
 func (f *FakeUseCases) ListBranches(ctx context.Context) ([]domain.Branch, error) {
@@ -59,6 +65,26 @@ func (f *FakeUseCases) StartService(ctx context.Context, ticketID string) (domai
 
 func (f *FakeUseCases) CompleteService(ctx context.Context, ticketID string) (domain.Ticket, error) {
 	return f.CompleteServiceFunc(ctx, ticketID)
+}
+
+func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
+	return f.CreateLiveTicketFunc(ctx, cmd)
+}
+
+func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error) {
+	return f.CreateAppointmentFunc(ctx, cmd)
+}
+
+func (f *FakeUseCases) ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error) {
+	return f.ChangeWindowStatusFunc(ctx, windowID, status)
+}
+
+func (f *FakeUseCases) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	return f.ReturnTicketFunc(ctx, ticketID)
+}
+
+func (f *FakeUseCases) RedirectTicket(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error) {
+	return f.RedirectTicketFunc(ctx, cmd)
 }
 
 func setupTest(usecases *FakeUseCases) http.Handler {

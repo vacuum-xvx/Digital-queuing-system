@@ -346,3 +346,23 @@ func (p *Postgres) transition(ctx context.Context, ticketID string, from, to dom
 	}
 	return t, nil
 }
+
+func (p *Postgres) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error) {
+	return domain.Window{}, errors.New("not implemented")
+}
+
+func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}
+
+func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error) {
+	return domain.Ticket{}, errors.New("not implemented")
+}

@@ -207,7 +207,140 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
+  /branches/{branchId}/tickets/live:
+    post:
+      summary: Create a live queue ticket
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLiveTicketRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /branches/{branchId}/tickets/appointment:
+    post:
+      summary: Create an appointment ticket
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/windows/{windowId}/status:
+    post:
+      summary: Change window status
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeWindowStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Window'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/tickets/{ticketId}/return:
+    post:
+      summary: Return ticket to queue
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '409':
+          description: Invalid State
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/tickets/{ticketId}/redirect:
+    post:
+      summary: Redirect ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedirectTicketRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '409':
+          description: Invalid State
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     BranchListResponse:
@@ -351,3 +484,37 @@ components:
               type: string
             requestId:
               type: string
+    CreateLiveTicketRequest:
+      type: object
+      required:
+        - serviceId
+      properties:
+        serviceId:
+          type: string
+    CreateAppointmentRequest:
+      type: object
+      required:
+        - serviceId
+        - scheduledAt
+      properties:
+        serviceId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+    ChangeWindowStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+    RedirectTicketRequest:
+      type: object
+      required:
+        - newServiceId
+      properties:
+        newServiceId:
+          type: string
+        newWindowId:
+          type: string
