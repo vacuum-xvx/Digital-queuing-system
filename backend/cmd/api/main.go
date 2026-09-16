@@ -15,6 +15,7 @@ import (
 	"postcode/backend/internal/database"
 	"postcode/backend/internal/httpapi"
 	"postcode/backend/internal/observability"
+	"postcode/backend/internal/persistence"
 )
 
 func main() { os.Exit(run()) }
@@ -51,7 +52,8 @@ func run() int {
 		return 1
 	}
 	defer pool.Close()
-	server := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: httpapi.NewRouter(pool, nil, logger, cfg.AllowedOrigin), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	usecases := persistence.New(pool)
+	server := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: httpapi.NewRouter(pool, usecases, logger, cfg.AllowedOrigin), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	logger.Info("HTTP server starting", "port", cfg.HTTPPort, "environment", cfg.AppEnv)
