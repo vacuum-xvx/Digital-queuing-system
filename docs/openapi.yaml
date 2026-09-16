@@ -1,0 +1,353 @@
+openapi: 3.0.3
+info:
+  title: E-SUO Queue Engine API
+  version: 1.0.0
+  description: Backend API for the Queue System (Sprint #1)
+servers:
+  - url: /api/v1
+paths:
+  /branches:
+    get:
+      summary: List branches
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchListResponse'
+  /branches/{branchId}/services:
+    get:
+      summary: List services available in a branch
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceListResponse'
+  /branches/{branchId}/tickets/qr:
+    post:
+      summary: Create a QR ticket
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQRTicketRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '200':
+          description: OK (Replayed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Missing header or invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /tickets/{ticketId}:
+    get:
+      summary: Get ticket details
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/branches/{branchId}/windows:
+    get:
+      summary: List operator windows in a branch
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Window'
+  /operator/windows/{windowId}/current-ticket:
+    get:
+      summary: Get the current active ticket for a window
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '204':
+          description: No Content
+        '404':
+          description: Window Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/windows/{windowId}/call-next:
+    post:
+      summary: Call the next waiting ticket
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '409':
+          description: Window Busy or No Eligible Tickets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/tickets/{ticketId}/start:
+    post:
+      summary: Start service for a ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '409':
+          description: Invalid State
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /operator/tickets/{ticketId}/complete:
+    post:
+      summary: Complete service for a ticket
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '409':
+          description: Invalid State
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    BranchListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Branch'
+    Branch:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ServiceListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+    Service:
+      type: object
+      required:
+        - id
+        - code
+        - name
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+    Window:
+      type: object
+      required:
+        - id
+        - number
+        - status
+        - services
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+        status:
+          type: string
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+    Ticket:
+      type: object
+      required:
+        - id
+        - publicNumber
+        - branchId
+        - serviceId
+        - source
+        - status
+        - window
+        - createdAt
+        - queueEnteredAt
+        - calledAt
+        - serviceStartedAt
+        - completedAt
+      properties:
+        id:
+          type: string
+        publicNumber:
+          type: string
+        branchId:
+          type: string
+        serviceId:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        window:
+          type: object
+          nullable: true
+          required:
+            - id
+            - number
+          properties:
+            id:
+              type: string
+            number:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+        queueEnteredAt:
+          type: string
+          format: date-time
+        calledAt:
+          type: string
+          format: date-time
+          nullable: true
+        serviceStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    CreateQRTicketRequest:
+      type: object
+      required:
+        - serviceId
+      properties:
+        serviceId:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
