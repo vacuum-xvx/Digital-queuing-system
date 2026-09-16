@@ -1,4 +1,36 @@
-import { AdminBranchOverview } from './types';
+import { AdminBranchOverview, QueuePolicy } from './types';
+
+export const DEMO_QUEUE_POLICY: QueuePolicy = {
+  branchId: '11111111-1111-1111-1111-111111111111',
+  appointmentDuePriority: 100,
+  qrPriority: 10,
+  version: 1,
+  updatedAt: '2026-09-16T20:00:00Z',
+};
+
+let mockPolicyState: QueuePolicy = { ...DEMO_QUEUE_POLICY };
+
+export function getMockQueuePolicy(): QueuePolicy {
+  return { ...mockPolicyState };
+}
+
+export function updateMockQueuePolicy(
+  appointmentDuePriority: number,
+  qrPriority: number,
+  expectedVersion: number
+): QueuePolicy {
+  if (expectedVersion !== mockPolicyState.version) {
+    throw new Error('POLICY_VERSION_CONFLICT');
+  }
+  mockPolicyState = {
+    ...mockPolicyState,
+    appointmentDuePriority,
+    qrPriority,
+    version: mockPolicyState.version + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  return { ...mockPolicyState };
+}
 
 export const DEMO_ADMIN_OVERVIEW: AdminBranchOverview = {
   branchId: '11111111-1111-1111-1111-111111111111',

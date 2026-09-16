@@ -58,16 +58,22 @@ let mockTicketSeq = 1;
 
 export function createMockTicket(
   windowNumber: number,
-  status: Ticket['status'] = 'CALLED'
+  status: Ticket['status'] = 'CALLED',
+  forcedSource?: Ticket['source']
 ): Ticket {
   const now = new Date().toISOString();
-  const numStr = String(mockTicketSeq++).padStart(6, '0');
+  const currentSeq = mockTicketSeq++;
+  const numStr = String(currentSeq).padStart(6, '0');
+  const isAppointment = forcedSource ? forcedSource === 'APPOINTMENT' : currentSeq % 2 === 0;
+  const source: Ticket['source'] = isAppointment ? 'APPOINTMENT' : 'QR';
+  const prefix = isAppointment ? 'A' : 'Q';
+
   return {
     id: `99999999-9999-9999-9999-${numStr.slice(-12).padStart(12, '0')}`,
-    publicNumber: `Q-${numStr}`,
+    publicNumber: `${prefix}-${numStr}`,
     branchId: '11111111-1111-1111-1111-111111111111',
     serviceId: '22222222-2222-2222-2222-222222222222',
-    source: 'QR',
+    source,
     status,
     window: {
       id: '33333333-3333-3333-3333-333333333333',

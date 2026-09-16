@@ -1,3 +1,29 @@
+export interface QueuePolicy {
+  branchId: string;
+  appointmentDuePriority: number;
+  qrPriority: number;
+  version: number;
+  updatedAt: string;
+}
+
+export interface UpdateQueuePolicyRequest {
+  appointmentDuePriority: number;
+  qrPriority: number;
+  expectedVersion: number;
+}
+
+export class AdminApiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status: number,
+    public readonly requestId?: string
+  ) {
+    super(message);
+    this.name = 'AdminApiError';
+  }
+}
+
 export interface AdminMetrics {
   waitingClientsCount: number;
   avgWaitTimeMinutes: number;

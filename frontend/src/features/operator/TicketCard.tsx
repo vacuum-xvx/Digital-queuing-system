@@ -6,6 +6,19 @@ interface TicketCardProps {
   selectedWindow: OperatorWindow;
 }
 
+function getTicketSourceLabel(source: Ticket['source']): string {
+  switch (source) {
+    case 'QR':
+      return 'QR';
+    case 'APPOINTMENT':
+      return 'Предварительная запись';
+    case 'LIVE':
+      return 'Живая очередь';
+    default:
+      return source;
+  }
+}
+
 export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }) => {
   if (!ticket) {
     return (
@@ -21,11 +34,20 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
 
   const isCalled = ticket.status === 'CALLED';
   const isServing = ticket.status === 'SERVING';
+  const sourceLabel = getTicketSourceLabel(ticket.source);
+  const sourceClass =
+    ticket.source === 'APPOINTMENT'
+      ? 'badge-source-appointment'
+      : ticket.source === 'LIVE'
+      ? 'badge-source-live'
+      : 'badge-source-qr';
 
   return (
     <div className={`ticket-card ${isCalled ? 'called' : ''} ${isServing ? 'serving' : ''}`}>
       <div className="ticket-header-meta">
-        <span className="ticket-source-badge">Источник: {ticket.source}</span>
+        <span className={`ticket-source-badge ${sourceClass}`}>
+          Источник: {sourceLabel}
+        </span>
         <span
           className={`ticket-status-badge ${
             isCalled ? 'called' : isServing ? 'serving' : ''
