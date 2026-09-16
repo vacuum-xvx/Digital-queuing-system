@@ -100,7 +100,7 @@ func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, r
 func setupTest(usecases *FakeUseCases) http.Handler {
 	db := &fakeDB{}
 	logger := slog.New(slog.NewJSONHandler(bytes.NewBuffer(nil), nil))
-	return NewRouter(db, usecases, logger, "*")
+	return NewRouter(db, usecases, logger, "http://localhost:3000")
 }
 
 func TestListBranches(t *testing.T) {

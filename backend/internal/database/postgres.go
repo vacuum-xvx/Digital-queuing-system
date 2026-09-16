@@ -15,6 +15,10 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot configure PostgreSQL pool")
 	}
+	if err = pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("cannot reach PostgreSQL: database unavailable")
+	}
 	// Connections are established on demand: liveness remains available during DB outages.
 	return pool, nil
 }

@@ -456,14 +456,26 @@ func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ti
 	if err != nil {
 		return domain.Ticket{}, err
 	}
-	tag, err := p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND status IN ('CALLED', 'SERVING')`, id)
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+	tag, err := tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND status IN ('CALLED', 'SERVING')`, id)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.Ticket{}, application.ErrInvalidState
 	}
-	return p.GetTicket(ctx, ticketID)
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	return t, nil
 }
 
 func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error) {
@@ -475,7 +487,7 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	if err != nil {
 		return domain.Ticket{}, err
 	}
-	
+
 	var nw *pgtype.UUID
 	if cmd.NewWindowID != "" {
 		parsed, err := uuid(cmd.NewWindowID)
@@ -484,12 +496,18 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 		}
 		nw = &parsed
 	}
-	
+
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
 	var tag pgconn.CommandTag
 	if nw != nil {
-		tag, err = p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2 WHERE id=$3 AND status IN ('CALLED', 'SERVING')`, nw, ns, id)
+		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2 WHERE id=$3 AND status IN ('CALLED', 'SERVING')`, nw, ns, id)
 	} else {
-		tag, err = p.pool.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1 WHERE id=$2 AND status IN ('CALLED', 'SERVING')`, ns, id)
+		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1 WHERE id=$2 AND status IN ('CALLED', 'SERVING')`, ns, id)
 	}
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
@@ -497,5 +515,12 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	if tag.RowsAffected() == 0 {
 		return domain.Ticket{}, application.ErrInvalidState
 	}
-	return p.GetTicket(ctx, cmd.TicketID)
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
+	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return domain.Ticket{}, dbError(err)
+	}
+	return t, nil
 }

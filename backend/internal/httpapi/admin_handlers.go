@@ -21,6 +21,15 @@ func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch domain.WindowStatus(req.Status) {
+	case domain.WindowStatusClosed, domain.WindowStatusOpen, domain.WindowStatusClosing:
+		// valid
+	default:
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR",
+			"status must be one of CLOSED, OPEN, CLOSING")
+		return
+	}
+
 	wnd, err := a.usecases.ChangeWindowStatus(r.Context(), windowID, domain.WindowStatus(req.Status))
 	if err != nil {
 		a.respondError(w, r, err)
