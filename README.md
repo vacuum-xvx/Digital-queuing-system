@@ -1,93 +1,203 @@
-# template-gitlab-e14ef621
+# Electronic Queue MVP — Foundation
 
-Template for task: GitLab репозиторий
+Технический фундамент MVP электронной очереди: один Go backend, одно React-приложение,
+PostgreSQL как будущий source of truth. Бизнес-логики, бизнес-таблиц и авторизации пока нет.
 
-## Getting started
+## Tech stack
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Go 1.25+, net/http, chi v5, pgx v5/pgxpool, log/slog, golang-migrate v4;
+PostgreSQL 17; React 19, TypeScript, Vite 7, npm; Docker Compose.
+Миграции используют PostgreSQL driver golang-migrate (lib/pq), API — pgxpool.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Requirements
 
-## Add your files
+Docker Engine/Desktop и Docker Compose v2 plugin с поддержкой
+`service_healthy` и `service_completed_successfully`. Локальные Go и Node для Docker workflow не нужны.
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## Environment setup / Start
 
+Из корня этого репозитория (папки с `docker-compose.yml`):
+
+```bash
+cp .env.example .env
+docker compose up --build
 ```
-cd existing_repo
-git remote add origin https://git.codenrock.com/codenrock/khakaton-postcode-challenge-ot-pochtatekha/template-gitlab-e14ef621.git
-git branch -M main
-git push -uf origin main
+
+Compose ждёт PostgreSQL healthcheck, запускает одноразовый `migrate up`, затем API и frontend.
+Повторное применение актуальных миграций безопасно. `migrate` должен завершиться с кодом 0.
+Здесь нет sleep-задержек. PostgreSQL порт наружу не публикуется.
+
+| Variable | Development example / назначение |
+| --- | --- |
+| APP_ENV | `development`, поле environment в startup log |
+| LOG_LEVEL | `INFO` (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
+| HTTP_PORT | `8080`, порт API внутри контейнера и на host |
+| POSTGRES_HOST | `postgres`, имя Compose service |
+| POSTGRES_PORT | `5432`, внутренний порт PostgreSQL |
+| POSTGRES_DB | `postcode` |
+| POSTGRES_USER | `postcode` |
+| POSTGRES_PASSWORD | пример для локальной разработки; задайте свой в `.env` |
+| CORS_ALLOWED_ORIGIN | `http://localhost:5173`, один origin без завершающего `/` |
+| VITE_API_BASE_URL | `http://localhost:8080`, URL API, доступный **браузеру** |
+| FRONTEND_PORT | `5173`, порт frontend на host |
+
+Backend валидирует обязательные настройки при старте. `.env` не коммитится.
+Значения `POSTGRES_HOST=postgres` и `POSTGRES_PORT=5432` соответствуют этому Compose;
+изменять их без изменения DB service не нужно. Соединение в локальной Docker-сети без TLS.
+Vite получает `VITE_API_BASE_URL` при запуске; это публичная настройка, не секрет.
+После изменения `.env` пересоздайте сервисы через `docker compose up -d --build`.
+При смене frontend/backend port обновите также CORS origin/API URL.
+
+## URLs / Health
+
+- Frontend: http://localhost:5173
+- Client: http://localhost:5173/
+- Operator placeholder: http://localhost:5173/operator
+- Admin placeholder: http://localhost:5173/admin
+- Liveness: http://localhost:8080/health
+- Readiness: http://localhost:8080/ready
+
+```bash
+curl -i http://localhost:8080/health
+curl -i http://localhost:8080/ready
+curl -i -H 'Origin: http://localhost:5173' http://localhost:8080/health
 ```
 
-## Integrate with your tools
+`/health` → 200 `{"status":"ok"}` без запросов к БД.
+`/ready` → 200 при успешном PostgreSQL ping, иначе 503 (таймаут 2 секунды).
+**PostgreSQL down: `/health` → 200, `/ready` → 503.**
+Pool создаёт подключения по требованию и восстанавливает их после возврата БД.
+Docker healthcheck API проверяет liveness.
 
-- [ ] [Set up project integrations](https://git.codenrock.com/codenrock/khakaton-postcode-challenge-ot-pochtatekha/template-gitlab-e14ef621/-/settings/integrations)
+Откройте frontend: индикатор проходит `Checking...` → `Available` или `Unavailable`.
+В DevTools → Network проверьте реальный GET `http://localhost:8080/health`.
+Проверка выполняется при открытии страницы, ограничена 5 секундами; для повтора обновите страницу.
+В `.env` нельзя указывать `http://backend:8080` как VITE URL: браузер не знает Docker DNS.
 
-## Collaborate with your team
+## Migrations
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+SQL лежит в `backend/migrations`. Initial migration выполняет только `SELECT 1`;
+единственная техническая таблица — `schema_migrations`, которой управляет golang-migrate.
 
-## Test and Deploy
+```bash
+# Apply pending migrations (also happens during Compose startup)
+docker compose run --rm migrate migrate up
+# Current version; expected version=1, dirty=false
+docker compose run --rm migrate migrate version
+# Inspect PostgreSQL directly
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TABLE schema_migrations;"'
+```
 
-Use the built-in continuous integration in GitLab.
+При добавлении миграций к уже работающему окружению применяйте их явно указанной командой.
+`docker compose restart` сам по себе не применяет новые миграции и не перечитывает `.env`.
+При ошибке migration backend не стартует; исправьте SQL/доступность БД и повторите `up`.
+Если schema dirty, сначала изучите состояние БД; не сбрасывайте версию вслепую.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+## Stop / Restart / Remove local data
 
-***
+```bash
+docker compose restart
+docker compose down
+docker compose up -d
+```
 
-# Editing this README
+Named volume `postgres_data` сохраняется при restart и down/up.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+```bash
+docker compose down -v
+```
 
-## Suggestions for a good README
+**Эта команда удаляет локальный PostgreSQL volume и все локальные данные.**
+Изменение POSTGRES_USER/PASSWORD/DB в `.env` не меняет уже инициализированную БД в volume.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Repository structure
 
-## Name
-Choose a self-explaining name for your project.
+- `backend/cmd/api`: entry point, команды миграций, SIGINT/SIGTERM и graceful shutdown.
+- `backend/internal/config`: чтение и проверка environment, построение DSN.
+- `backend/internal/database`: pgxpool и golang-migrate.
+- `backend/internal/httpapi`: chi router, health/readiness, request ID, logs, recovery, CORS.
+- `backend/internal/observability`: JSON slog logger.
+- `backend/migrations`: SQL migrations без бизнес-схемы.
+- `frontend/src/api`: общий health API helper.
+- `frontend/src/pages`: отдельные Client/Operator/Admin placeholders.
+- `frontend/src/App.tsx`: health indicator и простое разделение страниц по pathname.
+- `docker-compose.yml`: postgres → migrate → backend → frontend.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Дополнительный frontend router пока не нужен; страницы открываются обычными ссылками,
+Vite обслуживает их через SPA fallback. Новые backend packages добавляются по мере появления кода.
+Для Docker workflow после изменений исходников выполните `docker compose up -d --build`.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Testing
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+С локальными Go 1.25+ и Node 22.12+/npm:
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```bash
+cd backend
+go test ./...
+go vet ./...
+cd ../frontend
+npm ci
+npm run typecheck
+npm run build
+cd ..
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+Без локальных Go/Node проверки можно выполнить в контейнерах:
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```bash
+docker run --rm -v "$PWD/backend:/src" -w /src golang:1.25-alpine sh -c 'go test ./... && go vet ./...'
+docker compose run --rm --no-deps frontend npm run build
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Go API tests используют `httptest`: health при отказавшей БД, readiness success/failure,
+безопасный panic response, CORS и request logs. Config test проверяет обязательные значения и escaping пароля.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Compose smoke / persistence
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```bash
+docker compose config --quiet
+docker compose up -d --build --wait
+docker compose ps -a
+curl -f http://localhost:8080/health
+curl -f http://localhost:8080/ready
+curl -f http://localhost:5173/
+docker compose run --rm migrate migrate version
+# Real outage: health must stay 200, ready must become 503
+docker compose stop postgres
+curl -i http://localhost:8080/health
+curl -i http://localhost:8080/ready
+docker compose start postgres
+docker compose restart postgres
+docker compose up -d --wait postgres
+curl -f http://localhost:8080/ready
+docker compose run --rm migrate migrate version
+# Repeat without deleting the volume
+docker compose down
+docker compose up -d --wait
+curl -f http://localhost:8080/ready
+docker compose run --rm migrate migrate version
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+После возврата PostgreSQL readiness может кратко оставаться 503, пока pool заменяет закрытое
+подключение; повторите curl. Версия после restart/down/up должна оставаться 1, dirty=false.
+Проверьте browser health indicator отдельно через DevTools, как описано выше.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## Troubleshooting
 
-## License
-For open source projects, say how it is licensed.
+- **Port already in use:** освободите 8080/5173 или измените HTTP_PORT/FRONTEND_PORT и согласуйте CORS/API URL.
+- **PostgreSQL unhealthy:** проверьте logs, доступность диска и credentials существующего volume.
+- **`/ready` = 503:** проверьте `docker compose ps`, PostgreSQL logs и POSTGRES_*; `/health` должен оставаться 200.
+- **Migration failure:** смотрите migrate logs и version; backend ждёт успешного завершения миграций.
+- **Frontend cannot reach backend:** URL должен быть доступен браузеру; CORS origin должен точно совпадать с адресом frontend, включая порт. Не путайте localhost и 127.0.0.1.
+- **Stale Docker build:** `docker compose build --no-cache`, затем `docker compose up -d --force-recreate`.
+- **Permission/daemon error:** убедитесь, что Docker запущен и пользователь имеет доступ к нему.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```bash
+docker compose logs --tail=100 backend postgres frontend migrate
+docker compose logs -f backend
+docker compose exec postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+Backend пишет JSON logs: time, level, msg, service; HTTP logs содержат request_id, method,
+path, status, duration. Заголовки, query string, DSN и текст driver errors не логируются.
+SIGINT/SIGTERM прекращает приём запросов, даёт текущим до 5 секунд и закрывает pool.
