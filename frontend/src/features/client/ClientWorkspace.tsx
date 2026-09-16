@@ -142,6 +142,20 @@ export function ClientWorkspace() {
       <div className="client-status">{statusMessage(ticket)}</div>
       {ticket.status === 'CALLED' && ticket.window && <div>Окно №{ticket.window.number}</div>}
       {pollError && <div className="client-message client-error">Обновление: {pollError}</div>}
+      {terminalStatuses.has(ticket.status) && (
+        <button
+          className="client-button client-retry"
+          type="button"
+          onClick={() => {
+            stopPolling();
+            setTicket(null);
+            setError(null);
+            setPollError(null);
+          }}
+        >
+          Взять новый талон
+        </button>
+      )}
     </div>}
   </section>;
 }
