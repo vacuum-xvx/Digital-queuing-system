@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"postcode/backend/internal/application"
@@ -91,7 +92,7 @@ func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing Idempotency-Key header")
 		return
 	}
-	
+
 	var req CreateLiveTicketRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
@@ -130,10 +131,15 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ticket, err := a.usecases.CreateAppointment(r.Context(), application.CreateAppointmentCommand{
+	scheduledAt, err := time.Parse(time.RFC3339Nano, req.ScheduledAt)
+	if err != nil {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid scheduledAt")
+		return
+	}
+	result, err := a.usecases.CreateAppointment(r.Context(), application.CreateAppointmentCommand{
 		BranchID:       branchID,
 		ServiceID:      req.ServiceID,
-		ScheduledAt:    req.ScheduledAt,
+		ScheduledAt:    scheduledAt,
 		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
@@ -141,5 +147,5 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket))
+	writeJSONResponse(w, http.StatusCreated, mapTicket(result.Appointment.Ticket))
 }

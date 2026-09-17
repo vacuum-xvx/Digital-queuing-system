@@ -4,13 +4,15 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"postcode/backend/internal/domain"
+	"time"
 )
 
 var (
 	ErrNotFound            = errors.New("not found")
 	ErrInvalidState        = errors.New("invalid state")
-	ErrWindowClosed        = errors.New("window closed")
+	ErrWindowClosed        = fmt.Errorf("window closed: %w", ErrInvalidState)
 	ErrWindowBusy          = errors.New("window busy")
 	ErrNoEligibleTickets   = errors.New("no eligible tickets")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
@@ -35,7 +37,7 @@ type CreateLiveTicketCommand struct {
 type CreateAppointmentCommand struct {
 	BranchID       string
 	ServiceID      string
-	ScheduledAt    string // ISO8601 or similar
+	ScheduledAt    time.Time
 	IdempotencyKey string
 }
 
@@ -50,18 +52,39 @@ type UseCases interface {
 	ListBranchWindows(ctx context.Context, branchID string) ([]domain.Window, error)
 	CreateQRTicket(ctx context.Context, cmd CreateQRTicketCommand) (CreateQRTicketResult, error)
 	CreateLiveTicket(ctx context.Context, cmd CreateLiveTicketCommand) (domain.Ticket, error)
-	CreateAppointment(ctx context.Context, cmd CreateAppointmentCommand) (domain.Ticket, error)
-	
+	CreateAppointment(ctx context.Context, cmd CreateAppointmentCommand) (CreateAppointmentResult, error)
+	CancelAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
+	GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error)
+	UpdateQueuePolicy(ctx context.Context, cmd UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
+	ListTicketEvents(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
+
 	GetTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetCurrentTicket(ctx context.Context, windowID string) (*domain.Ticket, error)
-	
+
 	ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	CallNext(ctx context.Context, windowID string) (domain.Ticket, error)
-	
+
 	StartService(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteService(ctx context.Context, ticketID string) (domain.Ticket, error)
 	ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+}
+
+var ErrPolicyVersionConflict = errors.New("queue policy version conflict")
+
+type AppointmentView struct {
+	Ticket      domain.Ticket
+	ScheduledAt time.Time
+}
+type CreateAppointmentResult struct {
+	Appointment AppointmentView
+	Replayed    bool
+}
+type UpdateQueuePolicyCommand struct {
+	BranchID               string
+	AppointmentDuePriority int
+	QRPriority             int
+	ExpectedVersion        int64
 }
