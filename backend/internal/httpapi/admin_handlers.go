@@ -153,7 +153,7 @@ type TicketEventDTO struct {
 	ToStatus         string     `json:"toStatus"`
 	WindowID         *string    `json:"windowId"`
 	PolicyVersion    *int64     `json:"policyVersion"`
-	DecisionPriority *int       `json:"decisionPriority"`
+	DecisionPriority *int64       `json:"decisionPriority"`
 	OccurredAt       time.Time  `json:"occurredAt"`
 }
 

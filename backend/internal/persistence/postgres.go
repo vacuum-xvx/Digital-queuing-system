@@ -53,14 +53,14 @@ func dbError(err error) error {
 
 const ticketColumns = `t.id::text, t.public_number, t.branch_id::text, t.service_id::text,
  t.source, t.status, w.id::text, w.number, t.created_at, t.queue_entered_at,
- t.called_at, t.service_started_at, t.completed_at, t.scheduled_at`
+ t.called_at, t.service_started_at, t.completed_at, t.scheduled_at, t.arrived_at, t.no_show_at`
 const ticketSelect = `SELECT ` + ticketColumns + ` FROM tickets t LEFT JOIN windows w ON w.id=t.window_id `
 
 func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	var t domain.Ticket
 	var wid *string
 	var number *int
-	err := row.Scan(&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status, &wid, &number, &t.CreatedAt, &t.QueueEnteredAt, &t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledAt)
+	err := row.Scan(&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status, &wid, &number, &t.CreatedAt, &t.QueueEnteredAt, &t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledAt, &t.ArrivedAt, &t.NoShowAt)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
 	}
@@ -69,7 +69,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	}
 	t.CreatedAt = t.CreatedAt.UTC()
 	t.QueueEnteredAt = t.QueueEnteredAt.UTC()
-	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt, t.ScheduledAt} {
+	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt, t.ScheduledAt, t.ArrivedAt, t.NoShowAt} {
 		if v != nil {
 			*v = v.UTC()
 		}
@@ -296,19 +296,18 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 	if err != nil {
 		return empty, err
 	}
-	// Legacy LIVE shares the QR tier/FIFO for compatibility, not a separate policy.
+	var decisionTime time.Time
+	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&decisionTime); err != nil {
+		return empty, dbError(err)
+	}
 	var tid string
 	var from domain.TicketStatus
-	err = tx.QueryRow(ctx, `WITH candidate AS (
- SELECT t.id,t.status FROM tickets t WHERE t.branch_id=$2::uuid
- AND ((t.source IN ('QR','LIVE') AND t.status='WAITING') OR
- (t.source='APPOINTMENT' AND t.status='SCHEDULED' AND t.scheduled_at <= transaction_timestamp()))
- AND EXISTS(SELECT 1 FROM window_services ws WHERE ws.window_id=$1 AND ws.service_id=t.service_id)
- ORDER BY CASE WHEN t.source='APPOINTMENT' THEN $3::integer ELSE $4::integer END DESC,
- CASE WHEN t.source='APPOINTMENT' THEN t.scheduled_at ELSE t.queue_entered_at END, t.id
+	var priority int64
+	err = tx.QueryRow(ctx, `WITH candidate AS (`+rankedCandidates+canonicalOrder+`
  FOR UPDATE OF t SKIP LOCKED LIMIT 1
- ) UPDATE tickets t SET status='CALLED',window_id=$1,called_at=clock_timestamp()
- FROM candidate c WHERE t.id=c.id RETURNING t.id::text,c.status`, id, branch, policy.AppointmentDuePriority, policy.QRPriority).Scan(&tid, &from)
+ ) UPDATE tickets t SET status='CALLED',window_id=$1::uuid,called_at=$3::timestamptz
+ FROM candidate c WHERE t.id=c.id RETURNING t.id::text,c.status,c.effective_priority`,
+		rankingArgs(windowID, branch, decisionTime, policy)...).Scan(&tid, &from, &priority)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return empty, application.ErrNoEligibleTickets
 	}
@@ -318,10 +317,6 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, tid))
 	if err != nil {
 		return empty, err
-	}
-	priority := policy.QRPriority
-	if t.Source == domain.TicketSourceAppointment {
-		priority = policy.AppointmentDuePriority
 	}
 	if err = insertEvent(ctx, tx, t, domain.TicketEventCalled, &from, &policy.Version, &priority); err != nil {
 		return empty, err
@@ -376,75 +371,6 @@ func (p *Postgres) transition(ctx context.Context, ticketID string, from, to dom
 		return empty, dbError(err)
 	}
 	return t, nil
-}
-
-func (p *Postgres) createAnyTicket(ctx context.Context, branchID, serviceID, source, idempotencyKey string) (domain.Ticket, error) {
-	var empty domain.Ticket
-	b, err := uuid(branchID)
-	if err != nil {
-		return empty, err
-	}
-	s, err := uuid(serviceID)
-	if err != nil {
-		return empty, err
-	}
-	if strings.TrimSpace(idempotencyKey) == "" {
-		return empty, fmt.Errorf("idempotency key required: %w", application.ErrInvalidState)
-	}
-	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
-	if err != nil {
-		return empty, dbError(err)
-	}
-	defer tx.Rollback(context.Background())
-
-	existing, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, idempotencyKey))
-	if err == nil {
-		if string(existing.Source) != source {
-			return empty, application.ErrIdempotencyConflict
-		}
-		return existing, nil
-	}
-	if !errors.Is(err, application.ErrNotFound) {
-		return empty, err
-	}
-
-	var enabled bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM branch_services WHERE branch_id=$1 AND service_id=$2)`, b, s).Scan(&enabled)
-	if err != nil {
-		return empty, dbError(err)
-	}
-	if !enabled {
-		return empty, application.ErrNotFound
-	}
-
-	var tid string
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key) VALUES($1,$2,$3,'WAITING',$4)
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, source, idempotencyKey).Scan(&tid)
-	if errors.Is(err, pgx.ErrNoRows) {
-		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, idempotencyKey))
-		if err != nil {
-			return empty, err
-		}
-		if string(existing.Source) != source {
-			return empty, application.ErrIdempotencyConflict
-		}
-		return existing, nil
-	}
-	if err != nil {
-		return empty, dbError(err)
-	}
-	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, tid))
-	if err != nil {
-		return empty, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return empty, dbError(err)
-	}
-	return t, nil
-}
-
-func (p *Postgres) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
-	return p.createAnyTicket(ctx, cmd.BranchID, cmd.ServiceID, string(domain.TicketSourceLive), cmd.IdempotencyKey)
 }
 
 func (p *Postgres) ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error) {

@@ -13,7 +13,7 @@ import (
 func TestLegacyLiveClaimCompatibility(t *testing.T) {
 	ctx, p, _ := integration(t)
 	live, err := p.CreateLiveTicket(ctx, application.CreateLiveTicketCommand{BranchID: demoBranch, ServiceID: parcels, IdempotencyKey: "legacy-live"})
-	if err != nil || live.Source != domain.TicketSourceLive || live.Status != domain.TicketStatusWaiting {
+	if err != nil || live.Ticket.Source != domain.TicketSourceLive || live.Ticket.Status != domain.TicketStatusWaiting {
 		t.Fatalf("LIVE create: %+v %v", live, err)
 	}
 	_, err = p.CallNext(ctx, window2)
@@ -33,22 +33,22 @@ func TestLegacyLiveClaimCompatibility(t *testing.T) {
 			continue
 		}
 		count++
-		if results[i].ID != live.ID || results[i].Status != domain.TicketStatusCalled || results[i].Window == nil {
+		if results[i].ID != live.Ticket.ID || results[i].Status != domain.TicketStatusCalled || results[i].Window == nil {
 			t.Fatalf("LIVE claim: %+v", results[i])
 		}
 	}
 	if count != 1 {
 		t.Fatalf("LIVE claimed %d times", count)
 	}
-	// Legacy creation event coverage is unchanged; the common CallNext emits CALLED.
-	e := events(t, ctx, p, live.ID, 1)[0]
-	if e.Type != domain.TicketEventCalled || e.FromStatus == nil || *e.FromStatus != domain.TicketStatusWaiting || e.PolicyVersion == nil || *e.PolicyVersion != 1 || e.DecisionPriority == nil || *e.DecisionPriority != 10 {
+	// Sprint 3 LIVE emits CREATED; the common CallNext still emits CALLED.
+	e := events(t, ctx, p, live.Ticket.ID, 2)[1]
+	if e.Type != domain.TicketEventCalled || e.FromStatus == nil || *e.FromStatus != domain.TicketStatusWaiting || e.PolicyVersion == nil || *e.PolicyVersion != 2 || e.DecisionPriority == nil || *e.DecisionPriority != 10 {
 		t.Fatalf("LIVE event: %+v", e)
 	}
-	if _, err = p.StartService(ctx, live.ID); err != nil {
+	if _, err = p.StartService(ctx, live.Ticket.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = p.CompleteService(ctx, live.ID); err != nil {
+	if _, err = p.CompleteService(ctx, live.Ticket.ID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -62,10 +62,10 @@ func TestLegacyLiveSharesQRFIFO(t *testing.T) {
 	}
 	appointment := book(t, ctx, p, "appointment", parcels).Appointment.Ticket
 	due(t, ctx, p, appointment.ID)
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2010-01-01Z' WHERE id=$1::uuid`, live.ID)
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2011-01-01Z' WHERE id=$1::uuid`, qr.ID)
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at=now()-interval '3 minutes' WHERE id=$1::uuid`, live.Ticket.ID)
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at=now()-interval '2 minutes' WHERE id=$1::uuid`, qr.ID)
 	// Due appointment beats both older waiting tickets; LIVE and QR then share FIFO.
-	for _, id := range []string{appointment.ID, live.ID, qr.ID} {
+	for _, id := range []string{appointment.ID, live.Ticket.ID, qr.ID} {
 		got, err := p.CallNext(ctx, window1)
 		if err != nil || got.ID != id {
 			t.Fatalf("ordering: %+v %v want=%s", got, err, id)
@@ -83,8 +83,8 @@ func TestLegacyLiveSharesQRFIFO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2012-01-01Z' WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, live.ID)
-	first, second := qr.ID, live.ID
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2012-01-01Z' WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, live.Ticket.ID)
+	first, second := qr.ID, live.Ticket.ID
 	if second < first {
 		first, second = second, first
 	}
@@ -103,7 +103,7 @@ func TestAppointmentNumberAndPendingDownUp(t *testing.T) {
 	if err != nil || first.Appointment.Ticket.PublicNumber != "A-000001" {
 		t.Fatalf("first: %+v %v", first, err)
 	}
-	if err = m.Steps(-1); err != nil {
+	if err = m.Steps(-2); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -152,7 +152,7 @@ func TestAppointmentNumberAndPendingDownUp(t *testing.T) {
 
 func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 	ctx, p, m := integration(t)
-	if err := m.Steps(-1); err != nil {
+	if err := m.Steps(-2); err != nil {
 		t.Fatal(err)
 	}
 	var pending, completed string
@@ -167,7 +167,7 @@ func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 	var before, after string
-	if err = p.pool.QueryRow(ctx, `SELECT row_to_json(t)::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&before); err != nil {
+	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Up(); err != nil {
@@ -183,13 +183,13 @@ func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 		t.Fatalf("cancel normalized: %+v %v", cancelled, err)
 	}
 	events(t, ctx, p, pending, 1)
-	if err = p.pool.QueryRow(ctx, `SELECT row_to_json(t)::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
+	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on up: %s -> %s (%v)", before, after, err)
 	}
-	if err = m.Steps(-1); err != nil {
+	if err = m.Steps(-2); err != nil {
 		t.Fatal(err)
 	}
-	if err = p.pool.QueryRow(ctx, `SELECT row_to_json(t)::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
+	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on down: %s -> %s (%v)", before, after, err)
 	}
 }

@@ -61,22 +61,32 @@ type Ticket struct {
 	CreatedAt        time.Time
 	QueueEnteredAt   time.Time
 	ScheduledAt      *time.Time
+	ArrivedAt        *time.Time
 	CalledAt         *time.Time
 	ServiceStartedAt *time.Time
 	CompletedAt      *time.Time
+	NoShowAt         *time.Time
 }
 
 type QueuePolicy struct {
-	BranchID               string
-	AppointmentDuePriority int
-	QRPriority             int
-	Version                int64
-	UpdatedAt              time.Time
+	BranchID                        string
+	AppointmentDuePriority          int
+	QRPriority                      int
+	LivePriority                    int
+	AntiStarvationThresholdMinutes  int
+	AntiStarvationPointsPerMinute   int
+	AppointmentGraceMinutes         int
+	AppointmentLatePenaltyPerMinute int
+	AppointmentLatePenaltyMaxPoints int
+	Version                         int64
+	UpdatedAt                       time.Time
 }
 type TicketEventType string
 
 const (
 	TicketEventCreated        TicketEventType = "CREATED"
+	TicketEventArrived        TicketEventType = "ARRIVED"
+	TicketEventNoShow         TicketEventType = "NO_SHOW"
 	TicketEventCalled         TicketEventType = "CALLED"
 	TicketEventServiceStarted TicketEventType = "SERVICE_STARTED"
 	TicketEventCompleted      TicketEventType = "COMPLETED"
@@ -91,6 +101,26 @@ type TicketEvent struct {
 	ToStatus         TicketStatus
 	WindowID         *string
 	PolicyVersion    *int64
-	DecisionPriority *int
+	DecisionPriority *int64
 	OccurredAt       time.Time
+}
+
+type QueuePositionReason string
+
+const (
+	QueuePositionAvailable              QueuePositionReason = "AVAILABLE"
+	QueuePositionNotEligibleYet         QueuePositionReason = "NOT_ELIGIBLE_YET"
+	QueuePositionNoOpenCompatibleWindow QueuePositionReason = "NO_OPEN_COMPATIBLE_WINDOW"
+	QueuePositionNotQueued              QueuePositionReason = "NOT_QUEUED"
+)
+
+type QueuePosition struct {
+	TicketID           string
+	TicketStatus       TicketStatus
+	Reason             QueuePositionReason
+	Position           *int
+	ReferenceWindow    *WindowRef
+	CalculatedAt       time.Time
+	EffectivePriority  *int64
+	EffectiveQueueTime *time.Time
 }

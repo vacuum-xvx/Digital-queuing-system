@@ -110,7 +110,7 @@ func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket))
+	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket.Ticket))
 }
 
 type CreateAppointmentRequest struct {

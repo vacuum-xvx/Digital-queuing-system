@@ -145,48 +145,17 @@ func (p *Postgres) CancelAppointment(ctx context.Context, ticketID string) (appl
 	return appointmentView(t), nil
 }
 
-const policySelect = `SELECT branch_id::text,appointment_due_priority,qr_priority,version,updated_at FROM queue_policies`
-
-func scanPolicy(row pgx.Row) (domain.QueuePolicy, error) {
-	var p domain.QueuePolicy
-	err := row.Scan(&p.BranchID, &p.AppointmentDuePriority, &p.QRPriority, &p.Version, &p.UpdatedAt)
-	p.UpdatedAt = p.UpdatedAt.UTC()
-	return p, dbError(err)
-}
-func (p *Postgres) GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error) {
-	id, err := uuid(branchID)
-	if err != nil {
-		return domain.QueuePolicy{}, err
-	}
-	return scanPolicy(p.pool.QueryRow(ctx, policySelect+` WHERE branch_id=$1`, id))
-}
-func (p *Postgres) UpdateQueuePolicy(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error) {
-	var empty domain.QueuePolicy
-	id, err := uuid(cmd.BranchID)
-	if err != nil {
-		return empty, err
-	}
-	if cmd.QRPriority < 0 || cmd.QRPriority > 1000 || cmd.AppointmentDuePriority < 0 || cmd.AppointmentDuePriority > 1000 || cmd.AppointmentDuePriority <= cmd.QRPriority {
-		return empty, application.ErrInvalidState
-	}
-	result, err := scanPolicy(p.pool.QueryRow(ctx, `UPDATE queue_policies SET appointment_due_priority=$2,qr_priority=$3,version=version+1,updated_at=clock_timestamp()
- WHERE branch_id=$1 AND version=$4 RETURNING branch_id::text,appointment_due_priority,qr_priority,version,updated_at`, id, cmd.AppointmentDuePriority, cmd.QRPriority, cmd.ExpectedVersion))
-	if !errors.Is(err, application.ErrNotFound) {
-		return result, err
-	}
-	if _, err = p.GetQueuePolicy(ctx, cmd.BranchID); err != nil {
-		return empty, err
-	}
-	return empty, application.ErrPolicyVersionConflict
-}
-
-func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.TicketEventType, from *domain.TicketStatus, version *int64, priority *int) error {
+func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.TicketEventType, from *domain.TicketStatus, version *int64, priority *int64) error {
 	var window *string
 	if t.Window != nil {
 		window = &t.Window.ID
 	}
 	var occurred *time.Time
 	switch kind {
+	case domain.TicketEventArrived:
+		occurred = t.ArrivedAt
+	case domain.TicketEventNoShow:
+		occurred = t.NoShowAt
 	case domain.TicketEventCreated:
 		occurred = &t.CreatedAt
 	case domain.TicketEventCalled:

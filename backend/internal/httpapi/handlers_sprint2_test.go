@@ -261,7 +261,7 @@ func TestQueuePolicy_Sprint2(t *testing.T) {
 func TestTicketEvents_Sprint2(t *testing.T) {
 	now := time.Now().UTC()
 	v1 := int64(1)
-	p100 := 100
+	p100 := int64(100)
 	fromSched := domain.TicketStatusScheduled
 	uc := &FakeUseCases{
 		ListTicketEventsFunc: func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error) {
