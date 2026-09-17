@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -113,8 +114,14 @@ func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateAppointmentRequest struct {
+	BranchID    string `json:"branchId"`
 	ServiceID   string `json:"serviceId"`
 	ScheduledAt string `json:"scheduledAt"`
+}
+
+type AppointmentResponse struct {
+	Ticket      TicketDTO `json:"ticket"`
+	ScheduledAt time.Time `json:"scheduledAt"`
 }
 
 func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
@@ -131,11 +138,23 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scheduledAt, err := time.Parse(time.RFC3339Nano, req.ScheduledAt)
-	if err != nil {
-		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid scheduledAt")
+	if branchID == "" {
+		branchID = req.BranchID
+	}
+	if branchID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing branchId")
 		return
 	}
+
+	scheduledAt, err := time.Parse(time.RFC3339, req.ScheduledAt)
+	if err != nil {
+		scheduledAt, err = time.Parse(time.RFC3339Nano, req.ScheduledAt)
+		if err != nil {
+			writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid scheduledAt format")
+			return
+		}
+	}
+
 	result, err := a.usecases.CreateAppointment(r.Context(), application.CreateAppointmentCommand{
 		BranchID:       branchID,
 		ServiceID:      req.ServiceID,
@@ -143,9 +162,35 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
+		if errors.Is(err, application.ErrInvalidState) {
+			writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "scheduledAt must be in the future")
+			return
+		}
 		a.respondError(w, r, err)
 		return
 	}
 
-	writeJSONResponse(w, http.StatusCreated, mapTicket(result.Appointment.Ticket))
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+
+	writeJSONResponse(w, status, AppointmentResponse{
+		Ticket:      mapTicket(result.Appointment.Ticket),
+		ScheduledAt: result.Appointment.ScheduledAt,
+	})
+}
+
+func (a *API) CancelAppointment(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	appView, err := a.usecases.CancelAppointment(r.Context(), ticketID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, AppointmentResponse{
+		Ticket:      mapTicket(appView.Ticket),
+		ScheduledAt: appView.ScheduledAt,
+	})
 }
