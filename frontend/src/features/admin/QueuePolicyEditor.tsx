@@ -12,8 +12,8 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
   branchName,
 }) => {
   const [policy, setPolicy] = useState<QueuePolicy | null>(null);
-  const [appointmentDuePriority, setAppointmentDuePriority] = useState<string>('');
-  const [qrPriority, setQrPriority] = useState<string>('');
+  const fields = ['appointmentDuePriority','qrPriority','livePriority','antiStarvationThresholdMinutes','antiStarvationPointsPerMinute','appointmentGraceMinutes','appointmentLatePenaltyPerMinute','appointmentLatePenaltyMaxPoints'] as const;
+  const [values, setValues] = useState<Record<typeof fields[number], string>>({ appointmentDuePriority:'', qrPriority:'', livePriority:'', antiStarvationThresholdMinutes:'', antiStarvationPointsPerMinute:'', appointmentGraceMinutes:'', appointmentLatePenaltyPerMinute:'', appointmentLatePenaltyMaxPoints:'' });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -32,8 +32,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
       const data = await api.getQueuePolicy(branchId);
       if (id !== requestId.current) return;
       setPolicy(data);
-      setAppointmentDuePriority(String(data.appointmentDuePriority));
-      setQrPriority(String(data.qrPriority));
+      setValues(Object.fromEntries(fields.map((field) => [field, String(data[field])])) as typeof values);
     } catch (err) {
       if (id !== requestId.current) return;
       setNotice({
@@ -57,18 +56,17 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
   // 1. Integer range 0..1000
   // 2. appointmentDuePriority > qrPriority
   // 3. Equal priorities are invalid
-  const apptVal = Number(appointmentDuePriority);
-  const qrVal = Number(qrPriority);
+  const nums = Object.fromEntries(fields.map((field) => [field, Number(values[field])])) as Record<typeof fields[number], number>;
+  const apptVal = nums.appointmentDuePriority;
+  const qrVal = nums.qrPriority;
 
   let validationError: string | null = null;
-  if (!appointmentDuePriority.trim() || !qrPriority.trim() || !Number.isInteger(apptVal) || !Number.isInteger(qrVal)) {
+  if (fields.some((field) => !values[field].trim() || !Number.isInteger(nums[field]))) {
     validationError = 'Введите целые числовые значения приоритетов';
-  } else if (apptVal < 0 || apptVal > 1000 || qrVal < 0 || qrVal > 1000) {
+  } else if (apptVal < 0 || apptVal > 1000 || qrVal < 0 || qrVal > 1000 || nums.livePriority < 0 || nums.livePriority > 1000 || nums.antiStarvationThresholdMinutes < 0 || nums.antiStarvationThresholdMinutes > 240 || nums.antiStarvationPointsPerMinute < 1 || nums.antiStarvationPointsPerMinute > 600 || nums.appointmentGraceMinutes < 0 || nums.appointmentGraceMinutes > 120 || nums.appointmentLatePenaltyPerMinute < 0 || nums.appointmentLatePenaltyPerMinute > 600 || nums.appointmentLatePenaltyMaxPoints < 0 || nums.appointmentLatePenaltyMaxPoints > 1000 || nums.appointmentLatePenaltyMaxPoints > apptVal) {
     validationError = 'Приоритеты должны быть целыми числами в диапазоне от 0 до 1000';
-  } else if (apptVal === qrVal) {
-    validationError = 'Приоритет предварительной записи и QR не могут быть равны';
-  } else if (apptVal <= qrVal) {
-    validationError = 'Приоритет предварительной записи должен быть строго больше приоритета QR';
+  } else if (apptVal <= qrVal || apptVal <= nums.livePriority) {
+    validationError = 'Приоритет предварительной записи должен быть строго выше QR и живой очереди';
   }
 
   const isFormValid = !validationError && policy !== null;
@@ -83,15 +81,13 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
 
     try {
       const updated = await api.updateQueuePolicy(branchId, {
-        appointmentDuePriority: apptVal,
-        qrPriority: qrVal,
+        ...nums,
         expectedVersion: policy.version,
       });
 
       if (id !== requestId.current) return;
       setPolicy(updated);
-      setAppointmentDuePriority(String(updated.appointmentDuePriority));
-      setQrPriority(String(updated.qrPriority));
+      setValues(Object.fromEntries(fields.map((field) => [field, String(updated[field])])) as typeof values);
       setNotice({
         type: 'success',
         message: `Правила очереди успешно сохранены! Версия обновлена: ${updated.version}`,
@@ -166,43 +162,10 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
         <button type="button" onClick={() => { setNotice(null); void fetchPolicy(); }}>Повторить загрузку</button>
       ) : (
         <form onSubmit={handleSave} className="policy-form">
-          <div className="form-group">
-            <label htmlFor="input-appt-priority">
-              Приоритет предварительной записи:
-              <span className="label-hint"> (0..1000, должен быть выше QR)</span>
-            </label>
-            <input
-              id="input-appt-priority"
-              type="number"
-              required
-              step="1"
-              min="0"
-              max="1000"
-              className="operator-select policy-input"
-              value={appointmentDuePriority}
-              onChange={(e) => setAppointmentDuePriority(e.target.value)}
-              disabled={isSaving || isLoading}
-            />
-          </div>
-
-          <div className="form-group" style={{ marginTop: '16px' }}>
-            <label htmlFor="input-qr-priority">
-              Приоритет QR:
-              <span className="label-hint"> (0..1000)</span>
-            </label>
-            <input
-              id="input-qr-priority"
-              type="number"
-              required
-              step="1"
-              min="0"
-              max="1000"
-              className="operator-select policy-input"
-              value={qrPriority}
-              onChange={(e) => setQrPriority(e.target.value)}
-              disabled={isSaving || isLoading}
-            />
-          </div>
+          {fields.map((field) => {
+            const labels: Record<typeof field, string> = { appointmentDuePriority: 'Приоритет предварительной записи', qrPriority: 'Приоритет QR', livePriority: 'Приоритет живой очереди', antiStarvationThresholdMinutes: 'Порог защиты от долгого ожидания', antiStarvationPointsPerMinute: 'Баллов за минуту после порога', appointmentGraceMinutes: 'Льготный период записи', appointmentLatePenaltyPerMinute: 'Штраф за минуту опоздания', appointmentLatePenaltyMaxPoints: 'Максимальный штраф' };
+            return <div className="form-group" key={field}><label htmlFor={`input-${field}`}>{labels[field]}</label><input id={`input-${field}`} type="number" required step="1" className="operator-select policy-input" value={values[field]} onChange={(e) => setValues((prev) => ({ ...prev, [field]: e.target.value }))} disabled={isSaving || isLoading} /></div>;
+          })}
 
           {validationError && (
             <div className="validation-error-text" role="alert">

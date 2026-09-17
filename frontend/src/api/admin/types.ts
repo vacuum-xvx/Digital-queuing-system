@@ -2,6 +2,12 @@ export interface QueuePolicy {
   branchId: string;
   appointmentDuePriority: number;
   qrPriority: number;
+  livePriority: number;
+  antiStarvationThresholdMinutes: number;
+  antiStarvationPointsPerMinute: number;
+  appointmentGraceMinutes: number;
+  appointmentLatePenaltyPerMinute: number;
+  appointmentLatePenaltyMaxPoints: number;
   version: number;
   updatedAt: string;
 }
@@ -9,6 +15,12 @@ export interface QueuePolicy {
 export interface UpdateQueuePolicyRequest {
   appointmentDuePriority: number;
   qrPriority: number;
+  livePriority: number;
+  antiStarvationThresholdMinutes: number;
+  antiStarvationPointsPerMinute: number;
+  appointmentGraceMinutes: number;
+  appointmentLatePenaltyPerMinute: number;
+  appointmentLatePenaltyMaxPoints: number;
   expectedVersion: number;
 }
 
