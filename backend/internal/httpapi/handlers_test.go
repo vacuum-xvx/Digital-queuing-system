@@ -14,7 +14,9 @@ import (
 )
 
 type FakeUseCases struct {
-	application.UseCases
+	ArriveAppointmentFunc  func(context.Context, string) (application.AppointmentView, error)
+	MarkNoShowFunc         func(context.Context, string) (domain.Ticket, error)
+	GetQueuePositionFunc   func(context.Context, string) (domain.QueuePosition, error)
 	ListBranchesFunc       func(ctx context.Context) ([]domain.Branch, error)
 	ListBranchServicesFunc func(ctx context.Context, branchID string) ([]domain.Service, error)
 	ListBranchWindowsFunc  func(ctx context.Context, branchID string) ([]domain.Window, error)
@@ -25,7 +27,7 @@ type FakeUseCases struct {
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
 
-	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error)
+	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error)
 	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
 	CancelAppointmentFunc  func(ctx context.Context, ticketID string) (application.AppointmentView, error)
 	GetQueuePolicyFunc     func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
@@ -36,6 +38,18 @@ type FakeUseCases struct {
 	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverviewFunc   func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRulesFunc  func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+}
+
+var _ application.UseCases = (*FakeUseCases)(nil)
+
+func (f *FakeUseCases) ArriveAppointment(ctx context.Context, id string) (application.AppointmentView, error) {
+	return f.ArriveAppointmentFunc(ctx, id)
+}
+func (f *FakeUseCases) MarkNoShow(ctx context.Context, id string) (domain.Ticket, error) {
+	return f.MarkNoShowFunc(ctx, id)
+}
+func (f *FakeUseCases) GetQueuePosition(ctx context.Context, id string) (domain.QueuePosition, error) {
+	return f.GetQueuePositionFunc(ctx, id)
 }
 
 func (f *FakeUseCases) ListBranches(ctx context.Context) ([]domain.Branch, error) {
@@ -75,8 +89,7 @@ func (f *FakeUseCases) CompleteService(ctx context.Context, ticketID string) (do
 }
 
 func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error) {
-	ticket, err := f.CreateLiveTicketFunc(ctx, cmd)
-	return application.CreateLiveTicketResult{Ticket: ticket}, err
+	return f.CreateLiveTicketFunc(ctx, cmd)
 }
 
 func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error) {

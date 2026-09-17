@@ -186,6 +186,10 @@ func TestQueuePolicy_Sprint2(t *testing.T) {
 			}, nil
 		},
 		UpdateQueuePolicyFunc: func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error) {
+			// Core remains responsible for semantic policy validation.
+			if cmd.AppointmentDuePriority <= cmd.QRPriority {
+				return domain.QueuePolicy{}, application.ErrInvalidState
+			}
 			if cmd.ExpectedVersion == 999 {
 				return domain.QueuePolicy{}, application.ErrPolicyVersionConflict
 			}

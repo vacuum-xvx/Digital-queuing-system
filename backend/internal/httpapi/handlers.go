@@ -28,14 +28,18 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
 		r.Post("/appointments", a.CreateAppointment)
 		r.Post("/appointments/{ticketId}/cancel", a.CancelAppointment)
+		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
+		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
 
 		r.Route("/operator", func(r chi.Router) {
+			r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
 			r.Get("/branches/{branchId}/windows", a.ListBranchWindows)
 			r.Get("/windows/{windowId}/current-ticket", a.GetCurrentTicket)
 			r.Post("/windows/{windowId}/call-next", a.CallNext)
 			r.Post("/tickets/{ticketId}/start", a.StartService)
 			r.Post("/tickets/{ticketId}/complete", a.CompleteService)
+			r.Post("/tickets/{ticketId}/no-show", a.MarkNoShow)
 			r.Post("/tickets/{ticketId}/return", a.ReturnTicket)
 			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
 		})
@@ -104,7 +108,6 @@ type WindowDTO struct {
 type ListWindowsResponse struct {
 	Items []WindowDTO `json:"items"`
 }
-
 
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
@@ -175,7 +178,12 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "INTERNAL_ERROR"
 	}
 
-	writeJSONError(w, r, status, code, err.Error())
+	message := code
+	// Wrapped application errors may contain internal/driver context.
+	if status == http.StatusInternalServerError {
+		message = "Internal server error"
+	}
+	writeJSONError(w, r, status, code, message)
 }
 
 func writeJSONError(w http.ResponseWriter, r *http.Request, status int, code, msg string) {

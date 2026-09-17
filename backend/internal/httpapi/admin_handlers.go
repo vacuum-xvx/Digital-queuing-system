@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -42,7 +43,7 @@ func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
 	for j, s := range wnd.Services {
 		services[j] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
 	}
-	
+
 	writeJSONResponse(w, http.StatusOK, WindowDTO{
 		ID:       wnd.ID,
 		Number:   wnd.Number,
@@ -77,11 +78,17 @@ func (a *API) SavePriorityRules(w http.ResponseWriter, r *http.Request) {
 }
 
 type QueuePolicyDTO struct {
-	BranchID               string    `json:"branchId"`
-	AppointmentDuePriority int       `json:"appointmentDuePriority"`
-	QRPriority             int       `json:"qrPriority"`
-	Version                int64     `json:"version"`
-	UpdatedAt              time.Time `json:"updatedAt"`
+	BranchID                        string    `json:"branchId"`
+	AppointmentDuePriority          int       `json:"appointmentDuePriority"`
+	QRPriority                      int       `json:"qrPriority"`
+	LivePriority                    int       `json:"livePriority"`
+	AntiStarvationThresholdMinutes  int       `json:"antiStarvationThresholdMinutes"`
+	AntiStarvationPointsPerMinute   int       `json:"antiStarvationPointsPerMinute"`
+	AppointmentGraceMinutes         int       `json:"appointmentGraceMinutes"`
+	AppointmentLatePenaltyPerMinute int       `json:"appointmentLatePenaltyPerMinute"`
+	AppointmentLatePenaltyMaxPoints int       `json:"appointmentLatePenaltyMaxPoints"`
+	Version                         int64     `json:"version"`
+	UpdatedAt                       time.Time `json:"updatedAt"`
 }
 
 func (a *API) GetQueuePolicy(w http.ResponseWriter, r *http.Request) {
@@ -91,55 +98,103 @@ func (a *API) GetQueuePolicy(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, QueuePolicyDTO{
-		BranchID:               policy.BranchID,
-		AppointmentDuePriority: policy.AppointmentDuePriority,
-		QRPriority:             policy.QRPriority,
-		Version:                policy.Version,
-		UpdatedAt:              policy.UpdatedAt,
-	})
+	writeJSONResponse(w, http.StatusOK, mapQueuePolicy(policy))
+}
+
+func mapQueuePolicy(policy domain.QueuePolicy) QueuePolicyDTO {
+	return QueuePolicyDTO{
+		BranchID:                        policy.BranchID,
+		AppointmentDuePriority:          policy.AppointmentDuePriority,
+		QRPriority:                      policy.QRPriority,
+		LivePriority:                    policy.LivePriority,
+		AntiStarvationThresholdMinutes:  policy.AntiStarvationThresholdMinutes,
+		AntiStarvationPointsPerMinute:   policy.AntiStarvationPointsPerMinute,
+		AppointmentGraceMinutes:         policy.AppointmentGraceMinutes,
+		AppointmentLatePenaltyPerMinute: policy.AppointmentLatePenaltyPerMinute,
+		AppointmentLatePenaltyMaxPoints: policy.AppointmentLatePenaltyMaxPoints,
+		Version:                         policy.Version,
+		UpdatedAt:                       policy.UpdatedAt,
+	}
+}
+
+// Presence distinguishes an omitted legacy field from an explicit numeric zero.
+// A pointer alone would conflate omitted and null, which the contract forbids.
+type policyNumber[T ~int | ~int64] struct {
+	Value   T
+	Present bool
+}
+
+func (n *policyNumber[T]) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return errors.New("policy number cannot be null")
+	}
+	if err := json.Unmarshal(data, &n.Value); err != nil {
+		return err
+	}
+	n.Present = true
+	return nil
+}
+
+func (n policyNumber[T]) or(current T) T {
+	if n.Present {
+		return n.Value
+	}
+	return current
 }
 
 type UpdateQueuePolicyRequest struct {
-	AppointmentDuePriority int   `json:"appointmentDuePriority"`
-	QRPriority             int   `json:"qrPriority"`
-	ExpectedVersion        int64 `json:"expectedVersion"`
+	AppointmentDuePriority          policyNumber[int]   `json:"appointmentDuePriority"`
+	QRPriority                      policyNumber[int]   `json:"qrPriority"`
+	LivePriority                    policyNumber[int]   `json:"livePriority"`
+	AntiStarvationThresholdMinutes  policyNumber[int]   `json:"antiStarvationThresholdMinutes"`
+	AntiStarvationPointsPerMinute   policyNumber[int]   `json:"antiStarvationPointsPerMinute"`
+	AppointmentGraceMinutes         policyNumber[int]   `json:"appointmentGraceMinutes"`
+	AppointmentLatePenaltyPerMinute policyNumber[int]   `json:"appointmentLatePenaltyPerMinute"`
+	AppointmentLatePenaltyMaxPoints policyNumber[int]   `json:"appointmentLatePenaltyMaxPoints"`
+	ExpectedVersion                 policyNumber[int64] `json:"expectedVersion"`
 }
 
 func (a *API) UpdateQueuePolicy(w http.ResponseWriter, r *http.Request) {
 	branchID := chi.URLParam(r, "branchId")
 
 	var req UpdateQueuePolicyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeRequest(r, &req); err != nil || !req.AppointmentDuePriority.Present || !req.QRPriority.Present || !req.ExpectedVersion.Present {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
 
-	if req.AppointmentDuePriority < 0 || req.AppointmentDuePriority > 1000 ||
-		req.QRPriority < 0 || req.QRPriority > 1000 ||
-		req.AppointmentDuePriority <= req.QRPriority {
-		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid priority values")
-		return
-	}
-
-	policy, err := a.usecases.UpdateQueuePolicy(r.Context(), application.UpdateQueuePolicyCommand{
-		BranchID:               branchID,
-		AppointmentDuePriority: req.AppointmentDuePriority,
-		QRPriority:             req.QRPriority,
-		ExpectedVersion:        req.ExpectedVersion,
-	})
+	current, err := a.usecases.GetQueuePolicy(r.Context(), branchID)
 	if err != nil {
 		a.respondError(w, r, err)
 		return
 	}
+	if current.Version != req.ExpectedVersion.Value {
+		a.respondError(w, r, application.ErrPolicyVersionConflict)
+		return
+	}
 
-	writeJSONResponse(w, http.StatusOK, QueuePolicyDTO{
-		BranchID:               policy.BranchID,
-		AppointmentDuePriority: policy.AppointmentDuePriority,
-		QRPriority:             policy.QRPriority,
-		Version:                policy.Version,
-		UpdatedAt:              policy.UpdatedAt,
+	policy, err := a.usecases.UpdateQueuePolicy(r.Context(), application.UpdateQueuePolicyCommand{
+		BranchID:                        branchID,
+		AppointmentDuePriority:          req.AppointmentDuePriority.Value,
+		QRPriority:                      req.QRPriority.Value,
+		LivePriority:                    req.LivePriority.or(current.LivePriority),
+		AntiStarvationThresholdMinutes:  req.AntiStarvationThresholdMinutes.or(current.AntiStarvationThresholdMinutes),
+		AntiStarvationPointsPerMinute:   req.AntiStarvationPointsPerMinute.or(current.AntiStarvationPointsPerMinute),
+		AppointmentGraceMinutes:         req.AppointmentGraceMinutes.or(current.AppointmentGraceMinutes),
+		AppointmentLatePenaltyPerMinute: req.AppointmentLatePenaltyPerMinute.or(current.AppointmentLatePenaltyPerMinute),
+		AppointmentLatePenaltyMaxPoints: req.AppointmentLatePenaltyMaxPoints.or(current.AppointmentLatePenaltyMaxPoints),
+		ExpectedVersion:                 req.ExpectedVersion.Value,
 	})
+	if err != nil {
+		if errors.Is(err, application.ErrInvalidState) {
+			writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid queue policy values")
+			return
+		}
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, mapQueuePolicy(policy))
 }
 
 type ListTicketEventsResponse struct {
@@ -147,14 +202,14 @@ type ListTicketEventsResponse struct {
 }
 
 type TicketEventDTO struct {
-	ID               int64      `json:"id"`
-	Type             string     `json:"type"`
-	FromStatus       *string    `json:"fromStatus"`
-	ToStatus         string     `json:"toStatus"`
-	WindowID         *string    `json:"windowId"`
-	PolicyVersion    *int64     `json:"policyVersion"`
-	DecisionPriority *int64       `json:"decisionPriority"`
-	OccurredAt       time.Time  `json:"occurredAt"`
+	ID               int64     `json:"id"`
+	Type             string    `json:"type"`
+	FromStatus       *string   `json:"fromStatus"`
+	ToStatus         string    `json:"toStatus"`
+	WindowID         *string   `json:"windowId"`
+	PolicyVersion    *int64    `json:"policyVersion"`
+	DecisionPriority *int64    `json:"decisionPriority"`
+	OccurredAt       time.Time `json:"occurredAt"`
 }
 
 func (a *API) ListTicketEvents(w http.ResponseWriter, r *http.Request) {
