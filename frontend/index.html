@@ -3,13 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Почта России • СУО 3.0</title>
+    <title>Почта России • Цифровая очередь</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800;900&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Golos Text"', '"PT Sans"', 'Roboto', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                primary: 'var(--color-brand-primary, #003B73)',
+                'primary-hover': 'var(--color-brand-primary-hover, #002B54)',
+                'primary-soft': 'var(--color-brand-primary-soft, #E6F0FA)',
+                accent: 'var(--color-brand-accent, #0D9488)',
+                'accent-hover': 'var(--color-brand-accent-hover, #0F766E)',
+                'accent-soft': 'var(--color-brand-accent-soft, #F0FDFA)',
+                border: 'var(--color-brand-border, #CDE1F9)',
+                header: 'var(--color-brand-header, #003B73)',
+                subtle: 'var(--color-brand-subtle, #86BBFF)',
+              }
+            }
+          }
+        }
+      };
+    </script>
     <style>
-      body { font-family: 'Golos Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+      :root, [data-theme="navy-teal"] {
+        --color-brand-primary: #003B73;
+        --color-brand-primary-hover: #002B54;
+        --color-brand-primary-soft: #E6F0FA;
+        --color-brand-accent: #0D9488;
+        --color-brand-accent-hover: #0F766E;
+        --color-brand-accent-soft: #F0FDFA;
+        --color-brand-border: #CDE1F9;
+        --color-brand-header: #003B73;
+        --color-brand-subtle: #86BBFF;
+      }
+
+      [data-theme="graphite-azure"] {
+        --color-brand-primary: #1E293B;
+        --color-brand-primary-hover: #0F172A;
+        --color-brand-primary-soft: #F1F5F9;
+        --color-brand-accent: #0284C7;
+        --color-brand-accent-hover: #0369A1;
+        --color-brand-accent-soft: #F0F9FF;
+        --color-brand-border: #CBD5E1;
+        --color-brand-header: #1E293B;
+        --color-brand-subtle: #7DD3FC;
+      }
+
+      [data-theme="darkgreen-sand"] {
+        --color-brand-primary: #14532D;
+        --color-brand-primary-hover: #052E16;
+        --color-brand-primary-soft: #F0FDF4;
+        --color-brand-accent: #D97706;
+        --color-brand-accent-hover: #B45309;
+        --color-brand-accent-soft: #FFFBEB;
+        --color-brand-border: #BBF7D0;
+        --color-brand-header: #14532D;
+        --color-brand-subtle: #86EFAC;
+      }
+
+      body {
+        font-family: 'Golos Text', 'PT Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
     </style>
   </head>
   <body>

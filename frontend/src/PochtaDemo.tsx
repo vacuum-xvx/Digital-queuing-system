@@ -9,7 +9,7 @@ import {
   ExternalLink, Hash, Users, Layers, Zap, Copy, Timer, BarChart3,
   Flame, HelpCircle, ArrowRight, CornerDownRight, CheckCheck,
   Send, AlertCircle, Compass, Radio, Maximize2, Minimize2, Wifi, WifiOff,
-  Settings, Mic, SlidersHorizontal, SquareTerminal, CheckSquare, Square, Play, X
+  Settings, Mic, SlidersHorizontal, SquareTerminal, CheckSquare, Square, Play, X, Palette
 } from 'lucide-react';
 import {
   playPostalChime,
@@ -491,9 +491,76 @@ const INITIAL_WINDOWS: PostalWindow[] = [
   { id: 4, name: 'Окно № 4', operator: 'Ковалев Д.С.', status: 'CLOSED', currentTicketId: null, servedCount: 24, services: ['pickup', 'send'] }
 ];
 
-const LOCAL_STORAGE_KEY = 'pochta_suo_3_state_v2';
+const LOCAL_STORAGE_KEY = 'pochta_queue_state_v2';
+
+export type ThemePaletteId = 'navy-teal' | 'graphite-azure' | 'darkgreen-sand';
+
+export interface ThemePalette {
+  id: ThemePaletteId;
+  name: string;
+  tagline: string;
+  primaryColor: string;
+  accentColor: string;
+  headerBg: string;
+  badgeBg: string;
+  softBg: string;
+}
+
+export const THEME_PALETTES: ThemePalette[] = [
+  {
+    id: 'navy-teal',
+    name: 'Корпоративная (Синий + Тил)',
+    tagline: 'Фирменный тёмно-синий ультрамарин с благородным тиловым акцентом',
+    primaryColor: '#003B73',
+    accentColor: '#0D9488',
+    headerBg: '#003B73',
+    badgeBg: '#14B8A6',
+    softBg: '#F0FDFA'
+  },
+  {
+    id: 'graphite-azure',
+    name: 'Графит + Лазурный',
+    tagline: 'Строгий сланцевый графит с чистым лазурным акцентом',
+    primaryColor: '#1E293B',
+    accentColor: '#0284C7',
+    headerBg: '#1E293B',
+    badgeBg: '#38BDF8',
+    softBg: '#F0F9FF'
+  },
+  {
+    id: 'darkgreen-sand',
+    name: 'Хвойный + Песочный',
+    tagline: 'Экологичный хвойно-зелёный с тёплым песочно-янтарным акцентом',
+    primaryColor: '#14532D',
+    accentColor: '#D97706',
+    headerBg: '#14532D',
+    badgeBg: '#F59E0B',
+    softBg: '#FFFBEB'
+  }
+];
 
 export default function App() {
+  // Цветовая тема и палитра оформления (Дизайн-токены)
+  const [themePaletteId, setThemePaletteId] = useState<ThemePaletteId>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pochta_theme_palette') as ThemePaletteId;
+      if (saved && ['navy-teal', 'graphite-azure', 'darkgreen-sand'].includes(saved)) {
+        return saved;
+      }
+    }
+    return 'navy-teal';
+  });
+  const [isPaletteMenuOpen, setIsPaletteMenuOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', themePaletteId);
+    localStorage.setItem('pochta_theme_palette', themePaletteId);
+  }, [themePaletteId]);
+
+  const activePalette = useMemo(() => {
+    return THEME_PALETTES.find(p => p.id === themePaletteId) || THEME_PALETTES[0];
+  }, [themePaletteId]);
+
   // Навигационные вкладки
   const [activeTab, setActiveTab] = useState<'client-booking' | 'client-ticket' | 'operator' | 'admin' | 'tv' | 'kiosk' | 'roadmap'>('client-ticket');
 
@@ -1151,7 +1218,7 @@ export default function App() {
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Почта России//Электронная очередь СУО 3.0//RU',
+      'PRODID:-//Почта России//Цифровая очередь//RU',
       'BEGIN:VEVENT',
       `SUMMARY:Почта России: Талон ${ticket.number} (${timeSlot})`,
       `DESCRIPTION:Запись в ${BRANCH_CONFIG.name}. Услуга: ${SERVICES.find(s => s.id === ticket.serviceId)?.title}. Номер талона: ${ticket.number}. Прибудьте за 5 минут до начала.`,
@@ -1188,10 +1255,10 @@ export default function App() {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(32, 32, 576, 896);
 
-    ctx.fillStyle = '#003B73';
+    ctx.fillStyle = activePalette.primaryColor;
     ctx.fillRect(32, 32, 576, 210);
 
-    ctx.fillStyle = '#D92534';
+    ctx.fillStyle = activePalette.accentColor;
     ctx.fillRect(32, 242, 576, 5);
 
     ctx.fillStyle = '#FFFFFF';
@@ -1299,7 +1366,7 @@ export default function App() {
     ctx.strokeRect(qrStartX - 10, qrStartY - 10, qrBoxSize + 20, qrBoxSize + 20);
 
     const modSz = qrBoxSize / qrModules.size;
-    ctx.fillStyle = '#003B73';
+    ctx.fillStyle = activePalette.primaryColor;
     const midMod = Math.floor(qrModules.size / 2);
     const logoRadMod = 4;
 
@@ -1314,7 +1381,7 @@ export default function App() {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(canvas.width / 2 - 22, qrStartY + qrBoxSize / 2 - 22, 44, 44);
-    ctx.fillStyle = '#003B73';
+    ctx.fillStyle = activePalette.primaryColor;
     ctx.beginPath();
     ctx.roundRect(canvas.width / 2 - 18, qrStartY + qrBoxSize / 2 - 18, 36, 36, 8);
     ctx.fill();
@@ -1604,7 +1671,10 @@ export default function App() {
       {/* ========================================================================= */}
       {/* ФИРМЕННАЯ ШАПКА ПОЧТЫ РОССИИ                                              */}
       {/* ========================================================================= */}
-      <header className="bg-[#003B73] text-white shadow-lg sticky top-0 z-40">
+      <header 
+        className="text-white shadow-lg sticky top-0 z-40 transition-colors duration-200"
+        style={{ backgroundColor: activePalette.headerBg }}
+      >
         
         {/* Верхняя статусная линия */}
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-3 border-b border-white/10">
@@ -1614,15 +1684,14 @@ export default function App() {
             className="flex items-center gap-3 cursor-pointer select-none group"
             onClick={() => setActiveTab('client-ticket')}
           >
-            <PochtaEmblem className="w-9 h-9 shrink-0 drop-shadow-md transition-transform group-hover:scale-105" bg="#003B73" fg="#FFFFFF" />
+            <PochtaEmblem 
+              className="w-9 h-9 shrink-0 drop-shadow-md transition-transform group-hover:scale-105" 
+              bg={activePalette.primaryColor} 
+              fg="#FFFFFF" 
+            />
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <PochtaWordmark className="h-4 sm:h-5 w-auto" color="#FFFFFF" />
-                <span className="text-[10px] font-mono font-black uppercase tracking-wider bg-white/15 text-white px-1.5 py-0.5 rounded border border-white/20">
-                  СУО 3.0
-                </span>
-              </div>
+            <div className="flex flex-col justify-center">
+              <PochtaWordmark className="h-4 sm:h-5 w-auto" color="#FFFFFF" />
               <div className="text-[11px] text-blue-200 flex items-center gap-1.5 mt-0.5 font-medium">
                 <MapPin className="w-3 h-3 text-[#86BBFF]" />
                 <span>{BRANCH_CONFIG.name}</span>
@@ -1632,8 +1701,78 @@ export default function App() {
             </div>
           </div>
 
-          {/* Панель быстрых инструментов (Озвучка, Доступность, Офлайн, Сброс) */}
+          {/* Панель быстрых инструментов (Палитра, Озвучка, Доступность, Офлайн, Сброс) */}
           <div className="flex items-center gap-2 text-xs font-mono">
+            
+            {/* Переключатель темы / цветовой палитры */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsPaletteMenuOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-xl border border-white/20 bg-white/15 text-white hover:bg-white/25 transition-all"
+                title="Выбрать гармоничную световую палитру Почты России"
+              >
+                <Palette className="w-3.5 h-3.5" style={{ color: activePalette.accentColor }} />
+                <span className="font-bold hidden sm:inline">{activePalette.name.split(' (')[0]}</span>
+                <span className="font-bold sm:hidden">Тема</span>
+              </button>
+
+              {isPaletteMenuOpen && (
+                <div 
+                  className="absolute right-0 mt-2 w-72 bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95"
+                  onMouseLeave={() => setIsPaletteMenuOpen(false)}
+                >
+                  <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500 font-sans">Цветовая палитра</span>
+                    <button 
+                      onClick={() => setIsPaletteMenuOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xs p-0.5 rounded-lg"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 mt-1.5">
+                    {THEME_PALETTES.map((p) => {
+                      const isSelected = p.id === themePaletteId;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setThemePaletteId(p.id);
+                            setIsPaletteMenuOpen(false);
+                            showToast(`Выбрана палитра: ${p.name}`);
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                            isSelected 
+                              ? 'border-slate-800 bg-slate-50 shadow-sm font-bold' 
+                              : 'border-transparent hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex items-center -space-x-1.5 shrink-0">
+                              <span 
+                                className="w-5 h-5 rounded-full border border-white shadow-sm"
+                                style={{ backgroundColor: p.primaryColor }}
+                              />
+                              <span 
+                                className="w-5 h-5 rounded-full border border-white shadow-sm"
+                                style={{ backgroundColor: p.accentColor }}
+                              />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold leading-tight font-sans">{p.name}</span>
+                              <span className="text-[10px] text-slate-500 font-normal leading-tight font-sans">{p.tagline}</span>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
             
             {/* Кнопка настроек звука и озвучки */}
             <button
@@ -1743,7 +1882,10 @@ export default function App() {
             >
               <QrCode className="w-4 h-4" />
               <span>2. Мой талон</span>
-              <span className="font-mono bg-[#D92534] text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-sm">
+              <span 
+                className="font-mono text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-sm transition-colors"
+                style={{ backgroundColor: activePalette.accentColor }}
+              >
                 {activeClientTicket?.number || 'А-042'}
               </span>
             </button>
@@ -1790,8 +1932,8 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Фирменная тонкая красная линия Почты России */}
-        <div className="h-[2px] w-full bg-[#D92534]"></div>
+        {/* Фирменная тонкая акцентная линия Почты России */}
+        <div className="h-[2.5px] w-full transition-colors duration-200" style={{ backgroundColor: activePalette.accentColor }}></div>
       </header>
 
       {/* ========================================================================= */}
@@ -1806,19 +1948,19 @@ export default function App() {
           <div className="max-w-xl mx-auto space-y-4">
             
             {/* Карточка отделения */}
-            <div className="bg-[#003B73] text-white rounded-3xl p-5 sm:p-6 border border-[#003B73] shadow-md relative overflow-hidden">
+            <div 
+              className="text-white rounded-3xl p-5 sm:p-6 border shadow-md relative overflow-hidden transition-colors"
+              style={{ backgroundColor: activePalette.primaryColor, borderColor: activePalette.primaryColor }}
+            >
               <div className="relative z-10">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
-                    Электронная очередь нового поколения
-                  </span>
-                  <span className="text-[11px] font-mono bg-white/15 px-2 py-0.5 rounded text-white border border-white/20">
-                    СУО 3.0
+                    Цифровая система очереди
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-black mt-1.5">{BRANCH_CONFIG.name}</h1>
                 <p className="text-xs text-blue-200 mt-1 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-[#D92534]" />
+                  <MapPin className="w-3.5 h-3.5" style={{ color: activePalette.accentColor }} />
                   {BRANCH_CONFIG.city}
                 </p>
 
@@ -2072,15 +2214,15 @@ export default function App() {
             <div className="bg-white rounded-3xl border border-[#D2D8E2] shadow-md overflow-hidden relative">
               
               {/* Верхняя шапка билета */}
-              <div className="bg-[#003B73] text-white p-5 relative">
+              <div 
+                className="text-white p-5 relative transition-colors"
+                style={{ backgroundColor: activePalette.primaryColor }}
+              >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div>
                       <span className="text-[10px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
                         Электронный талон
-                      </span>
-                      <span className="text-[10px] font-mono bg-white/15 px-1.5 py-0.5 rounded text-white border border-white/20">
-                        СУО 3.0
                       </span>
                     </div>
                     <div className="text-xs text-blue-200 mt-1">{BRANCH_CONFIG.name}</div>
@@ -2107,7 +2249,10 @@ export default function App() {
               </div>
 
               {/* Фирменная тонкая разделительная линия билета */}
-              <div className="h-[2px] w-full bg-[#D92534]/90"></div>
+              <div 
+                className="h-[2px] w-full transition-colors"
+                style={{ backgroundColor: activePalette.accentColor }}
+              ></div>
 
               {/* Тело талона: QR-код и статус */}
               <div className="p-5 space-y-4">
@@ -2117,6 +2262,7 @@ export default function App() {
                   <PostalTicketQr
                     value={`https://www.pochta.ru/q?ticket=${activeClientTicket?.number || 'А-042'}&ops=390000`}
                     className="w-full max-w-[260px]"
+                    darkColor={activePalette.primaryColor}
                   />
                 </div>
 
@@ -3163,7 +3309,7 @@ export default function App() {
                 <h3 className="font-black text-base text-slate-900">Готовность решения к ТЗ хакатона (Спринты 1–4)</h3>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Разработанная система управления очередью Почты России нового поколения (СУО 3.0) полностью удовлетворяет всем функциональным требованиям ТЗ: от мобильного клиента без терминалов до масштабирования на 40 000 отделений связи.
+                Разработанная цифровая система управления очередью Почты России нового поколения полностью удовлетворяет всем функциональным требованиям ТЗ: от мобильного клиента без терминалов до масштабирования на 40 000 отделений связи.
               </p>
             </div>
 

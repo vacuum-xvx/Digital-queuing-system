@@ -51,8 +51,8 @@ export function App() {
   return (
     <main>
       <div style={{ background: '#003B73', color: '#ffffff', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <span>🚀 <strong>СУО 3.0 Почты России:</strong> Новый дизайн, голосовой диктор вызова, киоск и табло зала доступны на <code>/demo</code></span>
-        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ color: '#ffffff', background: '#D92534', padding: '6px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}>
+        <span>🚀 <strong>Цифровая очередь Почты России:</strong> Новый дизайн, голосовой диктор вызова, киоск и табло зала доступны на <code>/demo</code></span>
+        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ color: '#ffffff', background: '#0D9488', padding: '6px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}>
           Открыть /demo →
         </a>
       </div>
@@ -65,7 +65,7 @@ export function App() {
         </span>)}
         {' | '}
         <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ fontWeight: 'bold', color: '#003B73' }}>
-          ✨ СУО 3.0 Demo
+          ✨ Демо-витрина
         </a>
       </nav>
       {isKnownPath ? routes.map((route) => (
