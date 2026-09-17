@@ -41,6 +41,7 @@ export function ClientWorkspace() {
   const pollTimer = useRef<number | null>(null);
   const pollController = useRef<AbortController | null>(null);
   const createController = useRef<AbortController | null>(null);
+  const pollGeneration = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,6 +81,7 @@ export function ClientWorkspace() {
   }, [serviceId]);
 
   const stopPolling = useCallback(() => {
+    pollGeneration.current += 1;
     if (pollTimer.current !== null) window.clearTimeout(pollTimer.current);
     pollTimer.current = null;
     pollController.current?.abort();
@@ -87,20 +89,25 @@ export function ClientWorkspace() {
   }, []);
 
   const poll = useCallback((ticketId: string) => {
-    pollController.current = new AbortController();
-    api.getTicket(ticketId, pollController.current.signal)
+    const generation = pollGeneration.current;
+    const controller = new AbortController();
+    pollController.current = controller;
+    api.getTicket(ticketId, controller.signal)
       .then((nextTicket) => {
+        if (generation !== pollGeneration.current || controller.signal.aborted) return;
         setTicket(nextTicket);
         setPollError(null);
         if (!terminalStatuses.has(nextTicket.status)) {
           sessionStorage.setItem(STORAGE_TICKET_KEY, nextTicket.id);
           pollTimer.current = window.setTimeout(() => poll(ticketId), POLL_INTERVAL_MS);
         } else {
+          pollTimer.current = null;
+          if (pollController.current === controller) pollController.current = null;
           sessionStorage.removeItem(STORAGE_TICKET_KEY);
         }
       })
       .catch((reason: unknown) => {
-        if (pollController.current?.signal.aborted) return;
+        if (generation !== pollGeneration.current || controller.signal.aborted) return;
         setPollError(reason instanceof Error ? reason.message : 'Не удалось обновить состояние талона');
         pollTimer.current = window.setTimeout(() => poll(ticketId), POLL_INTERVAL_MS);
       });
@@ -122,6 +129,7 @@ export function ClientWorkspace() {
     event.preventDefault();
     if (!branchId || !serviceId) return;
     stopPolling();
+    sessionStorage.removeItem(STORAGE_TICKET_KEY);
     setCreating(true);
     setError(null);
     setPollError(null);
