@@ -34,6 +34,11 @@ type CreateLiveTicketCommand struct {
 	IdempotencyKey string
 }
 
+type CreateLiveTicketResult struct {
+	Ticket   domain.Ticket
+	Replayed bool
+}
+
 type CreateAppointmentCommand struct {
 	BranchID       string
 	ServiceID      string
@@ -47,11 +52,14 @@ type RedirectTicketCommand struct {
 	NewWindowID  string // optional
 }
 type UseCases interface {
+	ArriveAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
+	MarkNoShow(ctx context.Context, ticketID string) (domain.Ticket, error)
+	GetQueuePosition(ctx context.Context, ticketID string) (domain.QueuePosition, error)
 	ListBranches(ctx context.Context) ([]domain.Branch, error)
 	ListBranchServices(ctx context.Context, branchID string) ([]domain.Service, error)
 	ListBranchWindows(ctx context.Context, branchID string) ([]domain.Window, error)
 	CreateQRTicket(ctx context.Context, cmd CreateQRTicketCommand) (CreateQRTicketResult, error)
-	CreateLiveTicket(ctx context.Context, cmd CreateLiveTicketCommand) (domain.Ticket, error)
+	CreateLiveTicket(ctx context.Context, cmd CreateLiveTicketCommand) (CreateLiveTicketResult, error)
 	CreateAppointment(ctx context.Context, cmd CreateAppointmentCommand) (CreateAppointmentResult, error)
 	CancelAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
 	GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error)
@@ -83,8 +91,14 @@ type CreateAppointmentResult struct {
 	Replayed    bool
 }
 type UpdateQueuePolicyCommand struct {
-	BranchID               string
-	AppointmentDuePriority int
-	QRPriority             int
-	ExpectedVersion        int64
+	BranchID                        string
+	AppointmentDuePriority          int
+	QRPriority                      int
+	LivePriority                    int
+	AntiStarvationThresholdMinutes  int
+	AntiStarvationPointsPerMinute   int
+	AppointmentGraceMinutes         int
+	AppointmentLatePenaltyPerMinute int
+	AppointmentLatePenaltyMaxPoints int
+	ExpectedVersion                 int64
 }

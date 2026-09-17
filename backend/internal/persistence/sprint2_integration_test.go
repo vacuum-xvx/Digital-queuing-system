@@ -21,7 +21,7 @@ func book(t *testing.T, ctx context.Context, p *Postgres, key, service string) a
 }
 func due(t *testing.T, ctx context.Context, p *Postgres, id string) {
 	t.Helper()
-	execSQL(t, ctx, p, `UPDATE tickets SET scheduled_at='2020-01-01Z',queue_entered_at='2020-01-01Z' WHERE id=$1::uuid`, id)
+	execSQL(t, ctx, p, `UPDATE tickets SET scheduled_at=date_trunc('minute',now())-interval '1 minute',queue_entered_at=date_trunc('minute',now())-interval '1 minute' WHERE id=$1::uuid`, id)
 }
 func events(t *testing.T, ctx context.Context, p *Postgres, id string, n int) []domain.TicketEvent {
 	t.Helper()
@@ -109,7 +109,7 @@ func TestAppointmentQueuePolicyAndLifecycle(t *testing.T) {
 	_, err = p.CallNext(ctx, window2)
 	wantError(t, err, application.ErrNoEligibleTickets)
 	qr := create(t, ctx, p, parcels, "older-qr")
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2010-01-01Z' WHERE id=$1::uuid`, qr.ID)
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at=now()-interval '2 minutes' WHERE id=$1::uuid`, qr.ID)
 	claimed, err := p.CallNext(ctx, window1)
 	if err != nil || claimed.ID != a.ID {
 		t.Fatalf("due priority: %+v %v", claimed, err)
@@ -120,7 +120,7 @@ func TestAppointmentQueuePolicyAndLifecycle(t *testing.T) {
 	_, err = p.RedirectTicket(ctx, application.RedirectTicketCommand{TicketID: a.ID, NewServiceID: parcels})
 	wantError(t, err, application.ErrInvalidState)
 	e := events(t, ctx, p, a.ID, 2)[1]
-	if e.Type != domain.TicketEventCalled || e.FromStatus == nil || *e.FromStatus != domain.TicketStatusScheduled || e.PolicyVersion == nil || *e.PolicyVersion != 1 || e.DecisionPriority == nil || *e.DecisionPriority != 100 || e.WindowID == nil || *e.WindowID != window1 {
+	if e.Type != domain.TicketEventCalled || e.FromStatus == nil || *e.FromStatus != domain.TicketStatusScheduled || e.PolicyVersion == nil || *e.PolicyVersion != 2 || e.DecisionPriority == nil || *e.DecisionPriority != 100 || e.WindowID == nil || *e.WindowID != window1 {
 		t.Fatalf("called=%+v", e)
 	}
 	for _, step := range []func(context.Context, string) (domain.Ticket, error){nil, p.StartService, p.CompleteService} {
@@ -270,10 +270,10 @@ func TestAppointmentDeterministicAndConcurrent(t *testing.T) {
 func TestQueuePolicyVersionGuard(t *testing.T) {
 	ctx, p, _ := integration(t)
 	policy, err := p.GetQueuePolicy(ctx, demoBranch)
-	if err != nil || policy.Version != 1 || policy.AppointmentDuePriority != 100 || policy.QRPriority != 10 {
+	if err != nil || policy.Version != 2 || policy.AppointmentDuePriority != 100 || policy.QRPriority != 10 {
 		t.Fatalf("default=%+v %v", policy, err)
 	}
-	cmd := application.UpdateQueuePolicyCommand{BranchID: demoBranch, AppointmentDuePriority: 100, QRPriority: 10, ExpectedVersion: 1}
+	cmd := application.UpdateQueuePolicyCommand{BranchID: demoBranch, AppointmentDuePriority: 100, QRPriority: 10, LivePriority: 10, AntiStarvationThresholdMinutes: 15, AntiStarvationPointsPerMinute: 10, AppointmentGraceMinutes: 15, AppointmentLatePenaltyPerMinute: 5, AppointmentLatePenaltyMaxPoints: 90, ExpectedVersion: 2}
 	var rs [2]domain.QueuePolicy
 	var errs [2]error
 	concurrently(2, func(i int) { rs[i], errs[i] = p.UpdateQueuePolicy(ctx, cmd) })
@@ -281,7 +281,7 @@ func TestQueuePolicyVersionGuard(t *testing.T) {
 	for i, err := range errs {
 		if err == nil {
 			n++
-			if rs[i].Version != 2 {
+			if rs[i].Version != 3 {
 				t.Fatal(rs)
 			}
 		} else {
@@ -299,9 +299,9 @@ func TestQueuePolicyVersionGuard(t *testing.T) {
 	}
 	cmd.AppointmentDuePriority = 200
 	cmd.QRPriority = 20
-	cmd.ExpectedVersion = 2
+	cmd.ExpectedVersion = 3
 	updated, err := p.UpdateQueuePolicy(ctx, cmd)
-	if err != nil || updated.Version != 3 {
+	if err != nil || updated.Version != 4 {
 		t.Fatalf("update=%+v %v", updated, err)
 	}
 	qr := create(t, ctx, p, parcels, "qr")
@@ -309,7 +309,7 @@ func TestQueuePolicyVersionGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := events(t, ctx, p, qr.ID, 2)[1]
-	if *e.PolicyVersion != 3 || *e.DecisionPriority != 20 {
+	if *e.PolicyVersion != 4 || *e.DecisionPriority != 20 {
 		t.Fatal(e)
 	}
 	_, err = p.GetQueuePolicy(ctx, missing)
@@ -387,7 +387,7 @@ func TestTicketEventsRollbackAndHistory(t *testing.T) {
 
 func TestSprint2UpgradeExistingData(t *testing.T) {
 	ctx, p, m := integration(t)
-	if err := m.Steps(-1); err != nil {
+	if err := m.Steps(-2); err != nil {
 		t.Fatal(err)
 	}
 	var legacy string
@@ -447,7 +447,7 @@ func TestCallNextKeepsLoadedPolicy(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if _, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{BranchID: demoBranch, AppointmentDuePriority: 300, QRPriority: 30, ExpectedVersion: 1}); err != nil {
+	if _, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{BranchID: demoBranch, AppointmentDuePriority: 300, QRPriority: 30, LivePriority: 10, AntiStarvationThresholdMinutes: 15, AntiStarvationPointsPerMinute: 10, AppointmentGraceMinutes: 15, AppointmentLatePenaltyPerMinute: 5, AppointmentLatePenaltyMaxPoints: 90, ExpectedVersion: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if err = locker.Commit(ctx); err != nil {
@@ -457,7 +457,7 @@ func TestCallNextKeepsLoadedPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := events(t, ctx, p, qr.ID, 2)[1]
-	if *e.PolicyVersion != 1 || *e.DecisionPriority != 10 {
+	if *e.PolicyVersion != 2 || *e.DecisionPriority != 10 {
 		t.Fatalf("mixed policy=%+v", e)
 	}
 }

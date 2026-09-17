@@ -74,8 +74,9 @@ func (f *FakeUseCases) CompleteService(ctx context.Context, ticketID string) (do
 	return f.CompleteServiceFunc(ctx, ticketID)
 }
 
-func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error) {
-	return f.CreateLiveTicketFunc(ctx, cmd)
+func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error) {
+	ticket, err := f.CreateLiveTicketFunc(ctx, cmd)
+	return application.CreateLiveTicketResult{Ticket: ticket}, err
 }
 
 func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error) {
