@@ -3,6 +3,7 @@ import { checkHealth } from './api/health';
 import { ClientPage } from './pages/ClientPage';
 import { OperatorPage } from './pages/OperatorPage';
 import { AdminPage } from './pages/AdminPage';
+import PochtaDemo from './PochtaDemo';
 
 export function App() {
   const [health, setHealth] = useState<'Checking...' | 'Available' | 'Unavailable'>('Checking...');
@@ -36,6 +37,10 @@ export function App() {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
 
+  if (currentPath === '/demo') {
+    return <PochtaDemo />;
+  }
+
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
     { path: '/', label: 'Client', page: <ClientPage /> },
     { path: '/operator', label: 'Operator', page: <OperatorPage /> },
@@ -45,6 +50,12 @@ export function App() {
 
   return (
     <main>
+      <div style={{ background: '#003B73', color: '#ffffff', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <span>🚀 <strong>СУО 3.0 Почты России:</strong> Новый дизайн, голосовой диктор вызова, киоск и табло зала доступны на <code>/demo</code></span>
+        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ color: '#ffffff', background: '#D92534', padding: '6px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}>
+          Открыть /demo →
+        </a>
+      </div>
       <h1>Electronic Queue MVP</h1>
       <p role="status">Backend: {health}</p>
       <nav aria-label="Applications">
@@ -52,6 +63,10 @@ export function App() {
           {index > 0 && ' | '}
           <a href={route.path} onClick={(event) => navigate(route.path, event)}>{route.label}</a>
         </span>)}
+        {' | '}
+        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ fontWeight: 'bold', color: '#003B73' }}>
+          ✨ СУО 3.0 Demo
+        </a>
       </nav>
       {isKnownPath ? routes.map((route) => (
         <div key={route.path} hidden={route.path !== currentPath}>
