@@ -60,7 +60,37 @@ type Ticket struct {
 	Window           *WindowRef
 	CreatedAt        time.Time
 	QueueEnteredAt   time.Time
+	ScheduledAt      *time.Time
 	CalledAt         *time.Time
 	ServiceStartedAt *time.Time
 	CompletedAt      *time.Time
+}
+
+type QueuePolicy struct {
+	BranchID               string
+	AppointmentDuePriority int
+	QRPriority             int
+	Version                int64
+	UpdatedAt              time.Time
+}
+type TicketEventType string
+
+const (
+	TicketEventCreated        TicketEventType = "CREATED"
+	TicketEventCalled         TicketEventType = "CALLED"
+	TicketEventServiceStarted TicketEventType = "SERVICE_STARTED"
+	TicketEventCompleted      TicketEventType = "COMPLETED"
+	TicketEventCancelled      TicketEventType = "CANCELLED"
+)
+
+type TicketEvent struct {
+	ID               int64
+	TicketID         string
+	Type             TicketEventType
+	FromStatus       *TicketStatus
+	ToStatus         TicketStatus
+	WindowID         *string
+	PolicyVersion    *int64
+	DecisionPriority *int
+	OccurredAt       time.Time
 }

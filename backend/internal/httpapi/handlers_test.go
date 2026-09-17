@@ -14,6 +14,7 @@ import (
 )
 
 type FakeUseCases struct {
+	application.UseCases
 	ListBranchesFunc       func(ctx context.Context) ([]domain.Branch, error)
 	ListBranchServicesFunc func(ctx context.Context, branchID string) ([]domain.Service, error)
 	ListBranchWindowsFunc  func(ctx context.Context, branchID string) ([]domain.Window, error)
@@ -23,9 +24,9 @@ type FakeUseCases struct {
 	CallNextFunc           func(ctx context.Context, windowID string) (domain.Ticket, error)
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
-	
+
 	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error)
-	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error)
+	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
 	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
@@ -73,7 +74,7 @@ func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.Cre
 	return f.CreateLiveTicketFunc(ctx, cmd)
 }
 
-func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (domain.Ticket, error) {
+func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error) {
 	return f.CreateAppointmentFunc(ctx, cmd)
 }
 
@@ -241,7 +242,7 @@ func TestErrors(t *testing.T) {
 			t.Errorf("expected WINDOW_BUSY, got %s", resp.Error.Code)
 		}
 	})
-	
+
 	t.Run("no eligible tickets", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/windows/empty/call-next", nil)
 		rec := httptest.NewRecorder()

@@ -78,7 +78,7 @@ func integration(t *testing.T) (context.Context, *Postgres, *migrate.Migrate) {
 		t.Fatal(err)
 	}
 	version, dirty, err := m.Version()
-	if err != nil || version != 2 || dirty {
+	if err != nil || version != 5 || dirty {
 		t.Fatalf("migration version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	pool, err := pgxpool.New(ctx, u.String())
@@ -145,7 +145,7 @@ func TestPostgresCatalogAndMigration(t *testing.T) {
 	if _, err = p.pool.Exec(ctx, `INSERT INTO window_services VALUES('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',$1,$2)`, missing, parcels); err == nil {
 		t.Fatal("invalid capability accepted")
 	}
-	if err = m.Steps(-1); err != nil {
+	if err = m.Steps(-4); err != nil {
 		t.Fatal(err)
 	}
 	version, dirty, err := m.Version()
