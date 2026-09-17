@@ -187,3 +187,26 @@ export async function cancelAppointment(ticketId: string, signal?: AbortSignal):
     signal,
   }, parseAppointment);
 }
+
+export async function arriveAppointment(ticketId: string, signal?: AbortSignal): Promise<Appointment> {
+  return request(`/appointments/${encodeURIComponent(ticketId)}/arrive`, { method: 'POST', signal }, parseAppointment);
+}
+
+function parseQueuePosition(value: unknown): import('./types').QueuePosition {
+  if (!isRecord(value)) throw new ClientApiError('Некорректный формат позиции очереди');
+  const reasons = new Set(['AVAILABLE', 'NOT_ELIGIBLE_YET', 'NO_OPEN_COMPATIBLE_WINDOW', 'NOT_QUEUED']);
+  if (!reasons.has(String(value.reason))) throw new ClientApiError('Некорректная причина позиции очереди');
+  return {
+    ticketId: requireString(value.ticketId, 'ticketId'), ticketStatus: value.ticketStatus as import('./types').TicketStatus,
+    reason: value.reason as import('./types').QueuePositionReason,
+    position: typeof value.position === 'number' ? value.position : null,
+    referenceWindow: isRecord(value.referenceWindow) ? { id: requireString(value.referenceWindow.id, 'referenceWindow.id'), number: value.referenceWindow.number as number } : null,
+    calculatedAt: requireString(value.calculatedAt, 'calculatedAt'),
+    effectivePriority: typeof value.effectivePriority === 'number' ? value.effectivePriority : null,
+    effectiveQueueTime: value.effectiveQueueTime === null ? null : requireString(value.effectiveQueueTime, 'effectiveQueueTime'),
+  };
+}
+
+export async function getQueuePosition(ticketId: string, signal?: AbortSignal): Promise<import('./types').QueuePosition> {
+  return request(`/tickets/${encodeURIComponent(ticketId)}/position`, { signal }, parseQueuePosition);
+}

@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
-import { Appointment, Branch, Service, Ticket, TicketStatus } from '../../api/client/types';
+import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition } from '../../api/client/types';
 import './client.css';
 
 const POLL_INTERVAL_MS = 2000;
@@ -22,13 +22,14 @@ function localDateTimeValue(date: Date): string {
 
 function statusMessage(ticket: Ticket): string {
   switch (ticket.status) {
-    case 'WAITING': return 'Ожидайте вызова';
-    case 'CALLED': return 'ВАС ВЫЗЫВАЮТ';
+    case 'WAITING': return 'Вы в очереди';
+    case 'CALLED': return 'Вас вызывают';
     case 'SERVING': return 'Идёт обслуживание';
     case 'COMPLETED': return 'Обслуживание завершено';
-    case 'CANCELLED': return 'Талон отменён';
-    case 'NO_SHOW': return 'Вызов пропущен';
-    case 'SCHEDULED': return 'Талон зарегистрирован';
+    case 'CANCELLED': return 'Запись отменена';
+    case 'NO_SHOW': return 'Вы не подошли к окну';
+    case 'SCHEDULED': return 'Запись подтверждена';
+    default: return 'Статус обновляется';
   }
 }
 
@@ -45,12 +46,33 @@ export function ClientWorkspace() {
   const [loadingServices, setLoadingServices] = useState(false);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [arriving, setArriving] = useState(false);
+  const [arrivalAcknowledgedTicketId, setArrivalAcknowledgedTicketId] = useState<string | null>(null);
+  const [position, setPosition] = useState<QueuePosition | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
   const pollController = useRef<AbortController | null>(null);
   const createController = useRef<AbortController | null>(null);
   const pollGeneration = useRef(0);
+  const pollingTicketId = useRef<string | null>(null);
+  const previousBranchRef = useRef(branchId);
+  const activeTicketIdRef = useRef<string | null>(null);
+
+  const setActiveTicket = useCallback((nextTicket: Ticket | null) => {
+    const nextId = nextTicket?.id ?? null;
+    if (activeTicketIdRef.current !== nextId) setPosition(null);
+    activeTicketIdRef.current = nextId;
+    setTicket(nextTicket);
+  }, []);
+
+  const arrivalStorageKey = (ticketId: string) => `client-arrived:${ticketId}`;
+  const hasArrivalAcknowledgement = (ticketId: string): boolean => {
+    try { return sessionStorage.getItem(arrivalStorageKey(ticketId)) === '1'; } catch { return false; }
+  };
+  const rememberArrival = (ticketId: string) => {
+    try { sessionStorage.setItem(arrivalStorageKey(ticketId), '1'); } catch { /* optional UX memory */ }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,10 +84,10 @@ export function ClientWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!sessionStorage.getItem(STORAGE_SERVICE_KEY)) {
-      setServices([]);
-      setServiceId('');
-    }
+    const branchChanged = previousBranchRef.current !== branchId;
+    previousBranchRef.current = branchId;
+    setServices([]);
+    if (branchChanged) setServiceId('');
     setError(null);
     if (!branchId) {
       setLoadingServices(false);
@@ -75,7 +97,10 @@ export function ClientWorkspace() {
     const controller = new AbortController();
     setLoadingServices(true);
     api.listServices(branchId, controller.signal)
-      .then(setServices)
+      .then((items) => {
+        setServices(items);
+        setServiceId((current) => items.some((service) => service.id === current) ? current : '');
+      })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Не удалось загрузить услуги'); })
       .finally(() => { if (!controller.signal.aborted) setLoadingServices(false); });
     return () => controller.abort();
@@ -95,21 +120,36 @@ export function ClientWorkspace() {
     pollTimer.current = null;
     pollController.current?.abort();
     pollController.current = null;
+    pollingTicketId.current = null;
   }, []);
 
   const poll = useCallback((ticketId: string) => {
     const generation = pollGeneration.current;
+    pollingTicketId.current = ticketId;
     const controller = new AbortController();
     pollController.current = controller;
     api.getTicket(ticketId, controller.signal)
-      .then((nextTicket) => {
+      .then(async (nextTicket) => {
         if (generation !== pollGeneration.current || controller.signal.aborted) return;
-        setTicket(nextTicket);
+        setActiveTicket(nextTicket);
+        if (nextTicket.source === 'APPOINTMENT' && nextTicket.status === 'SCHEDULED') {
+          setArrivalAcknowledgedTicketId(hasArrivalAcknowledgement(nextTicket.id) ? nextTicket.id : null);
+        } else {
+          setArrivalAcknowledgedTicketId(null);
+        }
         setPollError(null);
         if (!terminalStatuses.has(nextTicket.status)) {
+          try {
+            const nextPosition = await api.getQueuePosition(nextTicket.id, controller.signal);
+            if (generation !== pollGeneration.current || pollingTicketId.current !== ticketId || activeTicketIdRef.current !== ticketId || controller.signal.aborted) return;
+            if (nextPosition.ticketId !== ticketId) return;
+            setPosition(nextPosition);
+          } catch { /* position is supplementary */ }
           sessionStorage.setItem(STORAGE_TICKET_KEY, nextTicket.id);
           pollTimer.current = window.setTimeout(() => poll(ticketId), POLL_INTERVAL_MS);
         } else {
+          if (generation !== pollGeneration.current || pollingTicketId.current !== ticketId || activeTicketIdRef.current !== ticketId) return;
+          setPosition(null);
           pollTimer.current = null;
           if (pollController.current === controller) pollController.current = null;
           sessionStorage.removeItem(STORAGE_TICKET_KEY);
@@ -146,7 +186,9 @@ export function ClientWorkspace() {
     createController.current = controller;
     try {
       const created = await api.createQrTicket(branchId, serviceId, makeIdempotencyKey(), controller.signal);
-      setTicket(created);
+      setActiveTicket(created);
+      setArrivalAcknowledgedTicketId(null);
+      setPosition(null);
       if (!terminalStatuses.has(created.status)) {
         sessionStorage.setItem(STORAGE_TICKET_KEY, created.id);
         poll(created.id);
@@ -183,7 +225,9 @@ export function ClientWorkspace() {
         controller.signal,
       );
       setAppointment(created);
-      setTicket(created.ticket);
+      setActiveTicket(created.ticket);
+      setArrivalAcknowledgedTicketId(null);
+      setPosition(null);
       if (!terminalStatuses.has(created.ticket.status)) {
         sessionStorage.setItem(STORAGE_TICKET_KEY, created.ticket.id);
         poll(created.ticket.id);
@@ -203,7 +247,8 @@ export function ClientWorkspace() {
     try {
       const cancelled = await api.cancelAppointment(ticket.id);
       setAppointment(cancelled);
-      setTicket(cancelled.ticket);
+      setActiveTicket(cancelled.ticket);
+      setPosition(null);
       stopPolling();
       sessionStorage.removeItem(STORAGE_TICKET_KEY);
     } catch (reason: unknown) {
@@ -213,13 +258,29 @@ export function ClientWorkspace() {
     }
   };
 
+  const arrive = async () => {
+    if (!ticket || arriving || ticket.status !== 'SCHEDULED') return;
+    setArriving(true); setError(null);
+    try {
+      const arrived = await api.arriveAppointment(ticket.id);
+      setAppointment(arrived); setActiveTicket(arrived.ticket);
+      setArrivalAcknowledgedTicketId(arrived.ticket.id);
+      rememberArrival(arrived.ticket.id);
+      setError('Прибытие подтверждено');
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось подтвердить прибытие');
+    } finally { setArriving(false); }
+  };
+
   const selectedService = services.find((service) => service.id === ticket?.serviceId || service.id === serviceId);
 
   const resetTicket = () => {
     stopPolling();
     sessionStorage.removeItem(STORAGE_TICKET_KEY);
-    setTicket(null);
+    setActiveTicket(null);
     setAppointment(null);
+    setArrivalAcknowledgedTicketId(null);
+    setPosition(null);
     setError(null);
     setPollError(null);
   };
@@ -252,11 +313,16 @@ export function ClientWorkspace() {
     {ticket && <div className="client-ticket" aria-live="polite">
       <div className="client-ticket-number">{ticket.publicNumber}</div>
       <div>Услуга: {selectedService?.name || ticket.serviceId}</div>
-      <div>Источник: {ticket.source}</div>
+      <div>Источник: {ticket.source === 'QR' ? 'QR' : ticket.source === 'APPOINTMENT' ? 'Предварительная запись' : 'Живая очередь'}</div>
       {appointment && <div>Время записи: {new Date(appointment.scheduledAt).toLocaleString()}</div>}
-      {appointment && <div>Статус: {ticket.status}</div>}
+      {appointment && <div>Статус: {statusMessage(ticket)}</div>}
       <div className="client-status">{statusMessage(ticket)}</div>
       {ticket.status === 'CALLED' && ticket.window && <div>Окно №{ticket.window.number}</div>}
+      {position?.ticketId === ticket.id && position.reason === 'AVAILABLE' && position.position !== null && <div className="client-position">Текущая позиция: {position.position}<small> Порядок вызова может измениться.</small></div>}
+      {position?.ticketId === ticket.id && position.reason === 'NOT_ELIGIBLE_YET' && <div className="client-message">Запись ещё не доступна для вызова.</div>}
+      {position?.ticketId === ticket.id && position.reason === 'NO_OPEN_COMPATIBLE_WINDOW' && <div className="client-message">Сейчас нет свободного подходящего окна.</div>}
+      {position?.ticketId === ticket.id && position.reason === 'NOT_QUEUED' && <div className="client-message">Талон сейчас не участвует в очереди.</div>}
+      {ticket.status === 'SCHEDULED' && ticket.source === 'APPOINTMENT' && (arrivalAcknowledgedTicketId === ticket.id ? <div className="client-message">Прибытие отмечено</div> : <button type="button" className="client-button" onClick={arrive} disabled={arriving}>{arriving ? 'Подтверждаем…' : 'Я в отделении'}</button>)}
       {ticket.status === 'SCHEDULED' && <button type="button" className="client-button client-cancel-button" onClick={cancel} disabled={cancelling}>{cancelling ? 'Отменяем...' : 'Отменить запись'}</button>}
       {pollError && <div className="client-message client-error">Обновление: {pollError}</div>}
       {terminalStatuses.has(ticket.status) && (
