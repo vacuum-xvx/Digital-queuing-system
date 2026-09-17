@@ -610,12 +610,12 @@ export default function App() {
     return INITIAL_WINDOWS;
   });
 
-  const [myTicketId, setMyTicketId] = useState<string>(() => {
+  const [myTicketId, setMyTicketId] = useState<string | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.myTicketId) return parsed.myTicketId;
+        if (parsed.myTicketId !== undefined) return parsed.myTicketId;
       }
     } catch {}
     return 't-105';
@@ -869,7 +869,8 @@ export default function App() {
   }, [queueScoring, windows, currentTime]);
 
   const activeClientTicket = useMemo(() => {
-    return tickets.find(t => t.id === myTicketId) || tickets[0] || null;
+    if (!myTicketId) return null;
+    return tickets.find(t => t.id === myTicketId) || null;
   }, [tickets, myTicketId]);
 
   const activeClientMetrics = useMemo(() => {
@@ -888,6 +889,7 @@ export default function App() {
 
   // Уведомление о приближении очереди
   useEffect(() => {
+    if (!myTicketId) return;
     const activeClient = tickets.find(t => t.id === myTicketId);
     if (!activeClient || activeClient.status !== 'WAITING') return;
 
@@ -1882,12 +1884,14 @@ export default function App() {
             >
               <QrCode className="w-4 h-4" />
               <span>2. Мой талон</span>
-              <span 
-                className="font-mono text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-sm transition-colors"
-                style={{ backgroundColor: activePalette.accentColor }}
-              >
-                {activeClientTicket?.number || 'А-042'}
-              </span>
+              {activeClientTicket && (
+                <span 
+                  className="font-mono text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-sm transition-colors"
+                  style={{ backgroundColor: activePalette.accentColor }}
+                >
+                  {activeClientTicket.number}
+                </span>
+              )}
             </button>
 
             <button
@@ -2148,211 +2152,238 @@ export default function App() {
         {/* ========================================================================= */}
         {activeTab === 'client-ticket' && (
           <div className="max-w-md mx-auto space-y-4">
-            
-            {/* Баннер активного вызова с озвучкой */}
-            {activeClientTicket?.status === 'CALLED' && (
-              <div className="p-4 sm:p-5 rounded-3xl bg-[#003B73] text-white border-2 border-[#86BBFF] shadow-lg flex items-center justify-between gap-3.5">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-                    <Volume2 className="w-6 h-6 text-[#86BBFF]" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono uppercase tracking-widest text-[#86BBFF] font-bold">Внимание! Ваш вызов</div>
-                    <div className="text-xl sm:text-2xl font-black">Пройдите к ОКНУ № {activeClientTicket.windowId || 3}</div>
-                  </div>
+            {!activeClientTicket ? (
+              <div className="bg-white rounded-3xl border border-[#D2D8E2] p-8 sm:p-10 text-center shadow-sm space-y-5 animate-in fade-in zoom-in-95">
+                <div 
+                  className="w-16 h-16 rounded-3xl mx-auto flex items-center justify-center text-white shadow-md transition-colors"
+                  style={{ backgroundColor: activePalette.primaryColor }}
+                >
+                  <QrCode className="w-8 h-8 opacity-90" />
                 </div>
-
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-black text-slate-900">У вас нет активного талона</h3>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                    Вы не стоите в очереди отделения. Получите цифровой талон или запишитесь на удобное время.
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
-                  className="px-3.5 py-2 rounded-xl bg-white text-[#003B73] hover:bg-blue-50 font-bold text-xs shrink-0 shadow transition-colors"
-                  title="Озвучить вызов диктором"
+                  onClick={() => setActiveTab('client-booking')}
+                  className="w-full min-h-[48px] rounded-2xl text-white font-bold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.99]"
+                  style={{ backgroundColor: activePalette.primaryColor }}
                 >
-                  Озвучить
+                  <Smartphone className="w-4 h-4" />
+                  <span>Взять талон</span>
                 </button>
               </div>
-            )}
-
-            {/* «Успею ли сегодня?» & Альтернативное отделение */}
-            {activeClientMetrics && (
-              <div className={`p-4 rounded-3xl border text-xs leading-snug space-y-2.5 shadow-sm ${activeClientMetrics.isHighRisk ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-bold flex items-center gap-1.5">
-                    {activeClientMetrics.isHighRisk ? (
-                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                    )}
-                    <span>
-                      {activeClientMetrics.isHighRisk ? 'Внимание к графику закрытия' : 'Вы успеваете до закрытия'}
-                    </span>
-                  </div>
-                  <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white/80 border border-current">
-                    Закрытие в {BRANCH_CONFIG.closeTimeStr}
-                  </span>
-                </div>
-
-                <p>
-                  Расчетное завершение обслуживания: <strong>~{activeClientMetrics.estFinishTimeStr}</strong> (ожидание ~{activeClientMetrics.etaMinutes} мин).
-                </p>
-
-                {activeClientMetrics.isHighRisk && (
-                  <div className="pt-2 border-t border-amber-200/80 flex items-center justify-between text-[11px]">
-                    <div>
-                      <span className="font-semibold text-slate-800">Менее загруженное отделение:</span>
-                      <div className="text-amber-800 font-bold">{BRANCH_CONFIG.alternativeBranch.name}</div>
+            ) : (
+              <>
+                {/* Баннер активного вызова с озвучкой */}
+                {activeClientTicket.status === 'CALLED' && (
+                  <div className="p-4 sm:p-5 rounded-3xl bg-[#003B73] text-white border-2 border-[#86BBFF] shadow-lg flex items-center justify-between gap-3.5">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
+                        <Volume2 className="w-6 h-6 text-[#86BBFF]" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-mono uppercase tracking-widest text-[#86BBFF] font-bold">Внимание! Ваш вызов</div>
+                        <div className="text-xl sm:text-2xl font-black">Пройдите к ОКНУ № {activeClientTicket.windowId || 3}</div>
+                      </div>
                     </div>
-                    <span className="font-mono px-2 py-1 bg-white rounded-lg border border-amber-300 text-amber-900 font-bold">
-                      ~{BRANCH_CONFIG.alternativeBranch.etaMinutes} мин
-                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
+                      className="px-3.5 py-2 rounded-xl bg-white text-[#003B73] hover:bg-blue-50 font-bold text-xs shrink-0 shadow transition-colors"
+                      title="Озвучить вызов диктором"
+                    >
+                      Озвучить
+                    </button>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Карточка электронного талона Почты России */}
-            <div className="bg-white rounded-3xl border border-[#D2D8E2] shadow-md overflow-hidden relative">
-              
-              {/* Верхняя шапка билета */}
-              <div 
-                className="text-white p-5 relative transition-colors"
-                style={{ backgroundColor: activePalette.primaryColor }}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div>
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
-                        Электронный талон
+                {/* «Успею ли сегодня?» & Альтернативное отделение */}
+                {activeClientMetrics && (
+                  <div className={`p-4 rounded-3xl border text-xs leading-snug space-y-2.5 shadow-sm ${activeClientMetrics.isHighRisk ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-bold flex items-center gap-1.5">
+                        {activeClientMetrics.isHighRisk ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                        )}
+                        <span>
+                          {activeClientMetrics.isHighRisk ? 'Внимание к графику закрытия' : 'Вы успеваете до закрытия'}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white/80 border border-current">
+                        Закрытие в {BRANCH_CONFIG.closeTimeStr}
                       </span>
                     </div>
-                    <div className="text-xs text-blue-200 mt-1">{BRANCH_CONFIG.name}</div>
+
+                    <p>
+                      Расчетное завершение обслуживания: <strong>~{activeClientMetrics.estFinishTimeStr}</strong> (ожидание ~{activeClientMetrics.etaMinutes} мин).
+                    </p>
+
+                    {activeClientMetrics.isHighRisk && (
+                      <div className="pt-2 border-t border-amber-200/80 flex items-center justify-between text-[11px]">
+                        <div>
+                          <span className="font-semibold text-slate-800">Менее загруженное отделение:</span>
+                          <div className="text-amber-800 font-bold">{BRANCH_CONFIG.alternativeBranch.name}</div>
+                        </div>
+                        <span className="font-mono px-2 py-1 bg-white rounded-lg border border-amber-300 text-amber-900 font-bold">
+                          ~{BRANCH_CONFIG.alternativeBranch.etaMinutes} мин
+                        </span>
+                      </div>
+                    )}
                   </div>
+                )}
 
-                  {/* Штемпель отделения — контрастный лазурный цвет #86BBFF и штемпельный наклон */}
-                  <PostalCircularStamp 
-                    className="w-20 h-20 absolute -top-1 right-3 text-[#86BBFF] opacity-95 rotate-12 drop-shadow-sm" 
-                    color="#86BBFF" 
-                    date={currentTime.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                    time={currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                  />
-                </div>
+                {/* Карточка электронного талона Почты России */}
+                <div className="bg-white rounded-3xl border border-[#D2D8E2] shadow-md overflow-hidden relative">
+                  
+                  {/* Верхняя шапка билета */}
+                  <div 
+                    className="text-white p-5 relative transition-colors"
+                    style={{ backgroundColor: activePalette.primaryColor }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div>
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
+                            Электронный талон
+                          </span>
+                        </div>
+                        <div className="text-xs text-blue-200 mt-1">{BRANCH_CONFIG.name}</div>
+                      </div>
 
-                {/* Доминантный номер талона */}
-                <div className="mt-4 text-center">
-                  <div className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white drop-shadow-sm">
-                    {activeClientTicket?.number || 'А-042'}
-                  </div>
-                  <div className="text-xs font-semibold text-blue-200 mt-1">
-                    {SERVICES.find(s => s.id === activeClientTicket?.serviceId)?.title || 'Получение писем и посылок'}
-                  </div>
-                </div>
-              </div>
+                      {/* Штемпель отделения — контрастный лазурный цвет #86BBFF и штемпельный наклон */}
+                      <PostalCircularStamp 
+                        className="w-20 h-20 absolute -top-1 right-3 text-[#86BBFF] opacity-95 rotate-12 drop-shadow-sm" 
+                        color="#86BBFF" 
+                        date={currentTime.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        time={currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      />
+                    </div>
 
-              {/* Фирменная тонкая разделительная линия билета */}
-              <div 
-                className="h-[2px] w-full transition-colors"
-                style={{ backgroundColor: activePalette.accentColor }}
-              ></div>
-
-              {/* Тело талона: QR-код и статус */}
-              <div className="p-5 space-y-4">
-                
-                {/* QR-код */}
-                <div className="flex justify-center">
-                  <PostalTicketQr
-                    value={`https://www.pochta.ru/q?ticket=${activeClientTicket?.number || 'А-042'}&ops=390000`}
-                    className="w-full max-w-[260px]"
-                    darkColor={activePalette.primaryColor}
-                  />
-                </div>
-
-                {/* Метрики ожидания */}
-                <div className="grid grid-cols-2 gap-2 text-center font-mono">
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                    <div className="text-[11px] text-slate-500 uppercase">Осталось перед вами</div>
-                    <div className="text-2xl font-black text-slate-900 mt-0.5">
-                      {Math.max(0, (activeClientMetrics?.position || 1) - 1)} чел.
+                    {/* Доминантный номер талона */}
+                    <div className="mt-4 text-center">
+                      <div className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white drop-shadow-sm">
+                        {activeClientTicket.number}
+                      </div>
+                      <div className="text-xs font-semibold text-blue-200 mt-1">
+                        {SERVICES.find(s => s.id === activeClientTicket.serviceId)?.title || 'Получение писем и посылок'}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                    <div className="text-[11px] text-slate-500 uppercase">Ожидание ~</div>
-                    <div className="text-2xl font-black text-[#054FA6] mt-0.5">
-                      ~{activeClientMetrics?.etaMinutes || 4} мин
+                  {/* Фирменная тонкая разделительная линия билета */}
+                  <div 
+                    className="h-[2px] w-full transition-colors"
+                    style={{ backgroundColor: activePalette.accentColor }}
+                  ></div>
+
+                  {/* Тело талона: QR-код и статус */}
+                  <div className="p-5 space-y-4">
+                    
+                    {/* QR-код */}
+                    <div className="flex justify-center">
+                      <PostalTicketQr
+                        value={`https://www.pochta.ru/q?ticket=${activeClientTicket.number}&ops=390000`}
+                        className="w-full max-w-[260px]"
+                        darkColor={activePalette.primaryColor}
+                      />
                     </div>
+
+                    {/* Метрики ожидания */}
+                    <div className="grid grid-cols-2 gap-2 text-center font-mono">
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                        <div className="text-[11px] text-slate-500 uppercase">Осталось перед вами</div>
+                        <div className="text-2xl font-black text-slate-900 mt-0.5">
+                          {Math.max(0, (activeClientMetrics?.position || 1) - 1)} чел.
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                        <div className="text-[11px] text-slate-500 uppercase">Ожидание ~</div>
+                        <div className="text-2xl font-black text-[#054FA6] mt-0.5">
+                          ~{activeClientMetrics?.etaMinutes || 4} мин
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Статус талона */}
+                    <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span className="font-bold text-slate-800">
+                          Статус: {activeClientTicket.status === 'CALLED' ? 'ВЫЗВАН К ОКНУ' : 'В ОЧЕРЕДИ'}
+                        </span>
+                      </div>
+                      <span className="font-bold text-[#054FA6]">Канал: {activeClientTicket.source}</span>
+                    </div>
+
                   </div>
                 </div>
 
-                {/* Статус талона */}
-                <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 flex items-center justify-between text-xs font-mono">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span className="font-bold text-slate-800">
-                      Статус: {activeClientTicket?.status === 'CALLED' ? 'ВЫЗВАН К ОКНУ' : 'В ОЧЕРЕДИ'}
-                    </span>
+                {/* Действия с талоном */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => downloadTicketAsImage(activeClientTicket)}
+                      className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
+                    >
+                      <Download className="w-4 h-4 text-[#054FA6]" />
+                      <span>Сохранить в PNG</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => downloadCalendarEvent(activeClientTicket)}
+                      className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
+                    >
+                      <CalendarDays className="w-4 h-4 text-[#054FA6]" />
+                      <span>В календарь (.ics)</span>
+                    </button>
                   </div>
-                  <span className="font-bold text-[#054FA6]">Канал: {activeClientTicket?.source}</span>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleShareTicket(activeClientTicket)}
+                      className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
+                    >
+                      <Share2 className="w-4 h-4 text-[#054FA6]" />
+                      <span>Поделиться</span>
+                    </button>
+
+                    {/* Кнопка озвучивания талона диктором */}
+                    <button
+                      type="button"
+                      onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
+                      className="min-h-[46px] p-2.5 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:bg-emerald-100 transition-colors"
+                    >
+                      <Volume2 className="w-4 h-4 text-emerald-600" />
+                      <span>Озвучить вызов</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cancelledNum = activeClientTicket.number;
+                      setTickets(prev => prev.filter(t => t.id !== activeClientTicket.id));
+                      setMyTicketId(null);
+                      showToast(`Талон ${cancelledNum} успешно отменен`);
+                    }}
+                    className="w-full min-h-[44px] text-xs font-semibold text-[#D92534] hover:bg-red-50 rounded-2xl border border-transparent hover:border-red-200 transition-colors"
+                  >
+                    Отменить талон и освободить очередь
+                  </button>
                 </div>
-
-              </div>
-            </div>
-
-            {/* Действия с талоном */}
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadTicketAsImage(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <Download className="w-4 h-4 text-[#054FA6]" />
-                  <span>Сохранить в PNG</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => downloadCalendarEvent(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <CalendarDays className="w-4 h-4 text-[#054FA6]" />
-                  <span>В календарь (.ics)</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleShareTicket(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <Share2 className="w-4 h-4 text-[#054FA6]" />
-                  <span>Поделиться</span>
-                </button>
-
-                {/* Кнопка озвучивания талона диктором */}
-                <button
-                  type="button"
-                  onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:bg-emerald-100 transition-colors"
-                >
-                  <Volume2 className="w-4 h-4 text-emerald-600" />
-                  <span>Озвучить вызов</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTickets(prev => prev.filter(t => t.id !== activeClientTicket.id));
-                  showToast(`Талон ${activeClientTicket.number} отменен`);
-                  setActiveTab('client-booking');
-                }}
-                className="w-full min-h-[44px] text-xs font-semibold text-[#D92534] hover:bg-red-50 rounded-2xl border border-transparent hover:border-red-200 transition-colors"
-              >
-                Отменить талон и освободить очередь
-              </button>
-            </div>
-
+              </>
+            )}
           </div>
         )}
 
