@@ -65,7 +65,7 @@ func TestPanicRecovery(t *testing.T) {
 	handler := recoverPanic(slog.New(slog.NewJSONHandler(&logs, nil)))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("private panic detail") }))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if response.Code != 500 || strings.TrimSpace(response.Body.String()) != `{"status":"internal_error"}` {
+	if response.Code != 500 || strings.TrimSpace(response.Body.String()) != `{"error":{"code":"INTERNAL_ERROR","message":"Internal server error","requestId":""}}` {
 		t.Fatalf("unsafe panic response: %d %s", response.Code, response.Body.String())
 	}
 	if strings.Contains(logs.String(), "private panic detail") {

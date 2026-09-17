@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -88,14 +89,18 @@ type CreateLiveTicketRequest struct {
 
 func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 	branchID := chi.URLParam(r, "branchId")
+	if !validUUID(branchID) {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid branchId")
+		return
+	}
 	idempotencyKey := r.Header.Get("Idempotency-Key")
-	if idempotencyKey == "" {
+	if strings.TrimSpace(idempotencyKey) == "" {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Missing Idempotency-Key header")
 		return
 	}
 
 	var req CreateLiveTicketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ServiceID == "" {
+	if err := decodeRequest(r, &req); err != nil || !validUUID(req.ServiceID) {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
@@ -110,7 +115,11 @@ func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSONResponse(w, http.StatusCreated, mapTicket(ticket.Ticket))
+	status := http.StatusCreated
+	if ticket.Replayed {
+		status = http.StatusOK
+	}
+	writeJSONResponse(w, status, mapTicket(ticket.Ticket))
 }
 
 type CreateAppointmentRequest struct {

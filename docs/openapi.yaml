@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: E-SUO Queue Engine API
   version: 1.0.0
-  description: Backend API for the Queue System (Sprint #1)
+  description: Backward-compatible Queue System API (Sprints 1–3)
 servers:
   - url: /api/v1
 paths:
@@ -16,6 +16,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /branches/{branchId}/services:
     get:
       summary: List services available in a branch
@@ -32,6 +34,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ServiceListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /branches/{branchId}/tickets/qr:
     post:
       summary: Create a QR ticket
@@ -77,6 +83,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /tickets/{ticketId}:
     get:
       summary: Get ticket details
@@ -99,6 +109,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/branches/{branchId}/windows:
     get:
       summary: List operator windows in a branch
@@ -114,9 +126,17 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Window'
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Window'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/windows/{windowId}/current-ticket:
     get:
       summary: Get the current active ticket for a window
@@ -141,6 +161,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/windows/{windowId}/call-next:
     post:
       summary: Call the next waiting ticket
@@ -163,6 +185,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/start:
     post:
       summary: Start service for a ticket
@@ -185,6 +211,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/complete:
     post:
       summary: Complete service for a ticket
@@ -207,10 +237,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /branches/{branchId}/tickets/live:
     post:
-      summary: Create a live queue ticket
+      summary: Create a LIVE ticket (retained legacy alias)
       parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
         - name: branchId
           in: path
           required: true
@@ -223,6 +263,18 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateLiveTicketRequest'
       responses:
+        '200':
+          description: Exact idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '201':
           description: Created
           content:
@@ -239,6 +291,11 @@ paths:
     post:
       summary: Create an appointment ticket
       parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
         - name: branchId
           in: path
           required: true
@@ -251,18 +308,84 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateAppointmentRequest'
       responses:
+        '200':
+          description: Exact idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
         '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Ticket'
+                $ref: '#/components/schemas/AppointmentResponse'
         '400':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/branches/{branchId}/overview:
+    get:
+      summary: Get admin branch overview
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Admin overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBranchOverview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/branches/{branchId}/priorities:
+    put:
+      summary: Save legacy priority rules
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PriorityRule'
+      responses:
+        '200':
+          description: Saved priority rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PriorityRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /admin/branches/{branchId}/queue-policy:
     get:
       summary: Get queue policy
@@ -285,6 +408,8 @@ paths:
                 $ref: '#/components/schemas/QueuePolicy'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
     put:
       summary: Update queue policy
       operationId: updateQueuePolicy
@@ -316,6 +441,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/PolicyVersionConflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /admin/tickets/{ticketId}/events:
     get:
       summary: List ticket events
@@ -336,6 +463,8 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - items
                 properties:
                   items:
                     type: array
@@ -343,6 +472,8 @@ paths:
                       $ref: '#/components/schemas/TicketEvent'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /appointments:
     post:
       summary: Create an appointment
@@ -392,6 +523,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/IdempotencyConflict'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /appointments/{ticketId}/cancel:
     post:
       summary: Cancel an appointment
@@ -416,8 +551,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/InvalidState'
-  /operator/windows/{windowId}/status:
-    post:
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/windows/{windowId}/status:
+    put:
       summary: Change window status
       parameters:
         - name: windowId
@@ -444,6 +581,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/return:
     post:
       summary: Return ticket to queue
@@ -466,6 +607,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/redirect:
     post:
       summary: Redirect ticket
@@ -494,28 +639,162 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /operator/branches/{branchId}/tickets/live:
+    post:
+      summary: Create LIVE ticket for a physically present client
+      operationId: createLiveTicket
+      parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLiveTicketRequest'
+      responses:
+        '200':
+          description: Exact idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '201':
+          description: Created; ticket enters WAITING without a window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /appointments/{ticketId}/arrive:
+    post:
+      summary: Record appointment arrival without changing SCHEDULED status
+      operationId: arriveAppointment
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Arrival recorded or repeated while SCHEDULED; arrivedAt is not exposed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /operator/tickets/{ticketId}/no-show:
+    post:
+      summary: Mark a CALLED ticket NO_SHOW; repeated NO_SHOW is idempotent
+      operationId: markNoShow
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: NO_SHOW; historical window retained, active capacity released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /tickets/{ticketId}/position:
+    get:
+      summary: Get the Core queue rank snapshot for a deterministic OPEN compatible window
+      description: Includes busy OPEN windows as reference. This is a snapshot for the next selection, not
+        an ETA or guaranteed number of completed clients.
+      operationId: getQueuePosition
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Snapshot; nullable fields when unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuePosition'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   responses:
+    InternalError:
+      description: INTERNAL_ERROR (sanitized)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
-      description: Not Found
+      description: NOT_FOUND
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     BadRequest:
-      description: Bad Request
+      description: VALIDATION_ERROR
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     IdempotencyConflict:
-      description: Idempotency Conflict
+      description: IDEMPOTENCY_CONFLICT
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     InvalidState:
-      description: Invalid State
+      description: INVALID_TICKET_STATE
       content:
         application/json:
           schema:
@@ -532,6 +811,227 @@ components:
               message: "Version mismatch"
               requestId: "req-123"
   schemas:
+    QueuePolicy:
+      type: object
+      additionalProperties: false
+      required:
+      - branchId
+      - appointmentDuePriority
+      - qrPriority
+      - livePriority
+      - antiStarvationThresholdMinutes
+      - antiStarvationPointsPerMinute
+      - appointmentGraceMinutes
+      - appointmentLatePenaltyPerMinute
+      - appointmentLatePenaltyMaxPoints
+      - version
+      - updatedAt
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        appointmentDuePriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        qrPriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        livePriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        antiStarvationThresholdMinutes:
+          type: integer
+          minimum: 0
+          maximum: 240
+        antiStarvationPointsPerMinute:
+          type: integer
+          minimum: 1
+          maximum: 600
+        appointmentGraceMinutes:
+          type: integer
+          minimum: 0
+          maximum: 120
+        appointmentLatePenaltyPerMinute:
+          type: integer
+          minimum: 0
+          maximum: 600
+        appointmentLatePenaltyMaxPoints:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        version:
+          type: integer
+          format: int64
+        updatedAt:
+          type: string
+          format: date-time
+    UpdateQueuePolicyRequest:
+      type: object
+      additionalProperties: false
+      description: Core validates appointmentDuePriority > qrPriority and livePriority; appointmentLatePenaltyMaxPoints
+        <= appointmentDuePriority. Omitted new fields preserve the current policy only when expectedVersion
+        matches; concurrent changes return POLICY_VERSION_CONFLICT. Explicit null is invalid. Every successful
+        PUT increments version once, including unchanged values.
+      required:
+      - appointmentDuePriority
+      - qrPriority
+      - expectedVersion
+      properties:
+        appointmentDuePriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        qrPriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        livePriority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        antiStarvationThresholdMinutes:
+          type: integer
+          minimum: 0
+          maximum: 240
+        antiStarvationPointsPerMinute:
+          type: integer
+          minimum: 1
+          maximum: 600
+        appointmentGraceMinutes:
+          type: integer
+          minimum: 0
+          maximum: 120
+        appointmentLatePenaltyPerMinute:
+          type: integer
+          minimum: 0
+          maximum: 600
+        appointmentLatePenaltyMaxPoints:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        expectedVersion:
+          type: integer
+          format: int64
+    AppointmentResponse:
+      type: object
+      required:
+      - ticket
+      - scheduledAt
+      properties:
+        ticket:
+          $ref: '#/components/schemas/Ticket'
+        scheduledAt:
+          type: string
+          format: date-time
+    QueuePosition:
+      type: object
+      additionalProperties: false
+      required:
+      - ticketId
+      - ticketStatus
+      - reason
+      - position
+      - referenceWindow
+      - calculatedAt
+      - effectivePriority
+      - effectiveQueueTime
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+        ticketStatus:
+          type: string
+          enum:
+          - SCHEDULED
+          - WAITING
+          - CALLED
+          - SERVING
+          - COMPLETED
+          - CANCELLED
+          - NO_SHOW
+        reason:
+          type: string
+          enum:
+          - AVAILABLE
+          - NOT_ELIGIBLE_YET
+          - NO_OPEN_COMPATIBLE_WINDOW
+          - NOT_QUEUED
+        position:
+          type: integer
+          minimum: 1
+          nullable: true
+        referenceWindow:
+          type: object
+          nullable: true
+          required:
+          - id
+          - number
+          properties:
+            id:
+              type: string
+              format: uuid
+            number:
+              type: integer
+        calculatedAt:
+          type: string
+          format: date-time
+        effectivePriority:
+          type: integer
+          format: int64
+          nullable: true
+        effectiveQueueTime:
+          type: string
+          format: date-time
+          nullable: true
+    TicketEvent:
+      type: object
+      required:
+      - id
+      - type
+      - fromStatus
+      - toStatus
+      - windowId
+      - policyVersion
+      - decisionPriority
+      - occurredAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum:
+          - CREATED
+          - ARRIVED
+          - CALLED
+          - SERVICE_STARTED
+          - COMPLETED
+          - CANCELLED
+          - NO_SHOW
+        fromStatus:
+          $ref: '#/components/schemas/TicketStatus'
+          nullable: true
+        toStatus:
+          $ref: '#/components/schemas/TicketStatus'
+        windowId:
+          type: string
+          format: uuid
+          nullable: true
+        policyVersion:
+          type: integer
+          format: int64
+          nullable: true
+        decisionPriority:
+          type: integer
+          format: int64
+          nullable: true
+          description: Final canonical effective priority at CALLED, without a maximum cap; null for other events
+        occurredAt:
+          type: string
+          format: date-time
     BranchListResponse:
       type: object
       required:
@@ -616,9 +1116,9 @@ components:
         serviceId:
           type: string
         source:
-          type: string
+          $ref: '#/components/schemas/TicketSource'
         status:
-          type: string
+          $ref: '#/components/schemas/TicketStatus'
         window:
           type: object
           nullable: true
@@ -655,6 +1155,75 @@ components:
       properties:
         serviceId:
           type: string
+    TicketSource:
+      type: string
+      enum:
+        - APPOINTMENT
+        - QR
+        - LIVE
+    TicketStatus:
+      type: string
+      enum:
+        - SCHEDULED
+        - WAITING
+        - CALLED
+        - SERVING
+        - COMPLETED
+        - CANCELLED
+        - NO_SHOW
+    PriorityRule:
+      type: object
+      required:
+        - source
+        - name
+        - weight
+        - maxWaitLimitMinutes
+        - description
+      properties:
+        source:
+          $ref: '#/components/schemas/TicketSource'
+        name:
+          type: string
+        weight:
+          type: integer
+        maxWaitLimitMinutes:
+          type: integer
+        description:
+          type: string
+    AdminBranchOverview:
+      type: object
+      required:
+        - branchId
+        - branchName
+        - metrics
+        - windows
+        - queue
+        - priorities
+        - anomalies
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        metrics:
+          type: object
+        windows:
+          type: array
+          items:
+            type: object
+        queue:
+          type: array
+          items:
+            type: object
+        priorities:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriorityRule'
+        anomalies:
+          type: array
+          items:
+            type: object
     ErrorResponse:
       type: object
       required:
@@ -675,11 +1244,13 @@ components:
               type: string
     CreateLiveTicketRequest:
       type: object
+      additionalProperties: false
       required:
         - serviceId
       properties:
         serviceId:
           type: string
+          format: uuid
     CreateAppointmentRequest:
       type: object
       required:
