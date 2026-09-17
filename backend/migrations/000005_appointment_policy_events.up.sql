@@ -1,5 +1,14 @@
--- scheduled_at already exists since 000003. Only normalize pending appointments;
--- do not rewrite served/terminal history or backfill events.
+-- Ensure scheduled_at column exists and migrate legacy scheduled_time if present.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='scheduled_time')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='scheduled_at') THEN
+        ALTER TABLE tickets RENAME COLUMN scheduled_time TO scheduled_at;
+    ELSE
+        ALTER TABLE tickets ADD COLUMN IF NOT EXISTS scheduled_at timestamptz;
+    END IF;
+END $$;
+
 UPDATE tickets SET queue_entered_at=scheduled_at, status='SCHEDULED', window_id=NULL
  WHERE source='APPOINTMENT' AND status IN ('WAITING','SCHEDULED') AND scheduled_at IS NOT NULL;
 ALTER TABLE tickets ADD CONSTRAINT tickets_scheduled_source CHECK (
