@@ -4,6 +4,7 @@ import {
   Service,
   ServiceListResponse,
   Ticket,
+  Appointment,
 } from './types';
 
 export class ClientApiError extends Error {
@@ -93,6 +94,17 @@ function parseTicket(value: unknown): Ticket {
   };
 }
 
+function parseAppointment(value: unknown): Appointment {
+  if (!isRecord(value) || !isRecord(value.ticket)) {
+    throw new ClientApiError('Некорректный формат записи');
+  }
+  const scheduledAt = requireString(value.scheduledAt, 'scheduledAt');
+  if (Number.isNaN(Date.parse(scheduledAt))) {
+    throw new ClientApiError('Некорректное поле scheduledAt');
+  }
+  return { ticket: parseTicket(value.ticket), scheduledAt };
+}
+
 async function request<T>(path: string, init?: RequestInit, parser?: (value: unknown) => T): Promise<T> {
   let response: Response;
   try {
@@ -120,6 +132,17 @@ async function request<T>(path: string, init?: RequestInit, parser?: (value: unk
   return parser ? parser(body) : body as T;
 }
 
+async function requestWithNetworkRetry<T>(path: string, init: RequestInit, parser: (value: unknown) => T): Promise<T> {
+  try {
+    return await request(path, init, parser);
+  } catch (error) {
+    if (error instanceof ClientApiError && error.status === undefined) {
+      return request(path, init, parser);
+    }
+    throw error;
+  }
+}
+
 export async function listBranches(signal?: AbortSignal): Promise<Branch[]> {
   const response = await request('/branches', { signal }, parseBranches);
   return response.items;
@@ -143,3 +166,24 @@ export async function getTicket(ticketId: string, signal?: AbortSignal): Promise
   return request(`/tickets/${encodeURIComponent(ticketId)}`, { signal }, parseTicket);
 }
 
+export async function createAppointment(
+  branchId: string,
+  serviceId: string,
+  scheduledAt: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<Appointment> {
+  return requestWithNetworkRetry(`/branches/${encodeURIComponent(branchId)}/tickets/appointment`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ serviceId, scheduledAt }),
+  }, parseAppointment);
+}
+
+export async function cancelAppointment(ticketId: string, signal?: AbortSignal): Promise<Appointment> {
+  return request(`/appointments/${encodeURIComponent(ticketId)}/cancel`, {
+    method: 'POST',
+    signal,
+  }, parseAppointment);
+}
