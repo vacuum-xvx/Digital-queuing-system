@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useDemoIntegration, createQrTicket, createAppointment, callNext, startService, completeService, markNoShow, mapBackendTicketToDemo, createLiveTicket } from './demoIntegration';
+import { changeWindowStatus, updateWindowServices } from './api/admin/adminApi';
 import { login, register, logout, getMe, listUsers, changeUserRole, User } from './api/authApi';
 import QRCode from 'qrcode';
 import {
@@ -982,35 +983,54 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     logAudit('RETURNED', `Талон ${targetNum} возвращен оператором в пул ожидания`);
   }, [operatorCurrentTicket, operatorWindowId, showToast, logAudit]);
 
-  const handleToggleWindowShift = (targetWindowId: number) => {
-    setWindows(prev => prev.map(w => {
-      if (w.id === targetWindowId) {
-        const nextStatus: 'ACTIVE' | 'CLOSED' = w.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
-        const updated: PostalWindow = { ...w, status: nextStatus };
-        logAudit('WINDOW_STATUS_CHANGE', `${w.name}: статус изменен на ${nextStatus === 'ACTIVE' ? 'В РАБОТЕ' : 'ЗАКРЫТО'}`);
-        showToast(`${w.name}: смена ${nextStatus === 'ACTIVE' ? 'открыта' : 'закрыта'}`);
-        return updated;
-      }
-      return w;
-    }));
+  const handleToggleWindowShift = async (targetWindowId: number) => {
+    // Окно в UI нумеруется локально; windowUuid хранит реальный UUID из backend.
+    const w = windows.find(x => x.id === targetWindowId);
+    if (!w || !w.windowUuid) return;
+    const nextStatus: 'ACTIVE' | 'CLOSED' = w.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
+    const apiStatus: 'OPEN' | 'CLOSED' | 'CLOSING' = nextStatus === 'ACTIVE' ? 'OPEN' : 'CLOSED';
+    try {
+      // Persist via API: иначе overview-опрос на 3 сек. откатывает смену статуса.
+      await changeWindowStatus(w.windowUuid, apiStatus);
+      setWindows(prev => prev.map(x => x.id === targetWindowId ? { ...x, status: nextStatus } : x));
+      logAudit('WINDOW_STATUS_CHANGE', `${w.name}: статус изменён на ${nextStatus === 'ACTIVE' ? 'В РАБОТЕ' : 'ЗАКРЫТА'}`);
+      showToast(`${w.name}: смена ${nextStatus === 'ACTIVE' ? 'открыта' : 'закрыта'}`);
+    } catch (e: any) {
+      showToast(`Ошибка смены статуса: ${e?.message || 'сервер недоступен'}`);
+    }
   };
 
-  const handleToggleWindowService = (targetWindowId: number, serviceId: string) => {
-    setWindows(prev => prev.map(w => {
-      if (w.id === targetWindowId) {
-        const hasService = w.services.includes(serviceId);
-        const newServices = hasService
-          ? w.services.filter(s => s !== serviceId)
-          : [...w.services, serviceId];
-        if (newServices.length === 0) {
-          showToast('У окна должна быть доступна хотя бы одна услуга');
-          return w;
-        }
-        logAudit('WINDOW_SERVICES_CHANGE', `${w.name}: обновлен список услуг`);
-        return { ...w, services: newServices };
+  const handleToggleWindowService = async (targetWindowId: number, serviceId: string) => {
+    const w = windows.find(x => x.id === targetWindowId);
+    if (!w || !w.windowUuid) return;
+    const hasService = w.services.includes(serviceId);
+    let newServices: string[];
+    if (hasService) {
+      newServices = w.services.filter(s => s !== serviceId);
+      if (newServices.length === 0) {
+        showToast('У окна должна быть доступна хотя бы одна услуга');
+        return w;
       }
-      return w;
-    }));
+    } else {
+      newServices = [...w.services, serviceId];
+    }
+    try {
+      // Persist capability set: иначе overview-опрос откатывает переключение услуг.
+      await updateWindowServices(w.windowUuid, newServices);
+      setWindows(prev => prev.map(x => x.id === targetWindowId ? { ...x, services: newServices } : x));
+      logAudit('WINDOW_SERVICES_CHANGE', `${w.name}: обновлён список услуг`);
+      showToast(`${w.name}: список услуг сохранён`);
+    } catch (e: any) {
+      const st = e?.status;
+      if (st === 409 || e?.code === 'INVALID_TICKET_STATE') {
+        showToast('Услугу нельзя отключить: есть талоны, обслуженные в окне');
+      } else if (st === 404) {
+        showToast('Окно не найдено');
+      } else {
+        showToast(`Ошибка сохранения услуг: ${e?.message || 'сервер недоступен'}`);
+      }
+    }
+    return undefined;
   };
 
   /**
