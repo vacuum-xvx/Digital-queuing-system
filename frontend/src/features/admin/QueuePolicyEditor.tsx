@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueuePolicy, AdminApiError } from '../../api/admin/types';
 import * as api from '../../api/admin/adminApi';
 
@@ -22,14 +22,20 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
     message: string;
   } | null>(null);
 
+  const requestId = useRef(0);
+
   const fetchPolicy = useCallback(async () => {
+    const id = ++requestId.current;
     setIsLoading(true);
+    setPolicy(null);
     try {
       const data = await api.getQueuePolicy(branchId);
+      if (id !== requestId.current) return;
       setPolicy(data);
       setAppointmentDuePriority(String(data.appointmentDuePriority));
       setQrPriority(String(data.qrPriority));
     } catch (err) {
+      if (id !== requestId.current) return;
       setNotice({
         type: 'error',
         message:
@@ -38,24 +44,25 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
             : 'Не удалось связаться с сервером при получении правил очереди',
       });
     } finally {
-      setIsLoading(false);
+      if (id === requestId.current) setIsLoading(false);
     }
   }, [branchId]);
 
   useEffect(() => {
-    fetchPolicy();
+    void fetchPolicy();
+    return () => { requestId.current += 1; };
   }, [fetchPolicy]);
 
   // Client-side Validation (Sprint #2 rules):
   // 1. Integer range 0..1000
   // 2. appointmentDuePriority > qrPriority
   // 3. Equal priorities are invalid
-  const apptVal = parseInt(appointmentDuePriority, 10);
-  const qrVal = parseInt(qrPriority, 10);
+  const apptVal = Number(appointmentDuePriority);
+  const qrVal = Number(qrPriority);
 
   let validationError: string | null = null;
-  if (isNaN(apptVal) || isNaN(qrVal)) {
-    validationError = 'Введите числовые значения приоритетов';
+  if (!appointmentDuePriority.trim() || !qrPriority.trim() || !Number.isInteger(apptVal) || !Number.isInteger(qrVal)) {
+    validationError = 'Введите целые числовые значения приоритетов';
   } else if (apptVal < 0 || apptVal > 1000 || qrVal < 0 || qrVal > 1000) {
     validationError = 'Приоритеты должны быть целыми числами в диапазоне от 0 до 1000';
   } else if (apptVal === qrVal) {
@@ -68,8 +75,9 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isFormValid || !policy || isSaving) return;
+    if (!isFormValid || !policy || isSaving || isLoading) return;
 
+    const id = requestId.current;
     setIsSaving(true);
     setNotice(null);
 
@@ -80,6 +88,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
         expectedVersion: policy.version,
       });
 
+      if (id !== requestId.current) return;
       setPolicy(updated);
       setAppointmentDuePriority(String(updated.appointmentDuePriority));
       setQrPriority(String(updated.qrPriority));
@@ -88,7 +97,8 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
         message: `Правила очереди успешно сохранены! Версия обновлена: ${updated.version}`,
       });
     } catch (err) {
-      if (err instanceof AdminApiError && err.code === 'POLICY_VERSION_CONFLICT') {
+      if (id !== requestId.current) return;
+      if (err instanceof AdminApiError && err.status === 409 && err.code === 'POLICY_VERSION_CONFLICT') {
         setNotice({
           type: 'warning',
           message: 'Настройки были изменены. Обновляем актуальную версию.',
@@ -113,7 +123,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
     <div className="admin-panel-card queue-policy-card">
       <div className="queue-policy-header">
         <div>
-          <h2>Редактор правил очереди (Queue Policy)</h2>
+          <h2>Приоритеты очереди</h2>
           <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
             {branchName ? `Отделение: ${branchName}` : `ID отделения: ${branchId}`}
           </p>
@@ -150,8 +160,10 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
         </div>
       )}
 
-      {isLoading && !policy ? (
+      {isLoading ? (
         <p style={{ color: '#64748b', padding: '24px 0' }}>Загрузка правил очереди...</p>
+      ) : !policy ? (
+        <button type="button" onClick={() => { setNotice(null); void fetchPolicy(); }}>Повторить загрузку</button>
       ) : (
         <form onSubmit={handleSave} className="policy-form">
           <div className="form-group">
@@ -162,6 +174,8 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
             <input
               id="input-appt-priority"
               type="number"
+              required
+              step="1"
               min="0"
               max="1000"
               className="operator-select policy-input"
@@ -179,6 +193,8 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
             <input
               id="input-qr-priority"
               type="number"
+              required
+              step="1"
               min="0"
               max="1000"
               className="operator-select policy-input"
