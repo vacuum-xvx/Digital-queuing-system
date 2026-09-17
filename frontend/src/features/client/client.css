@@ -1,13 +1,17 @@
 .client-card { max-width: 520px; margin-top: 24px; padding: 24px; border: 1px solid #dbe3ec; border-radius: 12px; background: #fff; }
 .client-form { display: grid; gap: 16px; }
+.client-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+.client-mode-button { min-height: 42px; padding: 8px 12px; border: 1px solid #b8c4d1; border-radius: 6px; background: #fff; font: inherit; cursor: pointer; }
+.client-mode-button-active { border-color: #1d4ed8; background: #eff6ff; color: #1d4ed8; font-weight: 700; }
+.client-mode-button:disabled { cursor: not-allowed; opacity: .6; }
 .client-field { display: grid; gap: 6px; font-weight: 600; }
-.client-select, .client-button { min-height: 42px; padding: 8px 12px; border: 1px solid #b8c4d1; border-radius: 6px; font: inherit; }
+.client-select, .client-input, .client-button { min-height: 42px; padding: 8px 12px; border: 1px solid #b8c4d1; border-radius: 6px; font: inherit; }
 .client-button { border: 0; background: #1d4ed8; color: #fff; cursor: pointer; font-weight: 700; }
 .client-button:disabled, .client-select:disabled { cursor: not-allowed; opacity: .6; }
+.client-cancel-button { background: #b91c1c; }
 .client-message { margin: 12px 0 0; color: #475569; }
 .client-error { color: #b91c1c; }
 .client-ticket { display: grid; gap: 10px; margin-top: 20px; padding: 20px; border-radius: 10px; background: #eff6ff; }
 .client-ticket-number { font-size: 2rem; font-weight: 800; }
 .client-status { font-size: 1.25rem; font-weight: 700; }
 .client-retry { margin-top: 10px; }
-
