@@ -3,6 +3,7 @@ import { checkHealth } from './api/health';
 import { ClientPage } from './pages/ClientPage';
 import { OperatorPage } from './pages/OperatorPage';
 import { AdminPage } from './pages/AdminPage';
+import PochtaDemo from './PochtaDemo';
 
 export function App() {
   const [health, setHealth] = useState<'Checking...' | 'Available' | 'Unavailable'>('Checking...');
@@ -37,6 +38,10 @@ export function App() {
   }, []);
 
   const DemoEntry = ({ role }: { role: string }) => <section><h2>{role}</h2><p>Демонстрационный вход без production-аутентификации.</p><a href={role === 'Оператор' ? '/operator' : '/admin'} onClick={(e) => navigate(role === 'Оператор' ? '/operator' : '/admin', e)}>Продолжить в демо-режиме</a></section>;
+
+  if (currentPath === '/demo') {
+    return <PochtaDemo />;
+  }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
     { path: '/', label: 'Client', page: <ClientPage /> },
     { path: '/operator/login', label: 'Operator login', page: <DemoEntry role="Оператор" /> },
