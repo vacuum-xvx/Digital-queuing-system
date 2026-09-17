@@ -110,6 +110,7 @@ async function request<T>(path: string, init?: RequestInit, parser?: (value: unk
   try {
     response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
+      credentials: 'include',
       headers: { Accept: 'application/json', ...init?.headers },
     });
   } catch {

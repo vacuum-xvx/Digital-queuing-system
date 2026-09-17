@@ -28,7 +28,31 @@ const (
 	window2    = "44444444-4444-4444-4444-444444444444"
 	window3    = "66666666-6666-6666-6666-666666666666"
 	missing    = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+	// migrationHead is the last migration in ../../migrations. Bump it together with
+	// every new migration, otherwise the whole integration suite fails on the version
+	// guard instead of the behaviour it is meant to protect.
+	migrationHead = 9
+
+	// Absolute versions replayed by the migration tests. They must not be expressed as
+	// a step count from the head: adding 000007+ silently shifted every relative
+	// rollback onto the wrong migration.
+	migrationInitial    = 1 // 000001_initial only
+	migrationPreSprint2 = 4 // head before 000005 appointment normalization and events
+	migrationPreSprint3 = 5 // head before 000006 sprint #3 queue engine
 )
+
+// downTo rolls the schema back to an absolute migration version.
+func downTo(t *testing.T, m *migrate.Migrate, version uint) {
+	t.Helper()
+	steps := int(migrationHead) - int(version)
+	if steps <= 0 {
+		t.Fatalf("downTo(%d) from head %d is not a rollback", version, migrationHead)
+	}
+	if err := m.Steps(-steps); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // Every test gets a private schema. Existing application data is never reset.
 func integration(t *testing.T) (context.Context, *Postgres, *migrate.Migrate) {
@@ -78,7 +102,7 @@ func integration(t *testing.T) (context.Context, *Postgres, *migrate.Migrate) {
 		t.Fatal(err)
 	}
 	version, dirty, err := m.Version()
-	if err != nil || version != 6 || dirty {
+	if err != nil || version != migrationHead || dirty {
 		t.Fatalf("migration version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	pool, err := pgxpool.New(ctx, u.String())
@@ -115,18 +139,29 @@ func TestPostgresCatalogAndMigration(t *testing.T) {
 		t.Fatalf("branches: %v %v", branches, err)
 	}
 	services, err := p.ListBranchServices(ctx, demoBranch)
-	if err != nil || len(services) != 2 {
+	if err != nil || len(services) != 4 {
 		t.Fatalf("services: %v %v", services, err)
 	}
 	windows, err := p.ListBranchWindows(ctx, demoBranch)
 	if err != nil || len(windows) != 3 {
 		t.Fatalf("windows: %v %v", windows, err)
 	}
+	// 000002 seeds PARCELS/PAYMENTS; 000009 adds SEND/RETAIL to the branch catalog and
+	// spreads them over the demo windows. Capabilities are ordered by service code.
+	ids := []string{window1, window2, window3}
+	codes := [][]string{
+		{"PARCELS", "RETAIL", "SEND"},
+		{"PAYMENTS", "RETAIL"},
+		{"PARCELS", "RETAIL", "SEND"},
+	}
 	for i, w := range windows {
-		ids := []string{window1, window2, window3}
-		codes := []string{"PARCELS", "PAYMENTS", "PARCELS"}
-		if w.ID != ids[i] || w.Number != i+1 || w.Status != domain.WindowStatusOpen || len(w.Services) != 1 || w.Services[0].Code != codes[i] {
+		if w.ID != ids[i] || w.Number != i+1 || w.Status != domain.WindowStatusOpen || len(w.Services) != len(codes[i]) {
 			t.Fatalf("window: %+v", w)
+		}
+		for j, s := range w.Services {
+			if s.Code != codes[i][j] {
+				t.Fatalf("window %d capability %d: %s", w.Number, j, s.Code)
+			}
 		}
 	}
 	_, err = p.ListBranchServices(ctx, missing)
@@ -145,11 +180,9 @@ func TestPostgresCatalogAndMigration(t *testing.T) {
 	if _, err = p.pool.Exec(ctx, `INSERT INTO window_services VALUES('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',$1,$2)`, missing, parcels); err == nil {
 		t.Fatal("invalid capability accepted")
 	}
-	if err = m.Steps(-5); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationInitial)
 	version, dirty, err := m.Version()
-	if err != nil || version != 1 || dirty {
+	if err != nil || version != migrationInitial || dirty {
 		t.Fatalf("down: %d %v %v", version, dirty, err)
 	}
 	if err = m.Up(); err != nil {

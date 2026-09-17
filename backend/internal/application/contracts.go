@@ -46,6 +46,14 @@ type CreateAppointmentCommand struct {
 	IdempotencyKey string
 }
 
+// UpdateWindowServicesCommand replaces the set of services a postal window is
+// allowed to serve (window_services). At least one service is required, because a
+// window without capabilities can never be assigned a ticket by the queue engine.
+type UpdateWindowServicesCommand struct {
+	WindowID   string
+	ServiceIDs []string
+}
+
 type RedirectTicketCommand struct {
 	TicketID     string
 	NewServiceID string
@@ -70,6 +78,7 @@ type UseCases interface {
 	GetCurrentTicket(ctx context.Context, windowID string) (*domain.Ticket, error)
 
 	ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
+	UpdateWindowServices(ctx context.Context, cmd UpdateWindowServicesCommand) (domain.Window, error)
 	CallNext(ctx context.Context, windowID string) (domain.Ticket, error)
 
 	StartService(ctx context.Context, ticketID string) (domain.Ticket, error)
@@ -78,6 +87,15 @@ type UseCases interface {
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+
+	// Auth & Roles
+	Register(ctx context.Context, email, password string) (domain.User, error)
+	ConfirmEmail(ctx context.Context, token string) error
+	Login(ctx context.Context, email, password string) (domain.Session, error)
+	Logout(ctx context.Context, token string) error
+	GetSessionUser(ctx context.Context, token string) (domain.User, error)
+	ListUsers(ctx context.Context) ([]domain.User, error)
+	ChangeUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
 }
 
 var ErrPolicyVersionConflict = errors.New("queue policy version conflict")

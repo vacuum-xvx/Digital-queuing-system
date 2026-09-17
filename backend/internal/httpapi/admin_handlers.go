@@ -52,6 +52,41 @@ func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type UpdateWindowServicesRequest struct {
+	ServiceIDs []string `json:"serviceIds"`
+}
+
+// UpdateWindowServices persists the capability set of a window. Without this call the
+// operator screen only edited browser state, so the next overview poll reverted it.
+func (a *API) UpdateWindowServices(w http.ResponseWriter, r *http.Request) {
+	windowID := chi.URLParam(r, "windowId")
+
+	var req UpdateWindowServicesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.ServiceIDs) == 0 {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR",
+			"serviceIds must contain at least one service")
+		return
+	}
+	for _, serviceID := range req.ServiceIDs {
+		if serviceID == "" {
+			writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR",
+				"serviceIds must not contain empty ids")
+			return
+		}
+	}
+
+	wnd, err := a.usecases.UpdateWindowServices(r.Context(), application.UpdateWindowServicesCommand{
+		WindowID:   windowID,
+		ServiceIDs: req.ServiceIDs,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, mapWindowDTO(wnd))
+}
+
 func (a *API) GetAdminOverview(w http.ResponseWriter, r *http.Request) {
 	branchID := chi.URLParam(r, "branchId")
 	overview, err := a.usecases.GetAdminOverview(r.Context(), branchID)

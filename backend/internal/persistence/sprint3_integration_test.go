@@ -535,9 +535,7 @@ func TestSprint3PolicyValidation(t *testing.T) {
 
 func TestSprint3MigrationAndConstraints(t *testing.T) {
 	ctx, p, m := integration(t)
-	if err := m.Steps(-1); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint3)
 	execSQL(t, ctx, p, `UPDATE queue_policies SET appointment_due_priority=5,qr_priority=1,version=8`)
 	// Sequence reconciliation preserves historical LIVE public numbers.
 	execSQL(t, ctx, p, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,public_number) VALUES($1::uuid,$2::uuid,'LIVE','WAITING','historical-live','L-000050')`, demoBranch, parcels)
@@ -566,9 +564,7 @@ func TestSprint3MigrationAndConstraints(t *testing.T) {
 		}
 	}
 	// Rollback without Sprint 3-only facts is lossless and re-upgrade reconciles L numbers.
-	if err = m.Steps(-1); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint3)
 	if err = m.Up(); err != nil {
 		t.Fatal(err)
 	}

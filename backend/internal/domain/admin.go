@@ -26,6 +26,7 @@ type AdminQueueTicket struct {
 	ID              string       `json:"id"`
 	PublicNumber    string       `json:"publicNumber"`
 	Source          TicketSource `json:"source"`
+	ServiceID       string       `json:"serviceId"`
 	ServiceName     string       `json:"serviceName"`
 	QueueEnteredAt  time.Time    `json:"queueEnteredAt"`
 	WaitTimeMinutes int          `json:"waitTimeMinutes"`

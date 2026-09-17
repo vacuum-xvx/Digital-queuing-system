@@ -1,0 +1,97 @@
+export interface User {
+  id: string;
+  email: string;
+  role: string;
+  isTerminal: boolean;
+  confirmed: boolean;
+}
+
+export interface AuthError {
+  code: string;
+  message: string;
+  status: number;
+}
+
+class ApiAuthError extends Error {
+  constructor(public code: string, message: string, public status: number) {
+    super(message);
+    this.name = 'ApiAuthError';
+  }
+}
+
+function getApiBaseUrl(): string {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && typeof envUrl === 'string') {
+    return `${envUrl.replace(/\/$/, '')}/api/v1`;
+  }
+  return '/api/v1';
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    let code = 'INTERNAL_ERROR';
+    let msg = `HTTP ${res.status}: ${res.statusText}`;
+    try {
+      const data = await res.json();
+      if (data?.error) {
+        code = data.error.code || code;
+        msg = data.error.message || msg;
+      }
+    } catch {}
+    throw new ApiAuthError(code, msg, res.status);
+  }
+
+  if (res.status === 204) return null as T;
+  return await res.json() as T;
+}
+
+export async function login(email: string, password: string): Promise<void> {
+  await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function register(email: string, password: string): Promise<User> {
+  return await request<User>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request('/auth/logout', { method: 'POST' });
+}
+
+export async function getMe(): Promise<User | null> {
+  try {
+    return await request<User>('/auth/me', { method: 'GET' });
+  } catch (error) {
+    if (error instanceof ApiAuthError && error.status === 401) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function listUsers(): Promise<User[]> {
+  const res = await request<{items: User[]}>('/admin/users', { method: 'GET' });
+  return res.items ?? [];
+}
+
+export async function changeUserRole(userId: string, role: string): Promise<void> {
+  await request(`/admin/users/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}

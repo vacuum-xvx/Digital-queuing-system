@@ -77,7 +77,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	return t, nil
 }
 func (p *Postgres) ListBranches(ctx context.Context) ([]domain.Branch, error) {
-	rows, err := p.pool.Query(ctx, `SELECT id::text,name FROM branches ORDER BY name,id`)
+	rows, err := p.pool.Query(ctx, `SELECT id::text, name, address, work_hours, timezone_offset FROM branches ORDER BY name, id`)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -85,7 +85,7 @@ func (p *Postgres) ListBranches(ctx context.Context) ([]domain.Branch, error) {
 	out := []domain.Branch{}
 	for rows.Next() {
 		var b domain.Branch
-		if err = rows.Scan(&b.ID, &b.Name); err != nil {
+		if err = rows.Scan(&b.ID, &b.Name, &b.Address, &b.WorkHours, &b.TimezoneOffset); err != nil {
 			return nil, dbError(err)
 		}
 		out = append(out, b)
@@ -393,6 +393,108 @@ func (p *Postgres) ChangeWindowStatus(ctx context.Context, windowID string, stat
 		}
 	}
 	return domain.Window{}, application.ErrNotFound
+}
+
+// UpdateWindowServices replaces the capability set of a window.
+//
+// Capabilities are not a cosmetic detail: call-next eligibility is decided by a join
+// over window_services, so a capability set that only lives in the browser makes the
+// window "live its own life" — the API keeps serving by the stale set and the next
+// overview poll reverts the operator's change. The set is therefore replaced
+// atomically and the persisted window is returned to the caller.
+func (p *Postgres) UpdateWindowServices(ctx context.Context, cmd application.UpdateWindowServicesCommand) (domain.Window, error) {
+	var empty domain.Window
+	windowID, err := uuid(cmd.WindowID)
+	if err != nil {
+		return empty, err
+	}
+	if len(cmd.ServiceIDs) == 0 {
+		return empty, application.ErrInvalidState
+	}
+	serviceIDs := make([]pgtype.UUID, 0, len(cmd.ServiceIDs))
+	seen := make(map[[16]byte]struct{}, len(cmd.ServiceIDs))
+	for _, raw := range cmd.ServiceIDs {
+		id, convErr := uuid(raw)
+		if convErr != nil {
+			return empty, convErr
+		}
+		key := [16]byte(id.Bytes)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		serviceIDs = append(serviceIDs, id)
+	}
+
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return empty, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
+	// Lock the window row so two operator screens cannot interleave their updates.
+	var branchID string
+	if err = tx.QueryRow(ctx, `SELECT branch_id::text FROM windows WHERE id=$1 FOR UPDATE`, windowID).Scan(&branchID); err != nil {
+		return empty, dbError(err)
+	}
+	branch, err := uuid(branchID)
+	if err != nil {
+		return empty, err
+	}
+
+	// A capability may only reference a service enabled for the branch.
+	var enabled int
+	if err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM branch_services WHERE branch_id=$1 AND service_id=ANY($2::uuid[])`,
+		branch, serviceIDs).Scan(&enabled); err != nil {
+		return empty, dbError(err)
+	}
+	if enabled != len(serviceIDs) {
+		return empty, application.ErrNotFound
+	}
+
+	// Only the capabilities that actually disappear are dropped: tickets(window_id,
+	// service_id) references window_services, so deleting and re-inserting a retained
+	// capability with ticket history would fail even when the resulting set is a
+	// superset of the current one.
+	if _, err = tx.Exec(ctx,
+		`DELETE FROM window_services WHERE window_id=$1 AND service_id <> ALL($2::uuid[])`,
+		windowID, serviceIDs); err != nil {
+		return empty, windowServicesError(err)
+	}
+	if _, err = tx.Exec(ctx,
+		`INSERT INTO window_services(window_id, branch_id, service_id)
+		 SELECT $1, $2, sid FROM unnest($3::uuid[]) AS sid
+		 ON CONFLICT (window_id, service_id) DO NOTHING`,
+		windowID, branch, serviceIDs); err != nil {
+		return empty, windowServicesError(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return empty, dbError(err)
+	}
+
+	windows, err := p.ListBranchWindows(ctx, branchID)
+	if err != nil {
+		return empty, err
+	}
+	for _, w := range windows {
+		if w.ID == cmd.WindowID {
+			return w, nil
+		}
+	}
+	return empty, application.ErrNotFound
+}
+
+// windowServicesError maps capability foreign-key violations to the boundary state
+// error. tickets(window_id, service_id) references window_services, so a service that
+// already has ticket history in this window cannot be dropped (frozen Sprint #1
+// schema) — callers get 409 instead of a sanitized 500.
+func windowServicesError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		return application.ErrInvalidState
+	}
+	return dbError(err)
 }
 
 func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {

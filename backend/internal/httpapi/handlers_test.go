@@ -33,11 +33,20 @@ type FakeUseCases struct {
 	GetQueuePolicyFunc     func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
 	UpdateQueuePolicyFunc  func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
 	ListTicketEventsFunc   func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
+	UpdateWindowServicesFunc func(ctx context.Context, cmd application.UpdateWindowServicesCommand) (domain.Window, error)
 	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverviewFunc   func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRulesFunc  func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+
+	RegisterFunc       func(ctx context.Context, email, password string) (domain.User, error)
+	ConfirmEmailFunc   func(ctx context.Context, token string) error
+	LoginFunc          func(ctx context.Context, email, password string) (domain.Session, error)
+	LogoutFunc         func(ctx context.Context, token string) error
+	GetSessionUserFunc func(ctx context.Context, token string) (domain.User, error)
+	ListUsersFunc      func(ctx context.Context) ([]domain.User, error)
+	ChangeUserRoleFunc func(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
 }
 
 var _ application.UseCases = (*FakeUseCases)(nil)
@@ -128,6 +137,13 @@ func (f *FakeUseCases) ChangeWindowStatus(ctx context.Context, windowID string, 
 	return f.ChangeWindowStatusFunc(ctx, windowID, status)
 }
 
+func (f *FakeUseCases) UpdateWindowServices(ctx context.Context, cmd application.UpdateWindowServicesCommand) (domain.Window, error) {
+	if f.UpdateWindowServicesFunc != nil {
+		return f.UpdateWindowServicesFunc(ctx, cmd)
+	}
+	return domain.Window{}, nil
+}
+
 func (f *FakeUseCases) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
 	return f.ReturnTicketFunc(ctx, ticketID)
 }
@@ -141,19 +157,97 @@ func (f *FakeUseCases) GetAdminOverview(ctx context.Context, branchID string) (d
 }
 
 func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error {
-	return f.SavePriorityRulesFunc(ctx, branchID, rules)
+	if f.SavePriorityRulesFunc != nil {
+		return f.SavePriorityRulesFunc(ctx, branchID, rules)
+	}
+	return nil
+}
+
+func (f *FakeUseCases) Register(ctx context.Context, email, password string) (domain.User, error) {
+	if f.RegisterFunc != nil {
+		return f.RegisterFunc(ctx, email, password)
+	}
+	return domain.User{}, nil
+}
+
+func (f *FakeUseCases) ConfirmEmail(ctx context.Context, token string) error {
+	if f.ConfirmEmailFunc != nil {
+		return f.ConfirmEmailFunc(ctx, token)
+	}
+	return nil
+}
+
+func (f *FakeUseCases) Login(ctx context.Context, email, password string) (domain.Session, error) {
+	if f.LoginFunc != nil {
+		return f.LoginFunc(ctx, email, password)
+	}
+	return domain.Session{}, nil
+}
+
+func (f *FakeUseCases) Logout(ctx context.Context, token string) error {
+	if f.LogoutFunc != nil {
+		return f.LogoutFunc(ctx, token)
+	}
+	return nil
+}
+
+func (f *FakeUseCases) GetSessionUser(ctx context.Context, token string) (domain.User, error) {
+	if f.GetSessionUserFunc != nil {
+		return f.GetSessionUserFunc(ctx, token)
+	}
+	if token == testSessionToken {
+		return testUser(), nil
+	}
+	return domain.User{}, application.ErrNotFound
+}
+
+func (f *FakeUseCases) ListUsers(ctx context.Context) ([]domain.User, error) {
+	if f.ListUsersFunc != nil {
+		return f.ListUsersFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (f *FakeUseCases) ChangeUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error) {
+	if f.ChangeUserRoleFunc != nil {
+		return f.ChangeUserRoleFunc(ctx, userID, role)
+	}
+	return domain.User{}, nil
+}
+
+// testSessionToken is the opaque cookie value the handler tests present to
+// loadSession. The fake resolves it through GetSessionUser.
+const testSessionToken = "test-session"
+
+// testUser carries the widest role so legacy handler tests exercise routing and
+// DTO mapping instead of authentication. Auth-specific tests override
+// GetSessionUserFunc to simulate a missing or expired session.
+func testUser() domain.User {
+	return domain.User{ID: "u1", Email: "test@pochta.local", Role: domain.RoleOPCChief, IsTerminal: true, Confirmed: true}
 }
 
 func setupTest(usecases *FakeUseCases) http.Handler {
 	db := &fakeDB{}
 	logger := slog.New(slog.NewJSONHandler(bytes.NewBuffer(nil), nil))
-	return NewRouter(db, usecases, logger, "http://localhost:3000")
+	router := NewRouter(db, usecases, logger, "http://localhost:3000")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := r.Cookie(sessionCookie); err != nil {
+			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testSessionToken})
+		}
+		router.ServeHTTP(w, r)
+	})
 }
 
 func TestListBranches(t *testing.T) {
 	uc := &FakeUseCases{
 		ListBranchesFunc: func(ctx context.Context) ([]domain.Branch, error) {
-			return []domain.Branch{{ID: "b1", Name: "Branch 1"}}, nil
+			return []domain.Branch{{
+				ID:             "b1",
+				Name:           "Branch 1",
+				Address:        "ул. Ленина, 1",
+				WorkHours:      "08:00-20:00",
+				TimezoneOffset: 3,
+			}}, nil
 		},
 	}
 	r := setupTest(uc)
@@ -164,9 +258,17 @@ func TestListBranches(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	expected := `{"items":[{"id":"b1","name":"Branch 1"}]}`
-	if strings := string(rec.Body.Bytes()); strings[:len(expected)] != expected {
-		t.Errorf("expected %s in body", expected)
+	var res ListBranchesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(res.Items))
+	}
+	got := res.Items[0]
+	want := BranchDTO{ID: "b1", Name: "Branch 1", Address: "ул. Ленина, 1", WorkHours: "08:00-20:00", TimezoneOffset: 3}
+	if got != want {
+		t.Errorf("expected %+v, got %+v", want, got)
 	}
 }
 

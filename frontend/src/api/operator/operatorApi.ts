@@ -65,6 +65,7 @@ export async function listBranches(): Promise<Branch[]> {
 
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/branches`, {
+    credentials: 'include',
     headers: { Accept: 'application/json' },
   });
   const data = await handleResponse<BranchListResponse>(res);
@@ -78,6 +79,7 @@ export async function listWindows(branchId: string): Promise<OperatorWindow[]> {
 
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/operator/branches/${encodeURIComponent(branchId)}/windows`, {
+    credentials: 'include',
     headers: { Accept: 'application/json' },
   });
   const data = await handleResponse<WindowListResponse>(res);
@@ -95,6 +97,7 @@ export async function getCurrentTicket(windowId: string): Promise<Ticket | null>
 
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/operator/windows/${encodeURIComponent(windowId)}/current-ticket`, {
+    credentials: 'include',
     headers: { Accept: 'application/json' },
   });
 
@@ -116,6 +119,7 @@ export async function callNext(windowId: string): Promise<Ticket> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/operator/windows/${encodeURIComponent(windowId)}/call-next`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -146,6 +150,7 @@ export async function startService(ticketId: string): Promise<Ticket> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/operator/tickets/${encodeURIComponent(ticketId)}/start`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -176,6 +181,7 @@ export async function completeService(ticketId: string): Promise<Ticket> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/operator/tickets/${encodeURIComponent(ticketId)}/complete`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -192,7 +198,7 @@ export async function createLiveTicket(branchId: string, serviceId: string, idem
     return live;
   }
   const res = await fetch(`${getApiBaseUrl()}/operator/branches/${encodeURIComponent(branchId)}/tickets/live`, {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    method: 'POST', credentials: 'include', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ serviceId }),
   });
   return await handleResponse<Ticket>(res);
@@ -207,6 +213,6 @@ export async function markNoShow(ticketId: string): Promise<Ticket> {
     setMockActiveTicket(null);
     return updated;
   }
-  const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/no-show`, { method: 'POST', headers: { Accept: 'application/json' } });
+  const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/no-show`, { method: 'POST', credentials: 'include', headers: { Accept: 'application/json' } });
   return await handleResponse<Ticket>(res);
 }

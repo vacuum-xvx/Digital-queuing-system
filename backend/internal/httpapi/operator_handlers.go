@@ -17,16 +17,7 @@ func (a *API) ListBranchWindows(w http.ResponseWriter, r *http.Request) {
 	}
 	res := make([]WindowDTO, len(windows))
 	for i, wnd := range windows {
-		services := make([]ServiceDTO, len(wnd.Services))
-		for j, s := range wnd.Services {
-			services[j] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
-		}
-		res[i] = WindowDTO{
-			ID:       wnd.ID,
-			Number:   wnd.Number,
-			Status:   string(wnd.Status),
-			Services: services,
-		}
+		res[i] = mapWindowDTO(wnd)
 	}
 	writeJSONResponse(w, http.StatusOK, ListWindowsResponse{Items: res})
 }

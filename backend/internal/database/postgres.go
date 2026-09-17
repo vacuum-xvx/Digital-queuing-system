@@ -31,7 +31,7 @@ func Migrate(dsn, action string) (uint, bool, error) {
 	defer m.Close()
 	if action == "up" {
 		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-			return 0, false, fmt.Errorf("migration failed; inspect schema version and migration SQL")
+			return 0, false, fmt.Errorf("migration failed: %w", err)
 		}
 	}
 	version, dirty, err := m.Version()

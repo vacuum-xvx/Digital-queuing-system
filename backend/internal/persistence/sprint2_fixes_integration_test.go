@@ -103,9 +103,7 @@ func TestAppointmentNumberAndPendingDownUp(t *testing.T) {
 	if err != nil || first.Appointment.Ticket.PublicNumber != "A-000001" {
 		t.Fatalf("first: %+v %v", first, err)
 	}
-	if err = m.Steps(-2); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint2)
 	var status string
 	var window *string
 	if err = p.pool.QueryRow(ctx, `SELECT status,window_id::text FROM tickets WHERE id=$1::uuid`, first.Appointment.Ticket.ID).Scan(&status, &window); err != nil || status != "WAITING" || window != nil {
@@ -152,9 +150,7 @@ func TestAppointmentNumberAndPendingDownUp(t *testing.T) {
 
 func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 	ctx, p, m := integration(t)
-	if err := m.Steps(-2); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint2)
 	var pending, completed string
 	err := p.pool.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at,window_id,called_at)
  VALUES($1::uuid,$2::uuid,'APPOINTMENT','WAITING','legacy-redirect','2030-01-01Z',$3::uuid,now()) RETURNING id::text`, demoBranch, parcels, window1).Scan(&pending)
@@ -186,9 +182,7 @@ func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on up: %s -> %s (%v)", before, after, err)
 	}
-	if err = m.Steps(-2); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint2)
 	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on down: %s -> %s (%v)", before, after, err)
 	}

@@ -17,9 +17,11 @@ export function App() {
     return () => window.removeEventListener('popstate', onLocationChange);
   }, []);
 
-  const navigate = (to: string, event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
+  const navigate = (to: string, event?: MouseEvent<HTMLAnchorElement>) => {
+    if (event) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+    }
     if (window.location.pathname !== to) {
       window.history.pushState({}, '', to);
       setCurrentPath(to);
@@ -39,8 +41,8 @@ export function App() {
 
   const DemoEntry = ({ role }: { role: string }) => <section><h2>{role}</h2><p>Демонстрационный вход без production-аутентификации.</p><a href={role === 'Оператор' ? '/operator' : '/admin'} onClick={(e) => navigate(role === 'Оператор' ? '/operator' : '/admin', e)}>Продолжить в демо-режиме</a></section>;
 
-  if (currentPath === '/demo') {
-    return <PochtaDemo />;
+  if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
+    return <PochtaDemo currentPath={currentPath} navigate={navigate} />;
   }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
     { path: '/', label: 'Client', page: <ClientPage /> },

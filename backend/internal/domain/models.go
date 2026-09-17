@@ -31,8 +31,11 @@ const (
 )
 
 type Branch struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Address         string `json:"address"`
+	WorkHours       string `json:"workHours"`
+	TimezoneOffset  int    `json:"timezoneOffset"`
 }
 type Service struct {
 	ID   string `json:"id"`

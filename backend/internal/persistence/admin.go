@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -171,7 +172,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 
 	// 8. Queue (WAITING, CALLED, SERVING) — single query
 	qrows, err := p.pool.Query(ctx, `
-		SELECT t.id::text, t.public_number, t.source, s.name, t.queue_entered_at, t.status,
+		SELECT t.id::text, t.public_number, t.source, t.service_id::text, s.name, t.queue_entered_at, t.status,
 			   EXTRACT(EPOCH FROM (NOW() - t.queue_entered_at)) / 60
 		FROM tickets t
 		JOIN services s ON s.id = t.service_id
@@ -189,7 +190,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	for qrows.Next() {
 		var qt domain.AdminQueueTicket
 		var waitTime float64
-		if err = qrows.Scan(&qt.ID, &qt.PublicNumber, &qt.Source, &qt.ServiceName, &qt.QueueEnteredAt, &qt.Status, &waitTime); err != nil {
+		if err = qrows.Scan(&qt.ID, &qt.PublicNumber, &qt.Source, &qt.ServiceID, &qt.ServiceName, &qt.QueueEnteredAt, &qt.Status, &waitTime); err != nil {
 			return overview, dbError(err)
 		}
 		qt.WaitTimeMinutes = int(waitTime)
@@ -209,6 +210,35 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	}
 	if err = qrows.Err(); err != nil {
 		return overview, dbError(err)
+	}
+
+	// 8b. Load NO_SHOW anomalies today
+	nsRows, err := p.pool.Query(ctx, `
+		SELECT id::text, public_number, no_show_at
+		FROM tickets
+		WHERE branch_id = $1 AND status = 'NO_SHOW' AND queue_entered_at::date = CURRENT_DATE
+		ORDER BY no_show_at DESC
+		LIMIT 10
+	`, id)
+	if err == nil {
+		defer nsRows.Close()
+		for nsRows.Next() {
+			var tid, pub string
+			var nsTime *time.Time
+			if scanErr := nsRows.Scan(&tid, &pub, &nsTime); scanErr == nil {
+				tVal := time.Now()
+				if nsTime != nil {
+					tVal = *nsTime
+				}
+				overview.Anomalies = append(overview.Anomalies, domain.AnomalyTicket{
+					ID:           tid,
+					PublicNumber: pub,
+					Type:         domain.AnomalyNoShow,
+					Description:  "Клиент не явился к окну оператора",
+					Time:         tVal,
+				})
+			}
+		}
 	}
 
 	// 9. Priority rules from DB
