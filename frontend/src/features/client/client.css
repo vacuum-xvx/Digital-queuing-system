@@ -14,4 +14,8 @@
 .client-ticket { display: grid; gap: 10px; margin-top: 20px; padding: 20px; border-radius: 10px; background: #eff6ff; }
 .client-ticket-number { font-size: 2rem; font-weight: 800; }
 .client-status { font-size: 1.25rem; font-weight: 700; }
+.client-position { font-size: 1.2rem; font-weight: 700; color: #1d4ed8; }
+.client-position small { display: block; margin-top: 4px; font-size: .8rem; font-weight: 400; color: #475569; }
+.client-select:focus-visible, .client-input:focus-visible, .client-button:focus-visible, .client-mode-button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .client-retry { margin-top: 10px; }
+@media (max-width: 560px) { .client-card { margin: 12px 0; padding: 16px; border-radius: 10px; } .client-mode-switch { grid-template-columns: 1fr; } }

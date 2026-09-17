@@ -53,6 +53,18 @@ export type Appointment = {
   scheduledAt: string;
 };
 
+export type QueuePositionReason = 'AVAILABLE' | 'NOT_ELIGIBLE_YET' | 'NO_OPEN_COMPATIBLE_WINDOW' | 'NOT_QUEUED';
+export type QueuePosition = {
+  ticketId: string;
+  ticketStatus: TicketStatus;
+  reason: QueuePositionReason;
+  position: number | null;
+  referenceWindow: TicketWindow | null;
+  calculatedAt: string;
+  effectivePriority: number | null;
+  effectiveQueueTime: string | null;
+};
+
 export type CreateAppointmentRequest = {
   serviceId: string;
   scheduledAt: string;
