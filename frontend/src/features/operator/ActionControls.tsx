@@ -7,6 +7,7 @@ interface ActionControlsProps {
   onCallNext: () => void;
   onStartService: () => void;
   onCompleteService: () => void;
+  onNoShow: () => void;
 }
 
 export const ActionControls: React.FC<ActionControlsProps> = ({
@@ -15,6 +16,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   onCallNext,
   onStartService,
   onCompleteService,
+  onNoShow,
 }) => {
   const isNoTicket = currentTicket === null;
   const isCalled = currentTicket?.status === 'CALLED';
@@ -39,6 +41,9 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
       >
         {isPending && isNoTicket ? <span className="spinner" /> : null}
         <span>Вызвать следующего</span>
+      </button>
+      <button type="button" id="btn-no-show" className="btn btn-danger" disabled={!isCalled || isPending} onClick={onNoShow}>
+        {isPending && isCalled ? <span className="spinner" /> : null}<span>Не явился</span>
       </button>
 
       <button

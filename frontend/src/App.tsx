@@ -37,42 +37,33 @@ export function App() {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
 
+  const DemoEntry = ({ role }: { role: string }) => <section><h2>{role}</h2><p>Демонстрационный вход без production-аутентификации.</p><a href={role === 'Оператор' ? '/operator' : '/admin'} onClick={(e) => navigate(role === 'Оператор' ? '/operator' : '/admin', e)}>Продолжить в демо-режиме</a></section>;
+
   if (currentPath === '/demo') {
     return <PochtaDemo />;
   }
-
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
     { path: '/', label: 'Client', page: <ClientPage /> },
+    { path: '/operator/login', label: 'Operator login', page: <DemoEntry role="Оператор" /> },
     { path: '/operator', label: 'Operator', page: <OperatorPage /> },
+    { path: '/admin/login', label: 'Admin login', page: <DemoEntry role="Администратор" /> },
     { path: '/admin', label: 'Admin', page: <AdminPage /> },
+    { path: '/demo', label: 'Demo', page: <section><h2>Демо-режим</h2><p>Выберите рабочее место.</p><a href="/operator" onClick={(e) => navigate('/operator', e)}>Оператор</a>{' · '}<a href="/admin" onClick={(e) => navigate('/admin', e)}>Администратор</a></section> },
   ];
   const isKnownPath = routes.some((route) => route.path === currentPath);
 
+  const activeRoute = routes.find((route) => route.path === currentPath);
+  if (!isKnownPath || !activeRoute) return <main><h2>Page not found</h2></main>;
+
   return (
     <main>
-      <div style={{ background: '#003B73', color: '#ffffff', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <span>🚀 <strong>СУО 3.0 Почты России:</strong> Новый дизайн, голосовой диктор вызова, киоск и табло зала доступны на <code>/demo</code></span>
-        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ color: '#ffffff', background: '#D92534', padding: '6px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '13px' }}>
-          Открыть /demo →
-        </a>
-      </div>
-      <h1>Electronic Queue MVP</h1>
-      <p role="status">Backend: {health}</p>
-      <nav aria-label="Applications">
-        {routes.map((route, index) => <span key={route.path}>
-          {index > 0 && ' | '}
-          <a href={route.path} onClick={(event) => navigate(route.path, event)}>{route.label}</a>
-        </span>)}
-        {' | '}
-        <a href="/demo" onClick={(event) => navigate('/demo', event)} style={{ fontWeight: 'bold', color: '#003B73' }}>
-          ✨ СУО 3.0 Demo
-        </a>
-      </nav>
-      {isKnownPath ? routes.map((route) => (
-        <div key={route.path} hidden={route.path !== currentPath}>
-          {route.page}
-        </div>
-      )) : <h2>Page not found</h2>}
+      {currentPath === '/' ? activeRoute.page : (
+        <>
+          <p role="status">Backend: {health}</p>
+          {currentPath === '/demo' && <nav aria-label="Applications"><a href="/" onClick={(event) => navigate('/', event)}>Клиент</a>{' · '}<a href="/operator" onClick={(event) => navigate('/operator', event)}>Оператор</a>{' · '}<a href="/admin" onClick={(event) => navigate('/admin', event)}>Администратор</a></nav>}
+          {activeRoute.page}
+        </>
+      )}
     </main>
   );
 }

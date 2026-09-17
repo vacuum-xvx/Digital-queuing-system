@@ -184,3 +184,29 @@ export async function completeService(ticketId: string): Promise<Ticket> {
 
   return await handleResponse<Ticket>(res);
 }
+
+export async function createLiveTicket(branchId: string, serviceId: string, idempotencyKey: string): Promise<Ticket> {
+  if (isMockEnabled()) {
+    const ticket = createMockTicket(0, 'WAITING');
+    const live = { ...ticket, source: 'LIVE' as const, publicNumber: `L-${ticket.publicNumber.replace(/\D/g, '').padStart(6, '0')}` };
+    return live;
+  }
+  const res = await fetch(`${getApiBaseUrl()}/operator/branches/${encodeURIComponent(branchId)}/tickets/live`, {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ serviceId }),
+  });
+  return await handleResponse<Ticket>(res);
+}
+
+export async function markNoShow(ticketId: string): Promise<Ticket> {
+  if (isMockEnabled()) {
+    const current = getMockActiveTicket();
+    if (!current || current.id !== ticketId) throw new OperatorApiError('NOT_FOUND', 'Ticket not found', 404);
+    if (current.status !== 'CALLED') throw new OperatorApiError('INVALID_TICKET_STATE', 'Ticket is not CALLED', 409);
+    const updated = { ...current, status: 'NO_SHOW' as const };
+    setMockActiveTicket(null);
+    return updated;
+  }
+  const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/no-show`, { method: 'POST', headers: { Accept: 'application/json' } });
+  return await handleResponse<Ticket>(res);
+}

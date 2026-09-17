@@ -37,6 +37,8 @@ export const OperatorWorkspace: React.FC = () => {
   const [isLoadingWindows, setIsLoadingWindows] = useState<boolean>(false);
   const [isLoadingTicket, setIsLoadingTicket] = useState<boolean>(false);
   const [isActionPending, setIsActionPending] = useState<boolean>(false);
+  const [liveServiceId, setLiveServiceId] = useState('');
+  const [livePending, setLivePending] = useState(false);
 
   const [notice, setNotice] = useState<NoticeState | null>(null);
 
@@ -170,9 +172,14 @@ export const OperatorWorkspace: React.FC = () => {
     // Reset window selection and stale ticket
     setSelectedWindow(null);
     setCurrentTicket(null);
+    setLiveServiceId('');
     sessionStorage.removeItem(STORAGE_WINDOW_KEY);
     setNotice(null);
   };
+
+  const liveServices = windows
+    .flatMap((window) => window.services)
+    .filter((service, index, all) => all.findIndex((candidate) => candidate.id === service.id) === index);
 
   // Handle window selection change
   const handleSelectWindow = (win: OperatorWindow) => {
@@ -305,6 +312,35 @@ export const OperatorWorkspace: React.FC = () => {
     }
   };
 
+  const handleNoShow = async () => {
+    if (!currentTicket || currentTicket.status !== 'CALLED' || !selectedWindow) return;
+    setIsActionPending(true); setNotice(null);
+    try {
+      const ticket = await api.markNoShow(currentTicket.id);
+      setCurrentTicket(null);
+      setNotice({ type: 'success', message: `Талон ${ticket.publicNumber}: клиент не явился.` });
+    } catch (err) {
+      if (err instanceof OperatorApiError && (err.code === 'INVALID_TICKET_STATE' || err.code === 'WINDOW_BUSY')) await restoreCurrentTicket(selectedWindow.id);
+      setNotice({ type: 'error', message: err instanceof OperatorApiError ? err.message : 'Не удалось отметить неявку' });
+    } finally { setIsActionPending(false); }
+  };
+
+  const handleCreateLive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBranchId || !liveServiceId || livePending) return;
+    setLivePending(true); setNotice(null);
+    const keyStorage = `operator_live_attempt_${selectedBranchId}_${liveServiceId}`;
+    const key = sessionStorage.getItem(keyStorage) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    sessionStorage.setItem(keyStorage, key);
+    try {
+      const ticket = await api.createLiveTicket(selectedBranchId, liveServiceId, key);
+      sessionStorage.removeItem(keyStorage);
+      setNotice({ type: 'success', message: `Талон ${ticket.publicNumber} добавлен в живую очередь.` });
+    } catch (err) {
+      setNotice({ type: 'error', message: err instanceof OperatorApiError ? err.message : 'Не удалось создать талон' });
+    } finally { setLivePending(false); }
+  };
+
   return (
     <div className="operator-container">
       <header className="operator-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -413,6 +449,18 @@ export const OperatorWorkspace: React.FC = () => {
             branchSelected={Boolean(selectedBranchId)}
             onSelectWindow={handleSelectWindow}
           />
+          {selectedBranchId && (
+            <form className="operator-card live-ticket-form" onSubmit={handleCreateLive}>
+              <h2>Живая очередь</h2>
+              <label htmlFor="live-service">Услуга</label>
+              <select id="live-service" className="operator-select" value={liveServiceId} onChange={(e) => setLiveServiceId(e.target.value)} disabled={livePending || isLoadingWindows}>
+                <option value="">Выберите услугу</option>
+                {liveServices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              {!isLoadingWindows && liveServices.length === 0 && <p role="status">Для этого отделения нет доступных услуг.</p>}
+              <button className="btn btn-primary" type="submit" disabled={!liveServiceId || !liveServices.some((service) => service.id === liveServiceId) || isLoadingWindows || livePending}>{livePending ? 'Добавление…' : 'Добавить талон'}</button>
+            </form>
+          )}
         </aside>
 
         {/* Right column: Main Workspace */}
@@ -459,6 +507,7 @@ export const OperatorWorkspace: React.FC = () => {
                 onCallNext={handleCallNext}
                 onStartService={handleStartService}
                 onCompleteService={handleCompleteService}
+                onNoShow={handleNoShow}
               />
             </>
           )}

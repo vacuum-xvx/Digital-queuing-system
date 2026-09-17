@@ -19,6 +19,14 @@ function getTicketSourceLabel(source: Ticket['source']): string {
   }
 }
 
+function getTicketStatusLabel(status: Ticket['status']): string {
+  const labels: Record<Ticket['status'], string> = {
+    SCHEDULED: 'Запись подтверждена', WAITING: 'Вы в очереди', CALLED: 'Вас вызывают',
+    SERVING: 'Идёт обслуживание', COMPLETED: 'Обслуживание завершено', CANCELLED: 'Запись отменена', NO_SHOW: 'Вы не подошли к окну',
+  };
+  return labels[status];
+}
+
 export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }) => {
   if (!ticket) {
     return (
@@ -53,7 +61,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
             isCalled ? 'called' : isServing ? 'serving' : ''
           }`}
         >
-          {isCalled ? 'ВЫЗВАН (CALLED)' : isServing ? 'ОБСЛУЖИВАЕТСЯ (SERVING)' : ticket.status}
+          {getTicketStatusLabel(ticket.status)}
         </span>
       </div>
 

@@ -4,6 +4,12 @@ export const DEMO_QUEUE_POLICY: QueuePolicy = {
   branchId: '11111111-1111-1111-1111-111111111111',
   appointmentDuePriority: 100,
   qrPriority: 10,
+  livePriority: 10,
+  antiStarvationThresholdMinutes: 15,
+  antiStarvationPointsPerMinute: 10,
+  appointmentGraceMinutes: 15,
+  appointmentLatePenaltyPerMinute: 5,
+  appointmentLatePenaltyMaxPoints: 90,
   version: 1,
   updatedAt: '2026-09-16T20:00:00Z',
 };
