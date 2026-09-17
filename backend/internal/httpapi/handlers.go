@@ -26,6 +26,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
 		r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
 		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
+		r.Post("/appointments", a.CreateAppointment)
+		r.Post("/appointments/{ticketId}/cancel", a.CancelAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 
 		r.Route("/operator", func(r chi.Router) {
@@ -41,6 +43,9 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Route("/admin", func(r chi.Router) {
 			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
+			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
+			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
+			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 		})
 	})
@@ -162,6 +167,9 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, application.ErrWindowClosed):
 		status = http.StatusConflict
 		code = "WINDOW_CLOSED"
+	case errors.Is(err, application.ErrPolicyVersionConflict):
+		status = http.StatusConflict
+		code = "POLICY_VERSION_CONFLICT"
 	default:
 		status = http.StatusInternalServerError
 		code = "INTERNAL_ERROR"

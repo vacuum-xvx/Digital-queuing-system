@@ -1,4 +1,4 @@
-import { useEffect, useState, MouseEvent } from 'react';
+import { MouseEvent, ReactNode, useEffect, useState } from 'react';
 import { checkHealth } from './api/health';
 import { ClientPage } from './pages/ClientPage';
 import { OperatorPage } from './pages/OperatorPage';
@@ -36,24 +36,28 @@ export function App() {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
 
-  const pages: Record<string, React.ReactNode> = {
-    '/': <ClientPage />,
-    '/operator': <OperatorPage />,
-    '/admin': <AdminPage />,
-  };
+  const routes: Array<{ path: string; label: string; page: ReactNode }> = [
+    { path: '/', label: 'Client', page: <ClientPage /> },
+    { path: '/operator', label: 'Operator', page: <OperatorPage /> },
+    { path: '/admin', label: 'Admin', page: <AdminPage /> },
+  ];
+  const isKnownPath = routes.some((route) => route.path === currentPath);
 
   return (
     <main>
       <h1>Electronic Queue MVP</h1>
       <p role="status">Backend: {health}</p>
       <nav aria-label="Applications">
-        <a href="/" onClick={(e) => navigate('/', e)}>Client</a>
-        {' | '}
-        <a href="/operator" onClick={(e) => navigate('/operator', e)}>Operator</a>
-        {' | '}
-        <a href="/admin" onClick={(e) => navigate('/admin', e)}>Admin</a>
+        {routes.map((route, index) => <span key={route.path}>
+          {index > 0 && ' | '}
+          <a href={route.path} onClick={(event) => navigate(route.path, event)}>{route.label}</a>
+        </span>)}
       </nav>
-      {pages[currentPath] ?? <h2>Page not found</h2>}
+      {isKnownPath ? routes.map((route) => (
+        <div key={route.path} hidden={route.path !== currentPath}>
+          {route.page}
+        </div>
+      )) : <h2>Page not found</h2>}
     </main>
   );
 }

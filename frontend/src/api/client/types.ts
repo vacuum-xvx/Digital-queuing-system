@@ -48,3 +48,12 @@ export type Ticket = {
   completedAt: string | null;
 };
 
+export type Appointment = {
+  ticket: Ticket;
+  scheduledAt: string;
+};
+
+export type CreateAppointmentRequest = {
+  serviceId: string;
+  scheduledAt: string;
+};

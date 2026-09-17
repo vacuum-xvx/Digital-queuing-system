@@ -27,6 +27,10 @@ type FakeUseCases struct {
 
 	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (domain.Ticket, error)
 	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
+	CancelAppointmentFunc  func(ctx context.Context, ticketID string) (application.AppointmentView, error)
+	GetQueuePolicyFunc     func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
+	UpdateQueuePolicyFunc  func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
+	ListTicketEventsFunc   func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
 	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
@@ -76,6 +80,34 @@ func (f *FakeUseCases) CreateLiveTicket(ctx context.Context, cmd application.Cre
 
 func (f *FakeUseCases) CreateAppointment(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error) {
 	return f.CreateAppointmentFunc(ctx, cmd)
+}
+
+func (f *FakeUseCases) CancelAppointment(ctx context.Context, ticketID string) (application.AppointmentView, error) {
+	if f.CancelAppointmentFunc != nil {
+		return f.CancelAppointmentFunc(ctx, ticketID)
+	}
+	return application.AppointmentView{}, nil
+}
+
+func (f *FakeUseCases) GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error) {
+	if f.GetQueuePolicyFunc != nil {
+		return f.GetQueuePolicyFunc(ctx, branchID)
+	}
+	return domain.QueuePolicy{}, nil
+}
+
+func (f *FakeUseCases) UpdateQueuePolicy(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error) {
+	if f.UpdateQueuePolicyFunc != nil {
+		return f.UpdateQueuePolicyFunc(ctx, cmd)
+	}
+	return domain.QueuePolicy{}, nil
+}
+
+func (f *FakeUseCases) ListTicketEvents(ctx context.Context, ticketID string) ([]domain.TicketEvent, error) {
+	if f.ListTicketEventsFunc != nil {
+		return f.ListTicketEventsFunc(ctx, ticketID)
+	}
+	return nil, nil
 }
 
 func (f *FakeUseCases) ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error) {
