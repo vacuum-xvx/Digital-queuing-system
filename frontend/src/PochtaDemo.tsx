@@ -565,6 +565,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
 
   // Аутентификация
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login'|'register'>('login');
   
@@ -573,8 +574,16 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
       setCurrentUser(user);
     }).catch(() => {
       setCurrentUser(null);
+    }).finally(() => {
+      setAuthLoading(false);
     });
   }, []);
+
+  // Ролевая модель доступа (ТЗ: вход обязателен для всех, меню зависит от роли)
+  const userRole = currentUser?.role ?? null;
+  const isOperatorRole = userRole === 'employee' || userRole === 'opc_chief';
+  const isAdminRole = userRole === 'opc_chief';
+  const isClient = userRole === 'client' || (userRole !== null && !isOperatorRole && !isAdminRole);
 
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const loadAdminUsers = useCallback(async () => {
@@ -1593,6 +1602,105 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     return list;
   }, [queueScoring, tickets, overview]);
 
+  // ===========================================================================
+  // AUTH GATE: вход/регистрация обязательны для всех пользователей.
+  // Пока сессия не подтверждена — никакой интерфейс не рендерится.
+  // ===========================================================================
+  if (authLoading || !currentUser) {
+    const submitGateAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const email = (e.currentTarget.elements.namedItem('email') as HTMLInputElement).value;
+      const password = (e.currentTarget.elements.namedItem('password') as HTMLInputElement).value;
+      try {
+        if (authMode === 'login') {
+          await login(email, password);
+        } else {
+          await register(email, password);
+          await login(email, password);
+        }
+        const user = await getMe();
+        setCurrentUser(user);
+        showToast(authMode === 'login' ? 'Вы успешно вошли в систему' : 'Регистрация успешна. Добро пожаловать!');
+      } catch (err: any) {
+        showToast(`Ошибка: ${err.message}`);
+      }
+    };
+
+    return (
+      <div className="min-h-screen flex flex-col font-sans bg-[#F8FAFC] text-[#0F172A]">
+        {/* Тост об ошибке/успехе */}
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 bg-white text-slate-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 border-[#003B73] animate-in fade-in slide-in-from-top-2 text-xs font-semibold">
+            <Info className="w-4 h-4 text-[#054FA6] shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
+        {authLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex items-center gap-3 text-slate-500 text-sm font-semibold">
+              <RefreshCw className="w-5 h-5 animate-spin text-[#054FA6]" />
+              <span>Проверка сессии…</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-4 py-10">
+            <div className="w-full max-w-md">
+              {/* Бренд */}
+              <div className="flex flex-col items-center mb-8 text-center">
+                <PochtaEmblem className="w-16 h-16 mb-4 drop-shadow-md" bg="#003B73" fg="#FFFFFF" />
+                <h1 className="text-2xl font-black text-[#0A2896] tracking-tight">Электронная очередь Почты России</h1>
+                <p className="text-sm text-slate-500 mt-2">Для работы с системой войдите в учётную запись или зарегистрируйтесь</p>
+              </div>
+
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="font-bold text-lg text-slate-800">
+                    {authMode === 'login' ? 'Вход в систему' : 'Регистрация'}
+                  </h2>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">СУО 3.0</span>
+                </div>
+
+                <form onSubmit={submitGateAuth} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input name="email" type="email" required className="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent" placeholder="user@example.ru" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Пароль</label>
+                    <input name="password" type="password" required minLength={6} className="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent" placeholder="Минимум 6 символов" />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold transition-colors shadow-md">
+                    {authMode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+                  </button>
+                </form>
+
+                <div className="mt-6 text-center">
+                  <button type="button" onClick={() => setAuthMode(m => m === 'login' ? 'register' : 'login')} className="w-full py-2.5 border border-[#054FA6]/30 text-[#054FA6] hover:bg-blue-50 rounded-xl text-xs font-bold transition-colors">
+                    {authMode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+                  </button>
+                  {authMode === 'register' && (
+                    <p className="text-[11px] text-slate-400 mt-3">
+                      Регистрация создаёт учётную запись клиента. Права оператора/начальника выдаёт начальник ОПС.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-center text-[11px] text-slate-400 mt-6 font-mono">
+                Доступ к интерфейсу определяется ролью: клиент, оператор, начальник ОПС
+              </p>
+            </div>
+          </div>
+        )}
+
+        <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 font-mono">
+          АО «Почта России» • Хакатон «Электронная очередь» • Единый Queue Engine v3.2
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors ${
       isAccessibilityMode ? 'bg-[#030e1e] text-[#FFE600]' : 'bg-[#F8FAFC] text-[#0F172A]'
@@ -1858,16 +1966,25 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* 0. ДЕМО-ХАБ (НОВЫЙ) */}
         {activeTab === 'hub' && (
           <div className="max-w-5xl mx-auto px-4 py-12">
-            <h2 className="text-3xl font-black text-[#0A2896] mb-8 text-center tracking-tight">Демонстрационный стенд системы управления очередью</h2>
+            <h2 className="text-3xl font-black text-[#0A2896] mb-3 text-center tracking-tight">Демонстрационный стенд системы управления очередью</h2>
+            {currentUser && (
+              <p className="text-center text-sm text-slate-500 mb-8">
+                Вы вошли как <strong className="text-slate-700">{currentUser.email}</strong> • роль:{' '}
+                <span className="font-mono font-bold text-[#054FA6] uppercase">{currentUser.role}</span>
+                {userRole === 'client' && ' — доступны разделы «Клиент» и «Терминал»'}
+                {userRole === 'employee' && ' — доступны разделы «Окно оператора» и «Табло»'}
+                {userRole === 'opc_chief' && ' — доступны все разделы, включая панель начальника ОПС'}
+              </p>
+            )}
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
-                { path: '/demo/client', icon: Smartphone, title: 'Клиент', desc: 'Взять талон, отслеживать статус ожидания и вызов к окну' },
-                { path: '/demo/operator', icon: Activity, title: 'Окно оператора', desc: 'Вызов клиентов, обслуживание талонов, перевод и отмена' },
-                { path: '/demo/tv', icon: Eye, title: 'Табло зала (ТВ)', desc: 'Отображение текущей очереди, видео и вызовов с озвучкой' },
-                { path: '/demo/terminal', icon: SquareTerminal, title: 'Терминал (Киоск)', desc: 'Интерфейс физического киоска для печати талонов в зале' },
-                { path: '/demo/admin', icon: Sliders, title: 'Начальник ОПС', desc: 'Мониторинг отделения, управление окнами и приоритизацией' },
-              ].map(link => (
+                { path: '/demo/client', icon: Smartphone, title: 'Клиент', desc: 'Взять талон, отслеживать статус ожидания и вызов к окну', roles: ['client'] },
+                { path: '/demo/terminal', icon: SquareTerminal, title: 'Терминал (Киоск)', desc: 'Интерфейс физического киоска для печати талонов в зале', roles: ['client', 'terminal', 'employee', 'opc_chief'] },
+                { path: '/demo/operator', icon: Activity, title: 'Окно оператора', desc: 'Вызов клиентов, обслуживание талонов, перевод и отмена', roles: ['employee', 'opc_chief'] },
+                { path: '/demo/tv', icon: Eye, title: 'Табло зала (ТВ)', desc: 'Отображение текущей очереди, видео и вызовов с озвучкой', roles: ['employee', 'opc_chief'] },
+                { path: '/demo/admin', icon: Sliders, title: 'Начальник ОПС', desc: 'Мониторинг отделения, управление окнами и приоритизацией', roles: ['opc_chief'] },
+              ].filter(link => userRole && (link.roles as string[]).includes(userRole)).map(link => (
                 <button 
                   key={link.path} 
                   onClick={() => navigate && navigate(link.path)} 
@@ -2309,19 +2426,28 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* ========================================================================= */}
         {activeTab === 'operator' && (
           <div className="space-y-4">
-            {(!currentUser || (currentUser.role !== 'employee' && currentUser.role !== 'opc_chief')) ? (
+            {!isOperatorRole ? (
               <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm">
                 <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
                 <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
                 <p className="text-slate-600 text-sm mb-6">
-                  Для доступа к рабочему месту оператора необходимо авторизоваться под учетной записью сотрудника.
+                  Рабочее место оператора доступно только сотрудникам (employee) и начальнику ОПС.
+                  Ваша роль: <strong className="font-mono">{currentUser?.role ?? 'не авторизован'}</strong>.
                 </p>
-                <button
-                  onClick={() => { setAuthMode('login'); setIsAuthModalOpen(true); }}
-                  className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
-                >
-                  Войти в систему
-                </button>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setActiveTab('hub')}
+                    className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
+                  >
+                    Вернуться в меню
+                  </button>
+                  <button
+                    onClick={async () => { await logout(); setCurrentUser(null); }}
+                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-300 font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Сменить учётную запись
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -2341,7 +2467,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Оператор: <strong className="text-slate-800">{operatorSelectedWindow.operator}</strong> • Обслужено за смену: {operatorSelectedWindow.servedCount} чел.
+                      Оператор: <strong className="text-slate-800">{currentUser?.email ?? operatorSelectedWindow.operator}</strong> • Обслужено за смену: {operatorSelectedWindow.servedCount} чел.
                     </p>
                   </div>
                 </div>
@@ -2632,19 +2758,28 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* ========================================================================= */}
         {activeTab === 'admin' && (
           <div className="space-y-4">
-            {(!currentUser || currentUser.role !== 'opc_chief') ? (
+            {!isAdminRole ? (
               <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm">
                 <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
                 <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
                 <p className="text-slate-600 text-sm mb-6">
-                  Для доступа к панели администратора необходимо авторизоваться под учетной записью руководителя.
+                  Панель администратора доступна только начальнику ОПС (opc_chief).
+                  Ваша роль: <strong className="font-mono">{currentUser?.role ?? 'не авторизован'}</strong>.
                 </p>
-                <button
-                  onClick={() => { setAuthMode('login'); setIsAuthModalOpen(true); }}
-                  className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
-                >
-                  Войти в систему
-                </button>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setActiveTab('hub')}
+                    className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
+                  >
+                    Вернуться в меню
+                  </button>
+                  <button
+                    onClick={async () => { await logout(); setCurrentUser(null); }}
+                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-300 font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Сменить учётную запись
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -3084,7 +3219,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* ========================================================================= */}
         {/* ВКЛАДКА 5: ТАБЛО ВЫЗОВА В ЗАЛЕ (ТВ, Светлый чистый дизайн, Высокая видимость) */}
         {/* ========================================================================= */}
-        {activeTab === 'tv' && (
+        {activeTab === 'tv' && (isOperatorRole ? (
           <div className="bg-[#F4F7FB] text-slate-900 rounded-3xl p-6 sm:p-8 border border-[#DCE3EC] shadow-xl space-y-6">
             
             {/* Шапка информационного табло в фирменном синем цвете */}
@@ -3314,7 +3449,16 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
             </div>
 
           </div>
-        )}
+        ) : (
+          <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm max-w-md mx-auto">
+            <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
+            <p className="text-slate-600 text-sm mb-6">Табло зала доступно только сотрудникам отделения.</p>
+            <button onClick={() => setActiveTab('hub')} className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors">
+              Вернуться в меню
+            </button>
+          </div>
+        ))}
 
         {/* ========================================================================= */}
         {/* ВКЛАДКА 6: ТЕРМИНАЛ САМООБСЛУЖИВАНИЯ (КИОСК В ЗАЛЕ)                       */}

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -62,19 +63,36 @@ func recoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func cors(origin string) func(http.Handler) http.Handler {
+func cors(allowedOrigin string) func(http.Handler) http.Handler {
+	origins := strings.Split(allowedOrigin, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add("Vary", "Origin")
-			if r.Header.Get("Origin") == origin {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
-				w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
-				if r.Method == http.MethodOptions {
-					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID")
-					w.WriteHeader(http.StatusNoContent)
-					return
+			reqOrigin := r.Header.Get("Origin")
+			if reqOrigin != "" {
+				w.Header().Add("Vary", "Origin")
+				matched := false
+				for _, o := range origins {
+					if o == reqOrigin || o == "*" {
+						matched = true
+						break
+					}
+				}
+				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080") {
+					matched = true
+				}
+				if matched {
+					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+					if r.Method == http.MethodOptions {
+						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+						w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID")
+						w.WriteHeader(http.StatusNoContent)
+						return
+					}
 				}
 			}
 			next.ServeHTTP(w, r)
