@@ -13,22 +13,16 @@ import { defineConfig, loadEnv } from 'vite';
  * корректно передавалась браузером — при кросс-доменных запросах (5173 vs 8080)
  * браузер блокирует cookie, из-за чего после логина сессия не подхватывалась.
  */
-export default defineConfig(({ mode }) => ({
-  define: { 'import.meta.env.PUBLIC_APP_BASE_URL': JSON.stringify(loadEnv(mode, process.cwd(), '').PUBLIC_APP_BASE_URL || process.env.PUBLIC_APP_BASE_URL || '') },
+
+export default defineConfig({
   server: {
     host: '0.0.0.0',
-    watch: {
-      usePolling: true,
-      interval: 300,
-      ignored: ['**/node_modules/**', '**/.git/**'],
-    },
-    proxy: {
-      '/health': { target: 'http://backend:8080', changeOrigin: true },
-      '/ready': { target: 'http://backend:8080', changeOrigin: true },
-      '/api': {
-        target: 'http://backend:8080',
-        changeOrigin: true,
-      },
-    },
-  },
-}));
+    port: 5173,
+    strictPort: true,
+    allowedHosts: [
+      'post-queue.duckdns.org',
+      'localhost',
+      '127.0.0.1'
+    ]
+  }
+});
