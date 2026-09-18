@@ -1,3 +1,4 @@
+import { ClientWorkspace } from './features/client/ClientWorkspace';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useDemoIntegration, createQrTicket, createAppointment, callNext, startService, completeService, markNoShow, mapBackendTicketToDemo, createLiveTicket } from './demoIntegration';
 import { changeWindowStatus, updateWindowServices } from './api/admin/adminApi';
@@ -440,7 +441,7 @@ const LOCAL_STORAGE_KEY = 'pochta_suo_3_state_v2';
 export default function PochtaDemo({ currentPath = '/demo', navigate }: { currentPath?: string, navigate?: (to: string, e?: any) => void }) {
   // Навигационные вкладки
   let activeTab = 'hub';
-  if (currentPath === '/demo/client') {
+  if (currentPath.startsWith('/demo/client')) {
     // В зависимости от того, есть ли у клиента талон, показываем разные экраны
     activeTab = 'client-booking'; // по умолчанию, ниже мы переопределим если нужно
   } else if (currentPath === '/demo/operator') {
@@ -464,10 +465,10 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
   };
 
   // Аудио и голосовой диктор (Voice Engine)
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(false);
   const [speechRate, setSpeechRate] = useState<number>(0.88);
-  const [autoAnnounceCalls, setAutoAnnounceCalls] = useState<boolean>(true);
+  const [autoAnnounceCalls, setAutoAnnounceCalls] = useState<boolean>(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>('');
   const [isAudioSettingsModalOpen, setIsAudioSettingsModalOpen] = useState<boolean>(false);
@@ -838,35 +839,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     };
   }, [activeClientTicket, calculatedQueueMetrics]);
 
-  // Уведомление о приближении очереди
-  useEffect(() => {
-    const activeClient = tickets.find(t => t.id === myTicketId);
-    if (!activeClient || activeClient.status !== 'WAITING') return;
-
-    const metrics = calculatedQueueMetrics[activeClient.id];
-    if (!metrics) return;
-
-    const newTriggers = [...(activeClient.notifiedTriggers || [])];
-    let triggeredMsg: string | null = null;
-
-    if (metrics.etaMinutes <= 30 && !newTriggers.includes('30m')) {
-      newTriggers.push('30m');
-      triggeredMsg = `🔔 Ожидание в ОПС 390000: около ~${metrics.etaMinutes} минут`;
-    } else if (metrics.etaMinutes <= 15 && !newTriggers.includes('15m')) {
-      newTriggers.push('15m');
-      triggeredMsg = `🔔 Талон ${activeClient.number}: до вызова осталось ~${metrics.etaMinutes} мин. Пройдите в зал`;
-    } else if (metrics.position <= 2 && !newTriggers.includes('pos2')) {
-      newTriggers.push('pos2');
-      triggeredMsg = `🔔 Внимание: перед вами остался ${metrics.position - 1} чел. Приготовьте документы`;
-    }
-
-    if (triggeredMsg) {
-      setTickets(prev => prev.map(t => t.id === activeClient.id ? { ...t, notifiedTriggers: newTriggers } : t));
-      showToast(triggeredMsg);
-      if (soundEnabled) playPostalChime();
-      logAudit('NOTIFICATION_TRIGGER', triggeredMsg);
-    }
-  }, [calculatedQueueMetrics, myTicketId, tickets, showToast, logAudit, soundEnabled]);
+  // Уведомления о приближении очереди отключены по просьбе пользователя
 
   // Текущий билет для выбранного окна оператора.
   // Пока список окон ещё не пришёл с бэкенда (или localStorage пуст),
@@ -1909,8 +1882,9 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
-                { path: '/demo/client', icon: Smartphone, title: 'Клиент', desc: 'Взять талон, отслеживать статус ожидания и вызов к окну', roles: ['client'] },
-                { path: '/demo/terminal', icon: SquareTerminal, title: 'Терминал (Киоск)', desc: 'Интерфейс физического киоска для печати талонов в зале', roles: ['client', 'terminal', 'employee', 'opc_chief'] },
+                { path: '/demo/client?action=booking', icon: Calendar, title: 'Записаться онлайн', desc: 'Выберите отделение и удобное время.', roles: ['client'] },
+                { path: '/demo/client?action=walkin', icon: Smartphone, title: 'Взять талон в отделении', desc: 'Получите номер электронной очереди прямо сейчас.', roles: ['client'] },
+                { path: '/demo/client?action=my', icon: CheckSquare, title: 'Мои талоны', desc: 'Активные талоны и история.', roles: ['client'] },
                 { path: '/demo/operator', icon: Activity, title: 'Окно оператора', desc: 'Вызов клиентов, обслуживание талонов, перевод и отмена', roles: ['employee', 'opc_chief'] },
                 { path: '/demo/tv', icon: Eye, title: 'Табло зала (ТВ)', desc: 'Отображение текущей очереди, видео и вызовов с озвучкой', roles: ['employee', 'opc_chief'] },
                 { path: '/demo/admin', icon: Sliders, title: 'Начальник ОПС', desc: 'Мониторинг отделения, управление окнами и приоритизацией', roles: ['opc_chief'] },
@@ -1936,417 +1910,9 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* ========================================================================= */}
         {/* ВКЛАДКА 1: БРОНИРОВАНИЕ ТАЛОНА                                           */}
         {/* ========================================================================= */}
-        {activeTab === 'client-booking' && (
-          <div className="max-w-xl mx-auto space-y-4">
-            
-            {/* Карточка отделения */}
-            <div className="bg-[#003B73] text-white rounded-3xl p-5 sm:p-6 border border-[#003B73] shadow-md relative overflow-hidden">
-              <div className="relative z-10">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
-                    Электронная очередь нового поколения
-                  </span>
-                  <span className="text-[11px] font-mono bg-white/15 px-2 py-0.5 rounded text-white border border-white/20">
-                    СУО 3.0
-                  </span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-black mt-1.5">{BRANCH_CONFIG.name}</h1>
-                <p className="text-xs text-blue-200 mt-1 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-[#D92534]" />
-                  {BRANCH_CONFIG.city}
-                </p>
-
-                <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-xs font-mono">
-                  <span className="text-blue-200">Сегодня открыто:</span>
-                  <span className="font-bold text-emerald-300">08:00 – {BRANCH_CONFIG.closeTimeStr}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Переключатель: QR на месте vs Предзапись */}
-            <div className="bg-slate-200/80 p-1 rounded-2xl grid grid-cols-2 gap-1 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setBookingMode('qr')}
-                className={`py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${bookingMode === 'qr' ? 'bg-white text-[#003B73] shadow' : 'text-slate-600 hover:text-slate-900'}`}
-              >
-                <QrCode className="w-4 h-4 text-[#054FA6]" />
-                <span>В отделении (QR)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBookingMode('appointment')}
-                className={`py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${bookingMode === 'appointment' ? 'bg-white text-[#003B73] shadow' : 'text-slate-600 hover:text-slate-900'}`}
-              >
-                <Calendar className="w-4 h-4 text-[#054FA6]" />
-                <span>Запись ко времени</span>
-              </button>
-            </div>
-
-            {/* Карточка формы */}
-            <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-6 space-y-5 shadow-sm">
-              
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  1. Выберите услугу
-                </label>
-                <div className="space-y-2">
-                  {SERVICES.map(srv => (
-                    <label
-                      key={srv.id}
-                      className={`block p-3.5 rounded-2xl border cursor-pointer transition-all ${selectedServiceId === srv.id ? 'border-[#054FA6] bg-blue-50/60 ring-2 ring-blue-600/10' : 'border-slate-200 hover:border-slate-300'}`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3">
-                          <input
-                            type="radio"
-                            name="service"
-                            value={srv.id}
-                            checked={selectedServiceId === srv.id}
-                            onChange={() => setSelectedServiceId(srv.id)}
-                            className="mt-1 accent-[#054FA6]"
-                          />
-                          <div>
-                            <div className="font-bold text-sm text-slate-900">{srv.title}</div>
-                            <div className="text-xs text-slate-500 mt-0.5">{srv.subtitle}</div>
-                          </div>
-                        </div>
-                        <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold shrink-0">
-                          ~{srv.avgMinutes} мин
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Блок предварительной записи */}
-              {bookingMode === 'appointment' && (
-                <div className="pt-4 border-t border-slate-100 space-y-4">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    2. Выберите дату и время визита
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      className="p-3 rounded-2xl border-2 border-[#054FA6] bg-blue-50 text-left"
-                    >
-                      <div className="text-[11px] text-[#054FA6] font-bold">СЕГОДНЯ</div>
-                      <div className="text-xs font-bold text-slate-900 mt-0.5">17 сентября 2026</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => showToast('Выбрана дата 18 сентября')}
-                      className="p-3 rounded-2xl border border-slate-200 hover:border-slate-300 text-left text-slate-600"
-                    >
-                      <div className="text-[11px] font-bold text-slate-400">ЗАВТРА</div>
-                      <div className="text-xs font-bold mt-0.5">18 сентября 2026</div>
-                    </button>
-                  </div>
-
-                  <div>
-                    <span className="text-xs text-slate-500 font-medium mb-2 block">Свободные 15-минутные слоты:</span>
-                    <div className="grid grid-cols-4 gap-2 font-mono text-xs">
-                      {['18:00', '18:15', '18:30', '18:45', '19:00', '19:15', '19:30', '19:45'].map(slot => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setSelectedTimeSlot(slot)}
-                          className={`py-2 rounded-xl font-bold border transition-all ${selectedTimeSlot === slot ? 'bg-[#003B73] text-white border-[#003B73] shadow-sm' : 'border-slate-200 text-slate-700 hover:border-slate-300'}`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Email или телефон для подтверждения записи:
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="email"
-                        placeholder="client@pochta.ru"
-                        value={clientEmail}
-                        onChange={(e) => setClientEmail(e.target.value)}
-                        className="flex-1 min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-[#054FA6]"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRequestVerificationCode}
-                        className="min-h-[44px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800 border border-slate-300"
-                      >
-                        Код
-                      </button>
-                    </div>
-
-                    {mockSentCode && !isEmailVerified && (
-                      <div className="mt-2 p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-2">
-                        <div className="text-[11px] text-[#003B73] font-semibold">
-                          Введите тестовый код: <strong>{mockSentCode}</strong>
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="7341"
-                            value={emailCodeInput}
-                            onChange={(e) => setEmailCodeInput(e.target.value)}
-                            className="w-28 min-h-[38px] px-3 text-center font-mono font-bold tracking-widest text-xs rounded-lg border border-slate-300 bg-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleConfirmVerificationCode}
-                            className="px-3 min-h-[38px] rounded-lg bg-[#054FA6] text-white text-xs font-bold"
-                          >
-                            Подтвердить
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {isEmailVerified && (
-                      <div className="mt-2 text-xs text-emerald-700 font-bold flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Email подтвержден. Талон привязан к вашей сессии</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Кнопка создания */}
-              <button
-                type="button"
-                onClick={handleCreateClientTicket}
-                className="w-full min-h-[52px] rounded-2xl bg-[#054FA6] hover:bg-[#1420b5] active:bg-[#0f1994] text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2.5 transition-all"
-              >
-                <QrCode className="w-5 h-5" />
-                <span>
-                  {bookingMode === 'appointment'
-                    ? `Забронировать слот на ${selectedTimeSlot}`
-                    : 'Получить электронный талон (QR)'}
-                </span>
-              </button>
-
-            </div>
-
-          </div>
+        {(activeTab === 'client-booking' || activeTab === 'client-ticket') && (
+           <ClientWorkspace />
         )}
-
-        {/* ========================================================================= */}
-        {/* ВКЛАДКА 2: ЦИФРОВОЙ ТАЛОН КЛИЕНТА (Билет, ETA, «Успею сегодня?»)          */}
-        {/* ========================================================================= */}
-        {activeTab === 'client-ticket' && (
-          <div className="max-w-md mx-auto space-y-4">
-            
-            {/* Баннер активного вызова с озвучкой */}
-            {activeClientTicket?.status === 'CALLED' && (
-              <div className="p-4 sm:p-5 rounded-3xl bg-[#003B73] text-white border-2 border-[#86BBFF] shadow-lg flex items-center justify-between gap-3.5">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-                    <Volume2 className="w-6 h-6 text-[#86BBFF]" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono uppercase tracking-widest text-[#86BBFF] font-bold">Внимание! Ваш вызов</div>
-                    <div className="text-xl sm:text-2xl font-black">Пройдите к ОКНУ № {activeClientTicket.windowId || 3}</div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
-                  className="px-3.5 py-2 rounded-xl bg-white text-[#003B73] hover:bg-blue-50 font-bold text-xs shrink-0 shadow transition-colors"
-                  title="Озвучить вызов диктором"
-                >
-                  Озвучить
-                </button>
-              </div>
-            )}
-
-            {/* «Успею ли сегодня?» & Альтернативное отделение */}
-            {activeClientMetrics && (
-              <div className={`p-4 rounded-3xl border text-xs leading-snug space-y-2.5 shadow-sm ${activeClientMetrics.isHighRisk ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-bold flex items-center gap-1.5">
-                    {activeClientMetrics.isHighRisk ? (
-                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                    )}
-                    <span>
-                      {activeClientMetrics.isHighRisk ? 'Внимание к графику закрытия' : 'Вы успеваете до закрытия'}
-                    </span>
-                  </div>
-                  <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white/80 border border-current">
-                    Закрытие в {BRANCH_CONFIG.closeTimeStr}
-                  </span>
-                </div>
-
-                <p>
-                  Расчетное завершение обслуживания: <strong>~{activeClientMetrics.estFinishTimeStr}</strong> (ожидание ~{activeClientMetrics.etaMinutes} мин).
-                </p>
-
-                {activeClientMetrics.isHighRisk && (
-                  <div className="pt-2 border-t border-amber-200/80 flex items-center justify-between text-[11px]">
-                    <div>
-                      <span className="font-semibold text-slate-800">Менее загруженное отделение:</span>
-                      <div className="text-amber-800 font-bold">{BRANCH_CONFIG.alternativeBranch.name}</div>
-                    </div>
-                    <span className="font-mono px-2 py-1 bg-white rounded-lg border border-amber-300 text-amber-900 font-bold">
-                      ~{BRANCH_CONFIG.alternativeBranch.etaMinutes} мин
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Карточка электронного талона Почты России */}
-            <div className="bg-white rounded-3xl border border-[#D2D8E2] shadow-md overflow-hidden relative">
-              
-              {/* Верхняя шапка билета */}
-              <div className="bg-[#003B73] text-white p-5 relative">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#86BBFF] font-bold">
-                        Электронный талон
-                      </span>
-                      <span className="text-[10px] font-mono bg-white/15 px-1.5 py-0.5 rounded text-white border border-white/20">
-                        СУО 3.0
-                      </span>
-                    </div>
-                    <div className="text-xs text-blue-200 mt-1">{BRANCH_CONFIG.name}</div>
-                  </div>
-
-                  {/* Штемпель отделения — контрастный лазурный цвет #86BBFF и штемпельный наклон */}
-                  <PostalCircularStamp 
-                    className="w-20 h-20 absolute -top-1 right-3 text-[#86BBFF] opacity-95 rotate-12 drop-shadow-sm" 
-                    color="#86BBFF" 
-                    date={currentTime.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                    time={currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                  />
-                </div>
-
-                {/* Доминантный номер талона */}
-                <div className="mt-4 text-center">
-                  <div className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white drop-shadow-sm">
-                    {activeClientTicket?.number || '—'}
-                  </div>
-                  <div className="text-xs font-semibold text-blue-200 mt-1">
-                    {SERVICES.find(s => s.id === activeClientTicket?.serviceId)?.title || 'Ожидание талона'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Фирменная тонкая разделительная линия билета */}
-              <div className="h-[2px] w-full bg-[#D92534]/90"></div>
-
-              {/* Тело талона: QR-код и статус */}
-              <div className="p-5 space-y-4">
-                
-                {/* QR-код */}
-                <div className="flex justify-center">
-                  <PostalTicketQr
-                    value={`https://www.pochta.ru/q?ticket=${activeClientTicket?.number || ''}&ops=390000`}
-                    className="w-full max-w-[260px]"
-                  />
-                </div>
-
-                {/* Метрики ожидания */}
-                <div className="grid grid-cols-2 gap-2 text-center font-mono">
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                    <div className="text-[11px] text-slate-500 uppercase">Осталось перед вами</div>
-                    <div className="text-2xl font-black text-slate-900 mt-0.5">
-                      {Math.max(0, (activeClientMetrics?.position || 1) - 1)} чел.
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                    <div className="text-[11px] text-slate-500 uppercase">Ожидание ~</div>
-                    <div className="text-2xl font-black text-[#054FA6] mt-0.5">
-                      ~{activeClientMetrics?.etaMinutes || 4} мин
-                    </div>
-                  </div>
-                </div>
-
-                {/* Статус талона */}
-                <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 flex items-center justify-between text-xs font-mono">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span className="font-bold text-slate-800">
-                      Статус: {activeClientTicket?.status === 'CALLED' ? 'ВЫЗВАН К ОКНУ' : 'В ОЧЕРЕДИ'}
-                    </span>
-                  </div>
-                  <span className="font-bold text-[#054FA6]">Канал: {activeClientTicket?.source}</span>
-                </div>
-
-              </div>
-            </div>
-
-            {/* Действия с талоном */}
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => downloadTicketAsImage(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <Download className="w-4 h-4 text-[#054FA6]" />
-                  <span>Сохранить в PNG</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => downloadCalendarEvent(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <CalendarDays className="w-4 h-4 text-[#054FA6]" />
-                  <span>В календарь (.ics)</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleShareTicket(activeClientTicket)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-slate-300 hover:border-[#054FA6] bg-white font-bold text-xs flex items-center justify-center gap-2 text-slate-800 shadow-sm transition-colors"
-                >
-                  <Share2 className="w-4 h-4 text-[#054FA6]" />
-                  <span>Поделиться</span>
-                </button>
-
-                {/* Кнопка озвучивания талона диктором */}
-                <button
-                  type="button"
-                  onClick={() => handleAnnounce(activeClientTicket.number, activeClientTicket.windowId || 3)}
-                  className="min-h-[46px] p-2.5 rounded-2xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:bg-emerald-100 transition-colors"
-                >
-                  <Volume2 className="w-4 h-4 text-emerald-600" />
-                  <span>Озвучить вызов</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTickets(prev => prev.filter(t => t.id !== activeClientTicket.id));
-                  showToast(`Талон ${activeClientTicket.number} отменен`);
-                  setActiveTab('client-booking');
-                }}
-                className="w-full min-h-[44px] text-xs font-semibold text-[#D92534] hover:bg-red-50 rounded-2xl border border-transparent hover:border-red-200 transition-colors"
-              >
-                Отменить талон и освободить очередь
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* ВКЛАДКА 3: РАБОЧЕЕ МЕСТО ОПЕРАТОРА (С переключением окон 1..4)            */}
-        {/* ========================================================================= */}
         {activeTab === 'operator' && (
           <div className="space-y-4">
             {!isOperatorRole ? (
