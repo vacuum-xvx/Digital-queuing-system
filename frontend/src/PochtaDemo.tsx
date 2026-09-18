@@ -363,7 +363,7 @@ const BRANCH_CONFIG = {
 /**
  * Реестр услуг
  */
-const SERVICES = [
+export const SERVICES = [
   {
     id: '22222222-2222-2222-2222-222222222222',
     title: 'Получение писем и посылок',
@@ -705,7 +705,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     const currentMin = currentTime.getMinutes();
     const currentTotalMinutes = currentHour * 60 + currentMin;
 
-    const waitingTickets = tickets.filter(t => t.status === 'WAITING');
+    const waitingTickets = tickets.filter(t => t.status === 'WAITING' || (t.status as any) === 'SCHEDULED');
     const activeWindows = windows.filter(w => w.status === 'ACTIVE');
 
     const scored = waitingTickets.map(ticket => {
