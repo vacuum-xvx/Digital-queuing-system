@@ -23,8 +23,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Compose ждёт PostgreSQL healthcheck, запускает одноразовый `migrate up`, затем API и frontend.
-Повторное применение актуальных миграций безопасно. `migrate` должен завершиться с кодом 0.
+Compose ждёт PostgreSQL healthcheck (с автоматической инициализацией схемы через `init.sql`), затем запускает API и frontend.
 Здесь нет sleep-задержек. PostgreSQL порт наружу не публикуется.
 
 | Variable | Development example / назначение |
@@ -122,7 +121,7 @@ docker compose down -v
 - `frontend/src/api`: общий health API helper.
 - `frontend/src/pages`: отдельные Client/Operator/Admin placeholders.
 - `frontend/src/App.tsx`: health indicator и простое разделение страниц по pathname.
-- `docker-compose.yml`: postgres → migrate → backend → frontend.
+- `docker-compose.yml`: postgres → backend → frontend.
 
 Дополнительный frontend router пока не нужен; страницы открываются обычными ссылками,
 Vite обслуживает их через SPA fallback. Новые backend packages добавляются по мере появления кода.
@@ -214,13 +213,13 @@ docker compose run --rm migrate migrate version
 - **Port already in use:** освободите 8080/5173 или измените HTTP_PORT/FRONTEND_PORT и согласуйте CORS/API URL.
 - **PostgreSQL unhealthy:** проверьте logs, доступность диска и credentials существующего volume.
 - **`/ready` = 503:** проверьте `docker compose ps`, PostgreSQL logs и POSTGRES_*; `/health` должен оставаться 200.
-- **Migration failure:** смотрите migrate logs и version; backend ждёт успешного завершения миграций.
+- **Database unready:** смотрите логи postgres; backend ждёт перехода postgres в статус healthy.
 - **Frontend cannot reach backend:** URL должен быть доступен браузеру; CORS origin должен точно совпадать с адресом frontend, включая порт. Не путайте localhost и 127.0.0.1.
 - **Stale Docker build:** `docker compose build --no-cache`, затем `docker compose up -d --force-recreate`.
 - **Permission/daemon error:** убедитесь, что Docker запущен и пользователь имеет доступ к нему.
 
 ```bash
-docker compose logs --tail=100 backend postgres frontend migrate
+docker compose logs --tail=100 backend postgres frontend
 docker compose logs -f backend
 docker compose exec postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
