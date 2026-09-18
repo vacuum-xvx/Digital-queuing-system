@@ -2,10 +2,240 @@ openapi: 3.0.3
 info:
   title: E-SUO Queue Engine API
   version: 1.0.0
-  description: Backward-compatible Queue System API (Sprints 1–3)
+  description: Backward-compatible Queue System API (Sprints 1–4). Business dates use Europe/Moscow. Physical QR entry is the SPA route /q/{branchId}; it never creates a ticket automatically.
 servers:
   - url: /api/v1
 paths:
+  /branches/{branchId}/tv:
+    get:
+      summary: Public hall view from backend overview
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Active windows and up to 10 waiting tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [windows, queue]
+                properties:
+                  windows:
+                    type: array
+                    items:
+                      type: object
+                      required: [number, currentTicketNumber, status]
+                      properties:
+                        number: { type: integer }
+                        currentTicketNumber: { type: string, nullable: true }
+                        status: { type: string, enum: [OPEN, CLOSING] }
+                  queue:
+                    type: array
+                    items:
+                      type: object
+                      required: [publicNumber]
+                      properties:
+                        publicNumber: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /terminal/branches/{branchId}/services:
+    get:
+      summary: Services for authenticated terminal-capable user
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Services
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /terminal/branches/{branchId}/tickets/live:
+    post:
+      summary: Issue LIVE ticket for authenticated terminal-capable user
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLiveTicketRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '200':
+          description: Idempotent replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /tickets/{ticketId}/eta:
+    get:
+      summary: Approximate backend waiting estimate using canonical QueuePosition
+      description: Uses the last 20 positive COMPLETED service durations in the same branch/service. With fewer than 3 samples uses 300 seconds; otherwise floors the mean. Wait is clamp((position-1)*average,60,1800). Non-AVAILABLE reasons return null estimates, sampleSize 0 and usedFallback false. This is not a call-time guarantee.
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Observational estimate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketETA' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/login:
+    post:
+      summary: Authenticate with existing users and create persistent session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Sets session cookie (HttpOnly, SameSite=Lax, Path=/)
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOK' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/me:
+    get:
+      summary: Restore current user from backend session
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      summary: Revoke current session and clear cookie (also succeeds without cookie)
+      responses:
+        '200':
+          description: Session cleared
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOK' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/register:
+    post:
+      summary: Register a client with existing MVP automatic confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/confirm:
+    get:
+      summary: Existing confirmation-token endpoint
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOK' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /admin/users:
+    get:
+      security: [{ sessionCookie: [] }]
+      summary: List users (opc_chief only)
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /admin/users/{userID}/role:
+    put:
+      security: [{ sessionCookie: [] }]
+      summary: Change existing user role (opc_chief only)
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/UserRole' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /branches:
     get:
       summary: List branches
@@ -113,6 +343,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/branches/{branchId}/windows:
     get:
+      security: [{ sessionCookie: [] }]
       summary: List operator windows in a branch
       parameters:
         - name: branchId
@@ -121,6 +352,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -139,6 +372,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/windows/{windowId}/current-ticket:
     get:
+      security: [{ sessionCookie: [] }]
       summary: Get the current active ticket for a window
       parameters:
         - name: windowId
@@ -147,6 +381,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -165,6 +401,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/windows/{windowId}/call-next:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Call the next waiting ticket
       parameters:
         - name: windowId
@@ -173,6 +410,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -191,6 +430,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/start:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Start service for a ticket
       parameters:
         - name: ticketId
@@ -199,6 +439,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -217,6 +459,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/complete:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Complete service for a ticket
       parameters:
         - name: ticketId
@@ -225,6 +468,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -334,6 +579,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/branches/{branchId}/overview:
     get:
+      security: [{ sessionCookie: [] }]
       summary: Get admin branch overview
       parameters:
         - name: branchId
@@ -343,6 +589,8 @@ paths:
             type: string
             format: uuid
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Admin overview
           content:
@@ -355,6 +603,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/branches/{branchId}/priorities:
     put:
+      security: [{ sessionCookie: [] }]
       summary: Save legacy priority rules
       parameters:
         - name: branchId
@@ -372,6 +621,8 @@ paths:
               items:
                 $ref: '#/components/schemas/PriorityRule'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Saved priority rules
           content:
@@ -388,6 +639,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/branches/{branchId}/queue-policy:
     get:
+      security: [{ sessionCookie: [] }]
       summary: Get queue policy
       operationId: getQueuePolicy
       tags:
@@ -400,6 +652,8 @@ paths:
             type: string
             format: uuid
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Queue Policy
           content:
@@ -411,6 +665,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
     put:
+      security: [{ sessionCookie: [] }]
       summary: Update queue policy
       operationId: updateQueuePolicy
       tags:
@@ -429,6 +684,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateQueuePolicyRequest'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Queue Policy Updated
           content:
@@ -445,6 +702,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/tickets/{ticketId}/events:
     get:
+      security: [{ sessionCookie: [] }]
       summary: List ticket events
       operationId: listTicketEvents
       tags:
@@ -457,6 +715,8 @@ paths:
             type: string
             format: uuid
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: List of events
           content:
@@ -555,6 +815,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/windows/{windowId}/status:
     put:
+      security: [{ sessionCookie: [] }]
       summary: Change window status
       parameters:
         - name: windowId
@@ -569,6 +830,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ChangeWindowStatusRequest'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -587,6 +850,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /admin/windows/{windowId}/services:
     put:
+      security: [{ sessionCookie: [] }]
       summary: Replace the services a window is allowed to serve
       parameters:
         - name: windowId
@@ -601,6 +865,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateWindowServicesRequest'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -621,6 +887,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/return:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Return ticket to queue
       parameters:
         - name: ticketId
@@ -629,6 +896,8 @@ paths:
           schema:
             type: string
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -647,6 +916,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/redirect:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Redirect ticket
       parameters:
         - name: ticketId
@@ -661,6 +931,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RedirectTicketRequest'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: OK
           content:
@@ -681,6 +953,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/branches/{branchId}/tickets/live:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Create LIVE ticket for a physically present client
       operationId: createLiveTicket
       parameters:
@@ -703,6 +976,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateLiveTicketRequest'
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: Exact idempotent replay
           content:
@@ -751,6 +1026,7 @@ paths:
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/no-show:
     post:
+      security: [{ sessionCookie: [] }]
       summary: Mark a CALLED ticket NO_SHOW; repeated NO_SHOW is idempotent
       operationId: markNoShow
       parameters:
@@ -761,6 +1037,8 @@ paths:
           type: string
           format: uuid
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '200':
           description: NO_SHOW; historical window retained, active capacity released
           content:
@@ -802,7 +1080,22 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
   responses:
+    Unauthorized:
+      description: Missing, invalid or expired session; invalid login credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Authenticated user lacks required role/capability
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     InternalError:
       description: INTERNAL_ERROR (sanitized)
       content:
@@ -845,6 +1138,52 @@ components:
               message: "Version mismatch"
               requestId: "req-123"
   schemas:
+    TicketETA:
+      type: object
+      additionalProperties: false
+      required: [ticketId, ticketStatus, reason, estimatedWaitSeconds, estimatedCallAt, position, referenceWindow, sampleSize, usedFallback, calculatedAt]
+      properties:
+        ticketId: { type: string, format: uuid }
+        ticketStatus: { $ref: '#/components/schemas/TicketStatus' }
+        reason:
+          type: string
+          enum: [AVAILABLE, NOT_ELIGIBLE_YET, NO_OPEN_COMPATIBLE_WINDOW, NOT_QUEUED]
+        estimatedWaitSeconds: { type: integer, minimum: 60, maximum: 1800, nullable: true }
+        estimatedCallAt: { type: string, format: date-time, nullable: true }
+        position: { type: integer, minimum: 1, nullable: true }
+        referenceWindow:
+          type: object
+          nullable: true
+          required: [id, number]
+          properties:
+            id: { type: string, format: uuid }
+            number: { type: integer }
+        sampleSize: { type: integer, minimum: 0, maximum: 20 }
+        usedFallback: { type: boolean }
+        calculatedAt: { type: string, format: date-time }
+    UserRole:
+      type: string
+      enum: [client, employee, opc_chief, terminal]
+    User:
+      type: object
+      required: [id, email, role, isTerminal, confirmed]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        isTerminal: { type: boolean }
+        confirmed: { type: boolean }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string, format: password }
+    StatusOK:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
     QueuePolicy:
       type: object
       additionalProperties: false
@@ -1045,6 +1384,8 @@ components:
           - COMPLETED
           - CANCELLED
           - NO_SHOW
+          - RETURNED
+          - REDIRECTED
         fromStatus:
           $ref: '#/components/schemas/TicketStatus'
           nullable: true

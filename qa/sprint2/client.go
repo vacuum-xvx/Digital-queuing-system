@@ -147,6 +147,7 @@ func NewClient(baseURL string) *Client {
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		HTTPClient: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: sessionTransport{},
 		},
 	}
 }

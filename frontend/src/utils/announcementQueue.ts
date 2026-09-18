@@ -14,6 +14,7 @@
 
 /** Цепочка Promise — хвост очереди воспроизведения */
 let _chain: Promise<void> = Promise.resolve();
+let generation = 0;
 
 /**
  * Ставит функцию-объявление в конец FIFO-очереди.
@@ -22,8 +23,9 @@ let _chain: Promise<void> = Promise.resolve();
  * @param fn — асинхронная функция, возвращающая Promise<void | unknown>
  */
 export function enqueueAnnouncement(fn: () => Promise<unknown>): void {
+  const queuedGeneration = generation;
   _chain = _chain
-    .then(() => fn())
+    .then(() => queuedGeneration === generation ? fn() : undefined)
     .catch((err) => {
       // Ошибка в одном объявлении не должна блокировать очередь
       console.warn('[AnnouncementQueue] Error in queued announcement:', err);
@@ -35,5 +37,5 @@ export function enqueueAnnouncement(fn: () => Promise<unknown>): void {
  * Текущее воспроизведение не прерывается, но следующие элементы отбрасываются.
  */
 export function clearAnnouncementQueue(): void {
-  _chain = Promise.resolve();
+  generation += 1;
 }

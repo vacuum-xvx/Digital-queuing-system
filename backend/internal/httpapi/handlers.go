@@ -43,6 +43,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
+		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
 
 		// ── Оператор (employee + opc_chief) ──────────────────────────────
@@ -68,7 +69,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
-		r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
+			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
 
 			// Управление пользователями — только начальник ОПС
 			r.Group(func(r chi.Router) {
@@ -86,7 +87,6 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		})
 	})
 }
-
 
 // -----------------------------------------------------------------------------
 // Responses DTOs

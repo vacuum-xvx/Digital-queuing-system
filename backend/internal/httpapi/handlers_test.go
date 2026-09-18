@@ -14,6 +14,7 @@ import (
 )
 
 type FakeUseCases struct {
+	GetTicketETAFunc       func(context.Context, string) (domain.TicketETA, error)
 	ArriveAppointmentFunc  func(context.Context, string) (application.AppointmentView, error)
 	MarkNoShowFunc         func(context.Context, string) (domain.Ticket, error)
 	GetQueuePositionFunc   func(context.Context, string) (domain.QueuePosition, error)
@@ -27,18 +28,18 @@ type FakeUseCases struct {
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
 
-	CreateLiveTicketFunc   func(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error)
-	CreateAppointmentFunc  func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
-	CancelAppointmentFunc  func(ctx context.Context, ticketID string) (application.AppointmentView, error)
-	GetQueuePolicyFunc     func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
-	UpdateQueuePolicyFunc  func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
-	ListTicketEventsFunc   func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
+	CreateLiveTicketFunc     func(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error)
+	CreateAppointmentFunc    func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
+	CancelAppointmentFunc    func(ctx context.Context, ticketID string) (application.AppointmentView, error)
+	GetQueuePolicyFunc       func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
+	UpdateQueuePolicyFunc    func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
+	ListTicketEventsFunc     func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
 	UpdateWindowServicesFunc func(ctx context.Context, cmd application.UpdateWindowServicesCommand) (domain.Window, error)
-	ChangeWindowStatusFunc func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
-	ReturnTicketFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
-	RedirectTicketFunc     func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
-	GetAdminOverviewFunc   func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
-	SavePriorityRulesFunc  func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+	ChangeWindowStatusFunc   func(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
+	ReturnTicketFunc         func(ctx context.Context, ticketID string) (domain.Ticket, error)
+	RedirectTicketFunc       func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
+	GetAdminOverviewFunc     func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
+	SavePriorityRulesFunc    func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
 
 	RegisterFunc       func(ctx context.Context, email, password string) (domain.User, error)
 	ConfirmEmailFunc   func(ctx context.Context, token string) error
@@ -47,6 +48,10 @@ type FakeUseCases struct {
 	GetSessionUserFunc func(ctx context.Context, token string) (domain.User, error)
 	ListUsersFunc      func(ctx context.Context) ([]domain.User, error)
 	ChangeUserRoleFunc func(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
+}
+
+func (f *FakeUseCases) GetTicketETA(ctx context.Context, id string) (domain.TicketETA, error) {
+	return f.GetTicketETAFunc(ctx, id)
 }
 
 var _ application.UseCases = (*FakeUseCases)(nil)

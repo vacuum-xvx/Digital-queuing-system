@@ -23,6 +23,7 @@ import {
   AnnouncementData
 } from './utils/postalVoice';
 import { enqueueAnnouncement } from './utils/announcementQueue';
+import { parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from './utils/time';
 
 /**
  * =============================================================================
@@ -562,7 +563,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
   ]);
 
   // Системное время отделения
-  const [currentTime, setCurrentTime] = useState(new Date(2026, 8, 17, 17, 45, 0));
+  const [currentTime, setCurrentTime] = useState(new Date('2026-09-17T17:45:00+03:00'));
 
   // Аутентификация
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -701,7 +702,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
    * Интеллектуальный Queue Engine с учетом SLA, опозданий и Starvation Guard
    */
   const queueScoring = useMemo(() => {
-    const currentHour = currentTime.getHours();
+    const currentHour = Number(currentTime.toLocaleString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hourCycle: 'h23' }));
     const currentMin = currentTime.getMinutes();
     const currentTotalMinutes = currentHour * 60 + currentMin;
 
@@ -797,7 +798,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
       const calculatedEta = Math.max(2, Math.round((countAheadInService * avgDuration) / capacity));
 
       const finishDate = new Date(currentTime.getTime() + (calculatedEta + avgDuration) * 60000);
-      const finishHour = finishDate.getHours();
+      const finishHour = Number(finishDate.toLocaleString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hourCycle: 'h23' }));
       const finishMin = finishDate.getMinutes();
       const finishTimeStr = `${finishHour.toString().padStart(2, '0')}:${finishMin.toString().padStart(2, '0')}`;
 
@@ -1100,15 +1101,12 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
   const handleCreateClientTicket = async () => {
     try {
       if (bookingMode === 'appointment') {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const [hours, minutes] = selectedTimeSlot.split(':');
-        tomorrow.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        const tomorrow = toMoscowDatetimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)).slice(0, 10);
         
         const created = await createAppointment(
           DEMO_BRANCH_ID,
           selectedServiceId,
-          tomorrow.toISOString(),
+          parseMoscowDatetimeLocal(`${tomorrow}T${selectedTimeSlot}`),
           crypto.randomUUID()
         );
         
@@ -1303,8 +1301,8 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     };
 
     drawHeaderFittedText('ПОЧТА РОССИИ', -16, 7.5, 44);
-    drawHeaderFittedText(currentTime.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }), -2, 9, 26, true);
-    drawHeaderFittedText(currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }), 10, 7.5, 26, true);
+    drawHeaderFittedText(currentTime.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: '2-digit' }), -2, 9, 26, true);
+    drawHeaderFittedText(currentTime.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }), 10, 7.5, 26, true);
     drawHeaderFittedText(`${BRANCH_CONFIG.city} ${BRANCH_CONFIG.id}`, 18, 7, 44);
 
     ctx.restore();
@@ -1375,8 +1373,8 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     ctx.translate(460, 595);
     ctx.rotate(0.2);
 
-    const stampDate = currentTime.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
-    const stampTime = currentTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const stampDate = currentTime.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: '2-digit' });
+    const stampTime = currentTime.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' });
     const stampCity = `${BRANCH_CONFIG.city} ${BRANCH_CONFIG.id}`;
 
     // Концентрические кольца почтового штемпеля

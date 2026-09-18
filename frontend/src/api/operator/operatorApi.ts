@@ -16,6 +16,7 @@ import {
 } from './mockData';
 
 export function isMockEnabled(): boolean {
+  if (!window.location.pathname.startsWith('/demo')) return false;
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     if (params.get('mock') === '1') return true;
@@ -214,5 +215,24 @@ export async function markNoShow(ticketId: string): Promise<Ticket> {
     return updated;
   }
   const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/no-show`, { method: 'POST', credentials: 'include', headers: { Accept: 'application/json' } });
+  return await handleResponse<Ticket>(res);
+}
+
+export async function returnTicket(ticketId: string): Promise<Ticket> {
+  const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/return`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  return await handleResponse<Ticket>(res);
+}
+
+export async function redirectTicket(ticketId: string, newServiceId?: string, targetWindowId?: string): Promise<Ticket> {
+  const res = await fetch(`${getApiBaseUrl()}/operator/tickets/${encodeURIComponent(ticketId)}/redirect`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newServiceId, targetWindowId }),
+  });
   return await handleResponse<Ticket>(res);
 }

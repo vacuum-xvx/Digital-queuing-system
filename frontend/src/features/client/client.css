@@ -1,13 +1,13 @@
 /* Modern, premium, user-friendly CSS for the Client Workspace */
 
 :root {
-  --cx-primary: #0055ff;
-  --cx-primary-hover: #0044cc;
-  --cx-bg: #f8f9fc;
-  --cx-surface: #ffffff;
-  --cx-text-main: #1a1f36;
-  --cx-text-muted: #697386;
-  --cx-border: #e3e8ee;
+  --cx-primary: var(--brand-primary);
+  --cx-primary-hover: var(--brand-accent);
+  --cx-bg: var(--background);
+  --cx-surface: var(--surface);
+  --cx-text-main: var(--text);
+  --cx-text-muted: var(--muted);
+  --cx-border: var(--border);
   --cx-danger: #e03131;
   --cx-danger-hover: #c92a2a;
   --cx-success: #2b8a3e;
@@ -46,7 +46,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #0055ff, #88b3ff);
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent));
   color: white;
   display: flex;
   align-items: center;
@@ -559,4 +559,3 @@
 }
 
 .cx-tickets-list { display: flex; flex-direction: column; gap: 1rem; }
-

@@ -1,6 +1,8 @@
 export type Branch = {
   id: string;
   name: string;
+  address?: string;
+  workHours?: string;
 };
 
 export type BranchListResponse = {
@@ -68,4 +70,17 @@ export type QueuePosition = {
 export type CreateAppointmentRequest = {
   serviceId: string;
   scheduledAt: string;
+};
+
+export type TicketETA = {
+  ticketId: string;
+  ticketStatus: TicketStatus;
+  reason: QueuePositionReason;
+  estimatedWaitSeconds: number | null;
+  estimatedCallAt: string | null;
+  position: number | null;
+  referenceWindow: TicketWindow | null;
+  sampleSize: number;
+  usedFallback: boolean;
+  calculatedAt: string;
 };

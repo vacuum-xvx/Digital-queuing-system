@@ -168,6 +168,7 @@ func NewClient(baseURL string) *Client {
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: sessionTransport{},
 		},
 	}
 }

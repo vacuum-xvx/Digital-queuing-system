@@ -507,6 +507,11 @@ func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ti
 		return domain.Ticket{}, dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+	before, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id))
+	if errors.Is(err, application.ErrNotFound) { return domain.Ticket{}, application.ErrInvalidState }
+	if err != nil {
+		return domain.Ticket{}, err
+	}
 	tag, err := tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND source<>'APPOINTMENT' AND status IN ('CALLED', 'SERVING')`, id)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
@@ -516,6 +521,9 @@ func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ti
 	}
 	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
 	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err = insertEvent(ctx, tx, t, domain.TicketEventReturned, &before.Status, nil, nil); err != nil {
 		return domain.Ticket{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -548,6 +556,11 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 		return domain.Ticket{}, dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+	before, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id))
+	if errors.Is(err, application.ErrNotFound) { return domain.Ticket{}, application.ErrInvalidState }
+	if err != nil {
+		return domain.Ticket{}, err
+	}
 
 	var tag pgconn.CommandTag
 	if nw != nil {
@@ -563,6 +576,9 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	}
 	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
 	if err != nil {
+		return domain.Ticket{}, err
+	}
+	if err = insertEvent(ctx, tx, t, domain.TicketEventRedirected, &before.Status, nil, nil); err != nil {
 		return domain.Ticket{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

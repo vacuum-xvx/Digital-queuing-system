@@ -4,6 +4,10 @@ import { ClientPage } from './pages/ClientPage';
 import { OperatorPage } from './pages/OperatorPage';
 import { AdminPage } from './pages/AdminPage';
 import PochtaDemo from './PochtaDemo';
+import { AuthBoundary } from './features/auth/AuthBoundary';
+import './product.css';
+import { PhysicalQRPage } from './pages/PhysicalQRPage';
+import { ProductHeader } from './components/common/ProductHeader';
 
 export function App() {
   const [health, setHealth] = useState<'Checking...' | 'Available' | 'Unavailable'>('Checking...');
@@ -39,17 +43,16 @@ export function App() {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
 
-  const DemoEntry = ({ role }: { role: string }) => <section><h2>{role}</h2><p>Демонстрационный вход без production-аутентификации.</p><a href={role === 'Оператор' ? '/operator' : '/admin'} onClick={(e) => navigate(role === 'Оператор' ? '/operator' : '/admin', e)}>Продолжить в демо-режиме</a></section>;
-
   if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
-    return <PochtaDemo currentPath={currentPath} navigate={navigate} />;
+    return <><p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p><PochtaDemo currentPath={currentPath} navigate={navigate} /></>;
   }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
+    ...(currentPath.startsWith('/q/') ? [{ path: currentPath, label: 'QR', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(3)} /> }] : []),
     { path: '/', label: 'Client', page: <ClientPage /> },
-    { path: '/operator/login', label: 'Operator login', page: <DemoEntry role="Оператор" /> },
-    { path: '/operator', label: 'Operator', page: <OperatorPage /> },
-    { path: '/admin/login', label: 'Admin login', page: <DemoEntry role="Администратор" /> },
-    { path: '/admin', label: 'Admin', page: <AdminPage /> },
+    { path: '/operator/login', label: 'Operator login', page: <AuthBoundary area="operator" loginPage><OperatorPage /></AuthBoundary> },
+    { path: '/operator', label: 'Operator', page: <AuthBoundary area="operator" loginPage={false}><OperatorPage /></AuthBoundary> },
+    { path: '/admin/login', label: 'Admin login', page: <AuthBoundary area="admin" loginPage><AdminPage /></AuthBoundary> },
+    { path: '/admin', label: 'Admin', page: <AuthBoundary area="admin" loginPage={false}><AdminPage /></AuthBoundary> },
     { path: '/demo', label: 'Demo', page: <section><h2>Демо-режим</h2><p>Выберите рабочее место.</p><a href="/operator" onClick={(e) => navigate('/operator', e)}>Оператор</a>{' · '}<a href="/admin" onClick={(e) => navigate('/admin', e)}>Администратор</a></section> },
   ];
   const isKnownPath = routes.some((route) => route.path === currentPath);
@@ -58,14 +61,11 @@ export function App() {
   if (!isKnownPath || !activeRoute) return <main><h2>Page not found</h2></main>;
 
   return (
-    <main>
-      {currentPath === '/' ? activeRoute.page : (
-        <>
-          <p role="status">Backend: {health}</p>
-          {currentPath === '/demo' && <nav aria-label="Applications"><a href="/" onClick={(event) => navigate('/', event)}>Клиент</a>{' · '}<a href="/operator" onClick={(event) => navigate('/operator', event)}>Оператор</a>{' · '}<a href="/admin" onClick={(event) => navigate('/admin', event)}>Администратор</a></nav>}
-          {activeRoute.page}
-        </>
-      )}
-    </main>
+    <div className="product-shell min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
+      <ProductHeader currentPath={currentPath} />
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-6">
+        {activeRoute.page}
+      </main>
+    </div>
   );
 }

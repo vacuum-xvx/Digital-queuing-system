@@ -60,6 +60,7 @@ type RedirectTicketCommand struct {
 	NewWindowID  string // optional
 }
 type UseCases interface {
+	GetTicketETA(ctx context.Context, ticketID string) (domain.TicketETA, error)
 	ArriveAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
 	MarkNoShow(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetQueuePosition(ctx context.Context, ticketID string) (domain.QueuePosition, error)

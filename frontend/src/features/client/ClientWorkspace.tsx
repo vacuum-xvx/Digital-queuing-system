@@ -1,8 +1,10 @@
-import React, { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
-import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition } from '../../api/client/types';
-import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, Clock, Check } from 'lucide-react';
+import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
+import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
+import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
+import { PochtaEmblem } from '../../components/common/PochtaBrand';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
@@ -19,8 +21,7 @@ function makeIdempotencyKey(): string {
 }
 
 function localDateTimeValue(date: Date): string {
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return toMoscowDatetimeLocal(date);
 }
 
 function statusMessage(status: TicketStatus): string {
@@ -29,8 +30,8 @@ function statusMessage(status: TicketStatus): string {
     case 'CALLED': return 'Вас вызывают';
     case 'SERVING': return 'Идёт обслуживание';
     case 'COMPLETED': return 'Обслуживание завершено';
-    case 'CANCELLED': return 'Отменена';
-    case 'NO_SHOW': return 'Неявка';
+    case 'CANCELLED': return 'Запись отменена';
+    case 'NO_SHOW': return 'Вы не подошли к окну';
     case 'SCHEDULED': return 'Запись подтверждена';
     default: return 'Статус обновляется';
   }
@@ -71,12 +72,11 @@ function ServiceCard({ service, selected, onSelect }: { service: Service; select
   return (
     <button type="button" className={`cx-choice${selected ? ' cx-choice-selected' : ''}`} aria-pressed={selected} onClick={onSelect}>
       <span className="cx-choice-title">{service.name}</span>
-      <span className="cx-choice-meta">Обслуживание в порядке общей очереди</span>
+      <span className="cx-choice-meta">Обслуживание в порядке электронной очереди</span>
     </button>
   );
 }
 
-// Storage helpers for multiple tickets
 function getSavedTicketIds(): string[] {
   try {
     const val = sessionStorage.getItem(STORAGE_TICKETS_KEY);
@@ -105,17 +105,13 @@ function removeSavedTicketId(id: string) {
   }
 }
 
-export function ClientWorkspace() {
-  const user = null;
-  const authChecking = false;
-  const openAuthScreen = (screen: string) => {};
-  
-  const [screen, setScreen] = useState<ClientScreen>('home');
+export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
+  const [screen, setScreen] = useState<ClientScreen>(qrBranchId ? 'walkin' : 'home');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  
-  // Wizards state
+
   const [branchId, setBranchId] = useState(() => {
+    if (qrBranchId) return qrBranchId;
     const v = sessionStorage.getItem(STORAGE_BRANCH_KEY);
     return v && v !== 'undefined' && v !== 'null' ? v : '';
   });
@@ -125,27 +121,34 @@ export function ClientWorkspace() {
   });
   const [scheduledAtInput, setScheduledAtInput] = useState('');
   const [bookingStep, setBookingStep] = useState(0);
-  const [walkinStep, setWalkinStep] = useState(0);
-  
-  // Data state
+  const [walkinStep, setWalkinStep] = useState(qrBranchId ? 1 : 0);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Tickets state
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [appointments, setAppointments] = useState<Record<string, Appointment>>({});
+  const [appointments, setAppointments] = useState<Record<string, Appointment>>(() => {
+    try { return JSON.parse(sessionStorage.getItem('client.appointments') || '{}'); } catch { return {}; }
+  });
+  useEffect(() => { sessionStorage.setItem('client.appointments', JSON.stringify(appointments)); }, [appointments]);
+
   const [positions, setPositions] = useState<Record<string, QueuePosition>>({});
+  const [etas, setEtas] = useState<Record<string, TicketETA>>({});
   const [pollError, setPollError] = useState<string | null>(null);
   const [arrivalAcknowledgedTicketIds, setArrivalAcknowledgedTicketIds] = useState<Set<string>>(new Set());
-  
-  // Action state
+
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [arriving, setArriving] = useState(false);
 
-  // Refs for polling
   const pollTimer = useRef<number | null>(null);
   const pollGeneration = useRef(0);
+  const createLock = useRef(false);
+  const requestKey = useRef<{ identity: string; key: string } | null>(null);
+  const keyFor = (identity: string) => {
+    if (requestKey.current?.identity !== identity) requestKey.current = { identity, key: makeIdempotencyKey() };
+    return requestKey.current.key;
+  };
 
   const friendlyError = (err: any, fallback: string) => {
     if (err?.name === 'AbortError') return null;
@@ -200,7 +203,6 @@ export function ClientWorkspace() {
     return () => { unmounted = true; };
   }, [branchId]);
 
-  // Handle URL actions (e.g. from Demo Hub)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
@@ -228,23 +230,29 @@ export function ClientWorkspace() {
   const pollAll = useCallback(() => {
     const generation = pollGeneration.current;
     const ids = getSavedTicketIds();
-    
+
     if (ids.length === 0) {
       setTickets([]);
       setAppointments({});
       setPositions({});
+      setEtas({});
       return;
     }
 
     const fetchedTickets: Ticket[] = [];
     const fetchedPositions: Record<string, QueuePosition> = {};
+    const fetchedEtas: Record<string, TicketETA> = {};
+    const failedIds = new Set<string>();
 
     Promise.allSettled(ids.map(async id => {
       try {
         const nextTicket = await api.getTicket(id);
         if (generation !== pollGeneration.current) return;
-        
+
         fetchedTickets.push(nextTicket);
+        if (nextTicket.source === 'APPOINTMENT' && nextTicket.status === 'SCHEDULED') {
+          setAppointments(prev => ({ ...prev, [id]: { ticket: nextTicket, scheduledAt: nextTicket.queueEnteredAt } }));
+        }
 
         if (nextTicket.source === 'APPOINTMENT' && nextTicket.status === 'SCHEDULED') {
           if (hasArrivalAcknowledgement(nextTicket.id)) {
@@ -257,26 +265,30 @@ export function ClientWorkspace() {
         }
 
         if (!terminalStatuses.has(nextTicket.status)) {
+          const etaRequest = api.getTicketETA(nextTicket.id).then(eta => {
+            if (generation === pollGeneration.current && eta.ticketId === id) fetchedEtas[id] = eta;
+          }).catch(() => {});
           try {
             const pos = await api.getQueuePosition(nextTicket.id);
             if (generation !== pollGeneration.current) return;
             fetchedPositions[id] = pos;
-          } catch { /* supplementary */ }
+          } catch {}
+          await etaRequest;
         } else {
-          // It's terminal, keep it in the view temporarily but remove from storage so it won't be fetched on reload
           removeSavedTicketId(id);
         }
       } catch (err: any) {
-        // if ticket not found, remove from storage
+        if (generation !== pollGeneration.current) return;
         if (err.status === 404 || err.message === 'NOT_FOUND') {
-           removeSavedTicketId(id);
-        }
+          removeSavedTicketId(id);
+        } else failedIds.add(id);
       }
     })).then(() => {
       if (generation !== pollGeneration.current) return;
-      setTickets(fetchedTickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setTickets(prev => [...fetchedTickets, ...prev.filter(t => failedIds.has(t.id))].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setPositions(fetchedPositions);
-      setPollError(null);
+      setEtas(fetchedEtas);
+      setPollError(failedIds.size ? 'Не удалось обновить часть талонов. Повторяем подключение…' : null);
     }).catch(reason => {
       if (generation !== pollGeneration.current) return;
       setPollError(friendlyError(reason, 'Не удалось обновить талоны'));
@@ -302,35 +314,42 @@ export function ClientWorkspace() {
     setScheduledAtInput('');
     setError(null);
   };
-  
+
   const resetWalkin = () => {
-    setWalkinStep(0);
+    setWalkinStep(qrBranchId ? 1 : 0);
     setError(null);
   };
 
   const createQrTicket = async () => {
-    if (!branchId || !serviceId) return;
+    if (createLock.current || !branches.some(b => b.id === branchId) || !services.some(s => s.id === serviceId)) return;
+    createLock.current = true;
     setCreating(true);
     setError(null);
     try {
-      const created = await api.createQrTicket(branchId, serviceId, makeIdempotencyKey());
+      const created = await api.createQrTicket(branchId, serviceId, keyFor(`qr:${branchId}:${serviceId}`));
+      requestKey.current = null;
       addSavedTicketId(created.id);
       setTickets(prev => [created, ...prev]);
       setScreen('my');
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось получить талон'));
     } finally {
+      createLock.current = false;
       setCreating(false);
     }
   };
 
   const createAppointmentData = async () => {
     if (!branchId || !serviceId || !scheduledAtInput) return;
-    const scheduledAt = new Date(scheduledAtInput);
+    if (createLock.current) return;
+    let scheduledAt: Date;
+    try { scheduledAt = new Date(parseMoscowDatetimeLocal(scheduledAtInput)); }
+    catch { setError('Укажите корректное московское время'); return; }
     if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
       setError('Выберите будущее время записи');
       return;
     }
+    createLock.current = true;
     setCreating(true);
     setError(null);
     try {
@@ -338,8 +357,9 @@ export function ClientWorkspace() {
         branchId,
         serviceId,
         scheduledAt.toISOString(),
-        makeIdempotencyKey()
+        keyFor(`appointment:${branchId}:${serviceId}:${scheduledAt.toISOString()}`)
       );
+      requestKey.current = null;
       addSavedTicketId(created.ticket.id);
       setTickets(prev => [created.ticket, ...prev]);
       setAppointments(prev => ({ ...prev, [created.ticket.id]: created }));
@@ -347,6 +367,7 @@ export function ClientWorkspace() {
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось создать запись'));
     } finally {
+      createLock.current = false;
       setCreating(false);
     }
   };
@@ -355,9 +376,12 @@ export function ClientWorkspace() {
     if (cancelling || ticket.status !== 'SCHEDULED') return;
     setCancelling(true);
     try {
-      await api.cancelAppointment(ticket.id);
+      const cancelled = await api.cancelAppointment(ticket.id);
       removeSavedTicketId(ticket.id);
-      // Immediately refresh list
+      setTickets(prev => prev.map(t => t.id === ticket.id ? cancelled.ticket : t));
+      setPositions(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
+      setEtas(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
+      stopPolling();
       pollAll();
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось отменить запись'));
@@ -377,6 +401,7 @@ export function ClientWorkspace() {
         return next;
       });
       rememberArrival(arrived.ticket.id);
+      stopPolling();
       pollAll();
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось подтвердить прибытие'));
@@ -386,55 +411,104 @@ export function ClientWorkspace() {
   };
 
   const handleBranchSelect = (id: string) => {
+    setServices([]); setServiceId('');
     setBranchId(id);
     sessionStorage.setItem(STORAGE_BRANCH_KEY, id);
     if (screen === 'booking') setBookingStep(1);
     if (screen === 'walkin') setWalkinStep(1);
   };
-  
+
   const handleServiceSelect = (id: string) => {
     setServiceId(id);
     sessionStorage.setItem(STORAGE_SERVICE_KEY, id);
     if (screen === 'booking') setBookingStep(2);
-    if (screen === 'walkin') {
-      createQrTicket();
-    }
   };
 
-  const renderHome = () => (
-    <div className="cx-home">
-      <header className="cx-header">
-        <div className="cx-header-user">
-          <div className="cx-avatar">{'П'}</div>
-          <div>
-            <h2>{'Почта России'}</h2>
-            <p>Добро пожаловать</p>
-          </div>
-        </div>
-      </header>
+  const savedCount = getSavedTicketIds().length;
 
-      <div className="cx-home-cards">
-        <button className="cx-home-card cx-home-card-primary" onClick={() => { resetBooking(); setScreen('booking'); }}>
-          <div className="cx-home-card-icon"><CalendarClock size={28} /></div>
-          <div className="cx-home-card-content">
-            <h3>Записаться онлайн</h3>
-            <p>Выберите время визита заранее, чтобы не ждать в очереди</p>
+  const renderHome = () => (
+    <div className="max-w-3xl mx-auto space-y-6">
+      {/* Welcome Hero Banner */}
+      <div className="bg-gradient-to-br from-[#003B73] to-[#054FA6] rounded-3xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 space-y-2">
+          <div className="flex items-center gap-3">
+            <PochtaEmblem className="w-10 h-10 drop-shadow-sm shrink-0" bg="#FFFFFF" fg="#003B73" />
+            <div>
+              <div className="text-xs font-mono uppercase tracking-wider text-blue-200 font-bold">
+                Почта России · Сервис очередей
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+                Добро пожаловать
+              </h2>
+            </div>
+          </div>
+          <p className="text-xs sm:text-sm text-blue-100 max-w-md pt-1 leading-relaxed">
+            Получите талон на обслуживание или выберите удобное время визита заранее, чтобы не ждать в зале.
+          </p>
+        </div>
+      </div>
+
+      {/* 3 Prominent Action Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* 1. Записаться онлайн */}
+        <button
+          type="button"
+          onClick={() => { resetBooking(); setScreen('booking'); }}
+          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#054FA6] hover:shadow-md transition-all text-left group flex flex-col justify-between"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#054FA6] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
+            <CalendarClock size={26} />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-slate-900 group-hover:text-[#054FA6] transition-colors mb-1">
+              Записаться онлайн
+            </h3>
+            <p className="text-xs text-slate-500 leading-snug">
+              Выберите время визита заранее, чтобы подойти к назначенному слоту
+            </p>
           </div>
         </button>
-        <button className="cx-home-card cx-home-card-secondary" onClick={() => { resetWalkin(); setScreen('walkin'); }}>
-          <div className="cx-home-card-icon"><TicketIcon size={28} /></div>
-          <div className="cx-home-card-content">
-            <h3>Взять талон</h3>
-            <p>Получите номерок прямо сейчас, если вы уже в отделении</p>
+
+        {/* 2. Взять талон */}
+        <button
+          type="button"
+          onClick={() => { resetWalkin(); setScreen('walkin'); }}
+          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#003B73] hover:shadow-md transition-all text-left group flex flex-col justify-between"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#003B73] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
+            <TicketIcon size={26} />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-slate-900 group-hover:text-[#003B73] transition-colors mb-1">
+              Взять талон
+            </h3>
+            <p className="text-xs text-slate-500 leading-snug">
+              Получите электронный номерок прямо сейчас, если вы уже в отделении
+            </p>
           </div>
         </button>
-        <button className="cx-home-card cx-home-card-tertiary" onClick={() => {
-          setScreen('my');
-        }}>
-          <div className="cx-home-card-icon"><ListChecks size={28} /></div>
-          <div className="cx-home-card-content">
-            <h3>Мои талоны</h3>
-            <p>Текущие очереди, история визитов и статус</p>
+
+        {/* 3. Мои талоны */}
+        <button
+          type="button"
+          onClick={() => setScreen('my')}
+          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-emerald-600 hover:shadow-md transition-all text-left group flex flex-col justify-between relative"
+        >
+          {savedCount > 0 && (
+            <span className="absolute top-4 right-4 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              {savedCount} активных
+            </span>
+          )}
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
+            <ListChecks size={26} />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors mb-1">
+              Мои талоны
+            </h3>
+            <p className="text-xs text-slate-500 leading-snug">
+              Текущие очереди, статус вызова к окну и история визита
+            </p>
           </div>
         </button>
       </div>
@@ -445,52 +519,73 @@ export function ClientWorkspace() {
     const steps = ['Отделение', 'Услуга', 'Время'];
 
     return (
-      <div className="cx-wizard">
-        <header className="cx-wizard-header">
-          <button className="cx-back-btn" onClick={() => bookingStep === 0 ? setScreen('home') : setBookingStep(b => b - 1)}>
-            <ChevronLeft size={24} /> Назад
+      <div className="max-w-2xl mx-auto space-y-4">
+        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+            onClick={() => (bookingStep === 0 ? setScreen('home') : setBookingStep(b => b - 1))}
+          >
+            <ChevronLeft size={20} />
+            <span>Назад</span>
           </button>
-          <h2>Онлайн-запись</h2>
+          <h2 className="text-lg font-black text-slate-900">Онлайн-запись</h2>
+          <div className="w-12" />
         </header>
-        <div className="cx-wizard-content">
+
+        <div className="space-y-4">
           <StepIndicator steps={steps} current={bookingStep} />
-          {error && <div className="cx-error-box">{error}</div>}
-          
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+              {error}
+            </div>
+          )}
+
           {bookingStep === 0 && (
-            <div className="cx-choices">
-              <h3>Выберите отделение</h3>
-              {loading ? <p>Загрузка...</p> : branches.map(b => (
-                <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />
-              ))}
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-800">Выберите отделение</h3>
+              {loading ? (
+                <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка отделений...</p>
+              ) : (
+                branches.map(b => (
+                  <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />
+                ))
+              )}
             </div>
           )}
-          
+
           {bookingStep === 1 && (
-            <div className="cx-choices">
-              <h3>Выберите услугу</h3>
-              {services.length === 0 ? <p>В этом отделении пока нет услуг</p> : services.map(s => (
-                <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
-              ))}
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
+              {services.length === 0 ? (
+                <p className="text-xs text-slate-500 py-8 text-center">В этом отделении пока нет доступных услуг</p>
+              ) : (
+                services.map(s => (
+                  <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
+                ))
+              )}
             </div>
           )}
-          
+
           {bookingStep === 2 && (
-            <div className="cx-form-step">
-              <h3>Укажите время визита</h3>
-              <label className="cx-field">
-                <span>Дата и время</span>
-                <input 
-                  type="datetime-local" 
-                  value={scheduledAtInput} 
-                  min={localDateTimeValue(new Date(Date.now() + 60_000))} 
-                  onChange={e => setScheduledAtInput(e.target.value)} 
+            <div className="p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-slate-900">Укажите время визита</h3>
+              <label className="block text-xs font-bold text-slate-700 space-y-1">
+                <span>Дата и время (МСК)</span>
+                <input
+                  type="datetime-local"
+                  value={scheduledAtInput}
+                  min={localDateTimeValue(new Date(Date.now() + 60_000))}
+                  onChange={e => setScheduledAtInput(e.target.value)}
                   disabled={creating}
-                  className="cx-input"
+                  aria-label="Дата и время (МСК)"
+                  className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6]"
                 />
               </label>
-              <button 
-                className="cx-btn cx-btn-primary" 
-                disabled={creating || !scheduledAtInput} 
+              <button
+                type="button"
+                className="w-full min-h-[46px] py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50"
+                disabled={creating || !scheduledAtInput}
                 onClick={createAppointmentData}
               >
                 {creating ? 'Оформляем...' : 'Подтвердить запись'}
@@ -506,71 +601,137 @@ export function ClientWorkspace() {
     const steps = ['Отделение', 'Услуга'];
 
     return (
-      <div className="cx-wizard">
-        <header className="cx-wizard-header">
-          <button className="cx-back-btn" onClick={() => walkinStep === 0 ? setScreen('home') : setWalkinStep(w => w - 1)}>
-            <ChevronLeft size={24} /> Назад
+      <div className="max-w-2xl mx-auto space-y-4">
+        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+            onClick={() => (walkinStep === 0 ? setScreen('home') : setWalkinStep(w => w - 1))}
+          >
+            <ChevronLeft size={20} />
+            <span>Назад</span>
           </button>
-          <h2>Взять талон</h2>
+          <h2 className="text-lg font-black text-slate-900">Взять талон</h2>
+          {getSavedTicketIds().length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setScreen('my')}
+              className="px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-bold hover:bg-blue-100 transition-colors"
+            >
+              Мои талоны
+            </button>
+          ) : (
+            <div className="w-12" />
+          )}
         </header>
-        <div className="cx-wizard-content">
+
+        <div className="space-y-4">
           <StepIndicator steps={steps} current={walkinStep} />
-          {error && <div className="cx-error-box">{error}</div>}
-          
-          {walkinStep === 0 && (
-            <div className="cx-choices">
-              <h3>Выберите отделение</h3>
-              {loading ? <p>Загрузка...</p> : branches.map(b => (
-                <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />
-              ))}
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+              {error}
             </div>
           )}
-          
+
+          {walkinStep === 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-800">Выберите отделение</h3>
+              {loading ? (
+                <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка отделений...</p>
+              ) : (
+                branches.map(b => (
+                  <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />
+                ))
+              )}
+            </div>
+          )}
+
           {walkinStep === 1 && (
-            <div className="cx-choices">
-              <h3>Выберите услугу</h3>
-              {services.length === 0 ? <p>В этом отделении пока нет услуг</p> : services.map(s => (
-                <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
-              ))}
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#003B73]" />
+                <span>Отделение: <strong>{branches.find(b => b.id === branchId)?.name}</strong></span>
+              </div>
+
+              <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
+              {services.length === 0 ? (
+                <p className="text-xs text-slate-500 py-8 text-center">В этом отделении пока нет доступных услуг</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {services.map(s => (
+                    <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="w-full min-h-[48px] py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed mt-2"
+                disabled={creating || !services.some(s => s.id === serviceId)}
+                onClick={createQrTicket}
+              >
+                {creating ? 'Оформляем…' : 'Получить талон'}
+              </button>
             </div>
           )}
         </div>
-        {creating && <div className="cx-loading-overlay">Оформляем талон...</div>}
       </div>
     );
   };
 
   const renderMy = () => {
     return (
-      <div className="cx-my">
-        <header className="cx-wizard-header">
-          <button className="cx-back-btn" onClick={() => setScreen('home')}>
-            <ChevronLeft size={24} /> Назад
+      <div className="max-w-2xl mx-auto space-y-4">
+        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+            onClick={() => setScreen('home')}
+          >
+            <ChevronLeft size={20} />
+            <span>Главная</span>
           </button>
-          <h2>Мои талоны</h2>
+          <h2 className="text-lg font-black text-slate-900">Мои талоны</h2>
+          <div className="w-12" />
         </header>
-        <div className="cx-my-content">
-          {error && <div className="cx-error-box">{error}</div>}
-          {pollError && <div className="cx-error-box">{pollError}</div>}
-          
+
+        <div className="space-y-4">
+          {error && <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">{error}</div>}
+          {pollError && <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
+
           {tickets.length === 0 ? (
-            <div className="cx-empty-state">
-              <div className="cx-empty-icon"><TicketIcon size={48} /></div>
-              <h3>У вас нет активных талонов</h3>
-              <p>Оформите талон на главной странице</p>
+            <div className="text-center py-16 px-4 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                <TicketIcon size={32} />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">У вас нет активных талонов</h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                Оформите талон или выберите предварительную запись на главной странице
+              </p>
+              <button
+                type="button"
+                onClick={() => setScreen('home')}
+                className="px-5 py-2.5 bg-[#003B73] hover:bg-[#054FA6] text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-sm transition-colors mt-2"
+              >
+                Оформить талон
+              </button>
             </div>
           ) : (
-            <div className="cx-tickets-list">
+            <div className="space-y-4">
               {tickets.map(ticket => {
                 const position = positions[ticket.id];
                 const appointment = appointments[ticket.id];
-                
+                const eta = etas[ticket.id];
+
                 return (
                   <div key={ticket.id} className="cx-active-ticket">
+                    {/* Branded Ticket Header */}
                     <div className="cx-ticket-header">
-                      <span className="cx-ticket-num">{ticket.publicNumber}</span>
+                      <span className="cx-ticket-num font-mono">{ticket.publicNumber}</span>
                       <StatusBadge status={ticket.status} />
                     </div>
+
+                    {/* Details Body */}
                     <div className="cx-ticket-details">
                       <div className="cx-ticket-row">
                         <span>Услуга</span>
@@ -578,12 +739,12 @@ export function ClientWorkspace() {
                       </div>
                       <div className="cx-ticket-row">
                         <span>Отделение</span>
-                        <strong>{branches.find(b => b.id === ticket.branchId)?.name || 'Неизвестно'}</strong>
+                        <strong>{branches.find(b => b.id === ticket.branchId)?.name || 'Почта России'}</strong>
                       </div>
                       {appointment && (
                         <div className="cx-ticket-row">
                           <span>Время по записи</span>
-                          <strong>{new Date(appointment.scheduledAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</strong>
+                          <strong>{formatMoscowDateTime(appointment.scheduledAt)} МСК</strong>
                         </div>
                       )}
                       {ticket.status === 'CALLED' && ticket.window && (
@@ -593,24 +754,52 @@ export function ClientWorkspace() {
                       )}
                       {position?.ticketId === ticket.id && position.position !== null && position.position > 0 && (
                         <div className="cx-ticket-position">
-                          <span className="cx-pos-label">Перед вами</span>
-                          <span className="cx-pos-val">{position.position} чел.</span>
+                          <span className="cx-pos-label">Позиция в очереди</span>
+                          <span className="cx-pos-val font-mono">{position.position}</span>
                         </div>
                       )}
+                      {position?.reason === 'NOT_ELIGIBLE_YET' && (
+                        <p className="text-xs text-slate-500 font-mono text-center">Время записи ещё не наступило</p>
+                      )}
+                      {position?.reason === 'NO_OPEN_COMPATIBLE_WINDOW' && (
+                        <p className="text-xs text-slate-500 font-mono text-center">Ожидаем открытия подходящего окна</p>
+                      )}
+                      {!terminalStatuses.has(ticket.status) &&
+                        eta?.ticketId === ticket.id &&
+                        eta.ticketStatus === ticket.status &&
+                        eta.reason === 'AVAILABLE' &&
+                        eta.estimatedWaitSeconds !== null && (
+                          <p className="cx-ticket-position font-mono text-xs font-bold text-[#054FA6] text-center block">
+                            Ожидание примерно {Math.ceil(eta.estimatedWaitSeconds / 60)} мин
+                          </p>
+                        )}
                     </div>
-                    
+
+                    {/* Actions Footer */}
                     <div className="cx-ticket-actions">
                       {ticket.status === 'SCHEDULED' && ticket.source === 'APPOINTMENT' && (
                         arrivalAcknowledgedTicketIds.has(ticket.id) ? (
-                          <div className="cx-ticket-alert cx-ticket-alert-success">Ожидайте вызова, ваше прибытие отмечено</div>
+                          <div className="cx-ticket-alert cx-ticket-alert-success">
+                            Ожидайте вызова, ваше прибытие отмечено
+                          </div>
                         ) : (
-                          <button className="cx-btn cx-btn-primary cx-btn-block" onClick={() => arrive(ticket)} disabled={arriving}>
+                          <button
+                            type="button"
+                            className="cx-btn cx-btn-primary cx-btn-block"
+                            onClick={() => arrive(ticket)}
+                            disabled={arriving}
+                          >
                             {arriving ? 'Отмечаем...' : 'Я уже в отделении'}
                           </button>
                         )
                       )}
                       {ticket.status === 'SCHEDULED' && (
-                        <button className="cx-btn cx-btn-danger cx-btn-block" onClick={() => cancel(ticket)} disabled={cancelling}>
+                        <button
+                          type="button"
+                          className="cx-btn cx-btn-danger cx-btn-block"
+                          onClick={() => cancel(ticket)}
+                          disabled={cancelling}
+                        >
                           {cancelling ? 'Отменяем...' : 'Отменить запись'}
                         </button>
                       )}
@@ -625,8 +814,12 @@ export function ClientWorkspace() {
     );
   };
 
-  if (screen === 'booking') return renderBooking();
-  if (screen === 'walkin') return renderWalkin();
-  if (screen === 'my') return renderMy();
-  return renderHome();
+  return (
+    <div className="w-full">
+      {screen === 'booking' && renderBooking()}
+      {screen === 'walkin' && renderWalkin()}
+      {screen === 'my' && renderMy()}
+      {screen === 'home' && renderHome()}
+    </div>
+  );
 }
