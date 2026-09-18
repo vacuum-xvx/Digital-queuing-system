@@ -16,7 +16,7 @@ type Pinger interface{ Ping(context.Context) error }
 
 func NewRouter(db Pinger, usecases application.UseCases, logger *slog.Logger, origin string) http.Handler {
 	r := chi.NewRouter()
-	r.Use(requestLog(logger), recoverPanic(logger), cors(origin))
+	r.Use(requestLog(logger), recoverPanic(logger), cors(origin), authMiddleware())
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

@@ -77,7 +77,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	return t, nil
 }
 func (p *Postgres) ListBranches(ctx context.Context) ([]domain.Branch, error) {
-	rows, err := p.pool.Query(ctx, `SELECT id::text,name FROM branches ORDER BY name,id`)
+	rows, err := p.pool.Query(ctx, `SELECT id::text, name, address, work_hours, close_time, timezone_offset FROM branches ORDER BY name, id`)
 	if err != nil {
 		return nil, dbError(err)
 	}
@@ -85,7 +85,7 @@ func (p *Postgres) ListBranches(ctx context.Context) ([]domain.Branch, error) {
 	out := []domain.Branch{}
 	for rows.Next() {
 		var b domain.Branch
-		if err = rows.Scan(&b.ID, &b.Name); err != nil {
+		if err = rows.Scan(&b.ID, &b.Name, &b.Address, &b.WorkHours, &b.CloseTime, &b.TimezoneOffset); err != nil {
 			return nil, dbError(err)
 		}
 		out = append(out, b)

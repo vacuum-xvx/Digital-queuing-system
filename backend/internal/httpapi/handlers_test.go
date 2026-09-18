@@ -144,6 +144,30 @@ func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, r
 	return f.SavePriorityRulesFunc(ctx, branchID, rules)
 }
 
+func (f *FakeUseCases) RequestConfirmationCode(ctx context.Context, email string) (string, error) {
+	return "123456", nil
+}
+
+func (f *FakeUseCases) VerifyConfirmationCode(ctx context.Context, email, code string) (domain.User, error) {
+	return domain.User{ID: "test-user-id", Email: email, Role: domain.RoleClient}, nil
+}
+
+func (f *FakeUseCases) LoginTerminal(ctx context.Context, deviceToken string) (domain.User, error) {
+	return domain.User{ID: "terminal-user-id", Email: "terminal@pochta.ru", Role: domain.RoleTerminal, IsTerminal: true}, nil
+}
+
+func (f *FakeUseCases) GetUserByID(ctx context.Context, userID string) (domain.User, error) {
+	return domain.User{ID: userID, Email: "user@pochta.ru", Role: domain.RoleClient}, nil
+}
+
+func (f *FakeUseCases) ListUsers(ctx context.Context, branchID string) ([]domain.User, error) {
+	return nil, nil
+}
+
+func (f *FakeUseCases) UpdateUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error) {
+	return domain.User{ID: userID, Role: role}, nil
+}
+
 func setupTest(usecases *FakeUseCases) http.Handler {
 	db := &fakeDB{}
 	logger := slog.New(slog.NewJSONHandler(bytes.NewBuffer(nil), nil))
@@ -164,9 +188,12 @@ func TestListBranches(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	expected := `{"items":[{"id":"b1","name":"Branch 1"}]}`
-	if strings := string(rec.Body.Bytes()); strings[:len(expected)] != expected {
-		t.Errorf("expected %s in body", expected)
+	var resp ListBranchesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].ID != "b1" || resp.Items[0].Name != "Branch 1" {
+		t.Errorf("unexpected response: %+v", resp)
 	}
 }
 

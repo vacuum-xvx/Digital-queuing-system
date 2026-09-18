@@ -16,6 +16,9 @@ var (
 	ErrWindowBusy          = errors.New("window busy")
 	ErrNoEligibleTickets   = errors.New("no eligible tickets")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
+	ErrUnauthorized        = errors.New("unauthorized")
+	ErrForbidden           = errors.New("forbidden")
+	ErrInvalidCode         = errors.New("invalid or expired confirmation code")
 )
 
 type CreateQRTicketCommand struct {
@@ -78,6 +81,13 @@ type UseCases interface {
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+
+	RequestConfirmationCode(ctx context.Context, email string) (string, error)
+	VerifyConfirmationCode(ctx context.Context, email, code string) (domain.User, error)
+	LoginTerminal(ctx context.Context, deviceToken string) (domain.User, error)
+	GetUserByID(ctx context.Context, userID string) (domain.User, error)
+	ListUsers(ctx context.Context, branchID string) ([]domain.User, error)
+	UpdateUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
 }
 
 var ErrPolicyVersionConflict = errors.New("queue policy version conflict")

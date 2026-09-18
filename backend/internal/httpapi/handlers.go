@@ -32,7 +32,16 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
 
+		// Authentication endpoints
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/request-code", a.RequestConfirmationCode)
+			r.Post("/verify-code", a.VerifyConfirmationCode)
+			r.Post("/terminal-login", a.LoginTerminal)
+			r.Get("/me", a.GetMe)
+		})
+
 		r.Route("/operator", func(r chi.Router) {
+			r.Use(a.RequireRole(domain.RoleEmployee, domain.RoleChief))
 			r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
 			r.Get("/branches/{branchId}/windows", a.ListBranchWindows)
 			r.Get("/windows/{windowId}/current-ticket", a.GetCurrentTicket)
@@ -45,12 +54,17 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		})
 
 		r.Route("/admin", func(r chi.Router) {
+			r.Use(a.RequireRole(domain.RoleChief))
 			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
+
+			// Employee management
+			r.With(a.RequireAuth(domain.RoleChief)).Get("/users", a.ListUsers)
+			r.With(a.RequireAuth(domain.RoleChief)).Put("/users/{userId}/role", a.UpdateUserRole)
 		})
 	})
 }
@@ -64,8 +78,12 @@ type ListBranchesResponse struct {
 }
 
 type BranchDTO struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Address        string `json:"address"`
+	WorkHours      string `json:"workHours"`
+	CloseTime      string `json:"closeTime"`
+	TimezoneOffset int    `json:"timezoneOffset"`
 }
 
 type ListServicesResponse struct {
@@ -173,6 +191,15 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, application.ErrPolicyVersionConflict):
 		status = http.StatusConflict
 		code = "POLICY_VERSION_CONFLICT"
+	case errors.Is(err, application.ErrUnauthorized):
+		status = http.StatusUnauthorized
+		code = "UNAUTHORIZED"
+	case errors.Is(err, application.ErrForbidden):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+	case errors.Is(err, application.ErrInvalidCode):
+		status = http.StatusBadRequest
+		code = "INVALID_CONFIRMATION_CODE"
 	default:
 		status = http.StatusInternalServerError
 		code = "INTERNAL_ERROR"

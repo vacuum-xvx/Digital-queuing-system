@@ -31,8 +31,33 @@ const (
 )
 
 type Branch struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Address        string `json:"address"`
+	WorkHours      string `json:"workHours"`
+	CloseTime      string `json:"closeTime"`
+	TimezoneOffset int    `json:"timezoneOffset"`
+}
+
+type UserRole string
+
+const (
+	RoleClient   UserRole = "client"
+	RoleEmployee UserRole = "employee"
+	RoleChief    UserRole = "opc_chief"
+	RoleTerminal UserRole = "terminal"
+)
+
+type User struct {
+	ID                   string     `json:"id"`
+	Email                string     `json:"email"`
+	Role                 UserRole   `json:"role"`
+	BranchID             *string    `json:"branchId,omitempty"`
+	IsTerminal           bool       `json:"isTerminal"`
+	DeviceToken          *string    `json:"deviceToken,omitempty"`
+	ConfirmationCodeHash *string    `json:"-"`
+	CodeExpiresAt        *time.Time `json:"-"`
+	CreatedAt            time.Time  `json:"createdAt"`
 }
 type Service struct {
 	ID   string `json:"id"`
