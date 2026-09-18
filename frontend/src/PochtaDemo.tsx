@@ -897,6 +897,13 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     };
   }, [operatorSelectedWindow, tickets]);
 
+  // Текущий вызов для произвольного окна (для живого ТВ-табло).
+  const getWindowCurrentTicket = useCallback((winId: number | string) => {
+    const win = windows.find(w => w.id === winId);
+    if (!win || !win.currentTicketId) return null;
+    return tickets.find(t => t.number === win.currentTicketId || t.id === win.currentTicketId) || null;
+  }, [windows, tickets]);
+
   /**
    * Вызов следующего клиента окном оператора
    */
@@ -3167,7 +3174,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                     <span>ПОЧТА РОССИИ</span>
                     <span className="text-blue-200 text-xs font-normal">• ИНФОРМАЦИОННОЕ ТАБЛО ВЫЗОВА</span>
                   </div>
-                  <div className="text-xs font-mono text-blue-200 mt-0.5">{BRANCH_CONFIG.name}</div>
                 </div>
               </div>
 
@@ -3200,10 +3206,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                     <span className="w-2.5 h-2.5 rounded-full bg-[#00823C]"></span>
                     <span>СЕЙЧАС ОБСЛУЖИВАЮТСЯ У СТОЕК</span>
                   </div>
-                  <span className="font-mono text-slate-500 text-[11px] bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-[#054FA6]" />
-                    <span>Озвучивание активно</span>
-                  </span>
                 </div>
 
                 <div className="space-y-4">
@@ -3219,10 +3221,10 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                         Талон клиента
                       </div>
                       <div className="text-6xl sm:text-8xl font-black font-mono text-[#003B73] tracking-tight mt-1">
-                        {operatorCurrentTicket ? operatorCurrentTicket.number : 'А-040'}
+                        {operatorCurrentTicket ? operatorCurrentTicket.number : '—'}
                       </div>
                       <div className="text-xs sm:text-sm text-slate-600 font-semibold mt-1.5">
-                        {SERVICES.find(s => s.id === (operatorCurrentTicket?.serviceId || 'srv-letters'))?.title || 'Получение писем и посылок'}
+                        {operatorCurrentTicket ? (SERVICES.find(s => s.id === operatorCurrentTicket.serviceId)?.title || 'Почтовые услуги') : 'Ожидание вызова'}
                       </div>
                     </div>
 
@@ -3232,7 +3234,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleAnnounce(operatorCurrentTicket ? operatorCurrentTicket.number : 'А-040', operatorWindowId)}
+                        onClick={() => operatorCurrentTicket && handleAnnounce(operatorCurrentTicket.number, operatorWindowId)}
                         className="px-3.5 py-1.5 rounded-xl bg-[#EBF3FC] hover:bg-[#D7E8FA] text-[#003B73] font-bold text-xs flex items-center gap-1.5 border border-[#CDE1F9] transition-all shadow-sm cursor-pointer"
                         title="Повторить голосовое объявление"
                       >
@@ -3256,49 +3258,35 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
 
                   {/* Вторичные вызовы: Окно 1 и 2 */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
-                        <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">П-019</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xl text-slate-400 font-bold">➔</div>
-                        <button
-                          type="button"
-                          onClick={() => handleAnnounce('П-019', 1)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                          title="Озвучить"
-                        >
-                          <Volume2 className="w-4 h-4 text-[#054FA6]" />
-                        </button>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
-                        <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО 1</div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
-                        <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">В-008</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xl text-slate-400 font-bold">➔</div>
-                        <button
-                          type="button"
-                          onClick={() => handleAnnounce('В-008', 2)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                          title="Озвучить"
-                        >
-                          <Volume2 className="w-4 h-4 text-[#054FA6]" />
-                        </button>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
-                        <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО 2</div>
-                      </div>
-                    </div>
+                    {[1, 2].map(winId => {
+                      const called = getWindowCurrentTicket(winId);
+                      return (
+                        <div key={winId} className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
+                            <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">
+                              {called ? called.number : '—'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xl text-slate-400 font-bold">➔</div>
+                            <button
+                              type="button"
+                              onClick={() => called && handleAnnounce(called.number, winId)}
+                              disabled={!called}
+                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={called ? 'Озвучить' : 'Нет активного вызова'}
+                            >
+                              <Volume2 className="w-4 h-4 text-[#054FA6]" />
+                            </button>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
+                            <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО {winId}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Панель оперативного вызова с табло для демонстрации */}
@@ -3354,19 +3342,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                         </span>
                       </div>
                     ))}
-                  </div>
-                </div>
-
-                {/* QR-код бесконтактного получения талона */}
-                <div className="bg-white rounded-2xl p-4 border border-[#DCE3EC] shadow-sm flex items-center gap-4">
-                  <div className="bg-[#F4F7FB] p-2 rounded-xl border border-slate-200 shrink-0">
-                    <QrCode className="w-13 h-13 text-[#003B73]" />
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="font-bold text-slate-900 uppercase">Встать в очередь со смартфона</div>
-                    <p className="text-slate-500 text-[11px] leading-snug">
-                      Наведите камеру смартфона для моментального получения талона
-                    </p>
                   </div>
                 </div>
 
