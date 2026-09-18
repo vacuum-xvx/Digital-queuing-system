@@ -635,6 +635,34 @@
           }
         }
       }
+    },
+    {
+      "id": 15,
+      "title": "Централизованные логи сервисов (Loki)",
+      "type": "logs",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "Loki"
+      },
+      "targets": [
+        {
+          "expr": "{service=~\"backend|postgres|frontend\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
     }
   ],
   "refresh": "5s",
@@ -643,7 +671,8 @@
     "postcode",
     "suo",
     "backend",
-    "postgres"
+    "postgres",
+    "loki"
   ],
   "time": {
     "from": "now-15m",
@@ -661,5 +690,5 @@
   "timezone": "browser",
   "title": "Цифровая Очередь — Мониторинг сервиса",
   "uid": "suo-overview",
-  "version": 1
+  "version": 2
 }
