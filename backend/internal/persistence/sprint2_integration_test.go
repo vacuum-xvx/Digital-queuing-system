@@ -387,9 +387,7 @@ func TestTicketEventsRollbackAndHistory(t *testing.T) {
 
 func TestSprint2UpgradeExistingData(t *testing.T) {
 	ctx, p, m := integration(t)
-	if err := m.Steps(-2); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, m, migrationPreSprint2)
 	var legacy string
 	if err := p.pool.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at)
  VALUES($1::uuid,$2::uuid,'APPOINTMENT','WAITING','legacy','2020-01-01Z') RETURNING id::text`, demoBranch, parcels).Scan(&legacy); err != nil {

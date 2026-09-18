@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useDemoIntegration, createQrTicket, createAppointment, callNext, startService, completeService, markNoShow, mapBackendTicketToDemo, createLiveTicket } from './demoIntegration';
+import { changeWindowStatus, updateWindowServices } from './api/admin/adminApi';
+import { login, register, logout, getMe, listUsers, changeUserRole, User } from './api/authApi';
 import QRCode from 'qrcode';
 import {
   QrCode, Calendar, Clock, AlertTriangle, ShieldCheck, Download,
@@ -18,6 +21,7 @@ import {
   announceTicketCall,
   AnnouncementData
 } from './utils/postalVoice';
+import { enqueueAnnouncement } from './utils/announcementQueue';
 
 /**
  * =============================================================================
@@ -360,7 +364,7 @@ const BRANCH_CONFIG = {
  */
 const SERVICES = [
   {
-    id: 'pickup',
+    id: '22222222-2222-2222-2222-222222222222',
     title: 'Получение писем и посылок',
     subtitle: 'По паспорту, SMS-коду или ПЭП (без оплаты)',
     avgMinutes: 3.5,
@@ -370,7 +374,7 @@ const SERVICES = [
     badgeColor: 'bg-blue-50 text-[#054FA6] border-blue-200'
   },
   {
-    id: 'send',
+    id: '33333333-2222-2222-2222-222222222222',
     title: 'Отправка писем и посылок',
     subtitle: 'Посылки, EMS, 1 класс, заказные письма, упаковка',
     avgMinutes: 5.5,
@@ -380,7 +384,7 @@ const SERVICES = [
     badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200'
   },
   {
-    id: 'finance',
+    id: '55555555-5555-5555-5555-555555555555',
     title: 'Финансовые операции и касса',
     subtitle: 'Коммунальные платежи, денежные переводы, пенсии',
     avgMinutes: 5.0,
@@ -390,7 +394,7 @@ const SERVICES = [
     badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
   },
   {
-    id: 'retail',
+    id: '44444444-2222-2222-2222-222222222222',
     title: 'Знаки почтовой оплаты и товары',
     subtitle: 'Марки, открытки, периодика, конверты',
     avgMinutes: 2.0,
@@ -420,82 +424,44 @@ export interface Ticket {
   isDepartmentDelayed?: boolean;
 }
 
-const INITIAL_TICKETS: Ticket[] = [
-  {
-    id: 't-101',
-    number: 'В-014',
-    serviceId: 'pickup',
-    source: 'APPOINTMENT',
-    appointmentTime: '17:45',
-    createdAt: Date.now() - 18 * 60 * 1000,
-    status: 'WAITING',
-    clientEmail: 'ivan@pochta.local',
-    notifiedTriggers: ['30m', '15m']
-  },
-  {
-    id: 't-102',
-    number: 'А-041',
-    serviceId: 'pickup',
-    source: 'QR',
-    createdAt: Date.now() - 16 * 60 * 1000,
-    status: 'WAITING',
-    clientEmail: 'client41@gmail.com',
-    notifiedTriggers: ['15m']
-  },
-  {
-    id: 't-103',
-    number: 'Ж-003',
-    serviceId: 'send',
-    source: 'LIVE',
-    createdAt: Date.now() - 17 * 60 * 1000,
-    status: 'WAITING',
-    notifiedTriggers: []
-  },
-  {
-    id: 't-104',
-    number: 'В-016',
-    serviceId: 'finance',
-    source: 'APPOINTMENT',
-    appointmentTime: '18:15',
-    createdAt: Date.now() - 10 * 60 * 1000,
-    status: 'WAITING',
-    clientEmail: 'elena@mail.ru',
-    notifiedTriggers: ['30m']
-  },
-  {
-    id: 't-105',
-    number: 'А-042',
-    serviceId: 'pickup',
-    source: 'QR',
-    createdAt: Date.now() - 6 * 60 * 1000,
-    status: 'WAITING',
-    clientEmail: 'user@pochta.ru',
-    notifiedTriggers: ['15m']
-  }
-];
-
 export interface PostalWindow {
   id: number;
+  windowUuid?: string;
   name: string;
   operator: string;
-  status: 'ACTIVE' | 'CLOSED';
+  status: 'ACTIVE' | 'CLOSED' | 'OPEN';
   currentTicketId: string | null;
   servedCount: number;
   services: string[];
 }
 
-const INITIAL_WINDOWS: PostalWindow[] = [
-  { id: 1, name: 'Окно № 1', operator: 'Сидорова М.А.', status: 'ACTIVE', currentTicketId: 'П-019', servedCount: 42, services: ['finance', 'retail', 'send'] },
-  { id: 2, name: 'Окно № 2', operator: 'Петров К.В.', status: 'ACTIVE', currentTicketId: null, servedCount: 51, services: ['pickup', 'retail'] },
-  { id: 3, name: 'Окно № 3', operator: 'Иванова Е.А.', status: 'ACTIVE', currentTicketId: 'А-040', servedCount: 48, services: ['pickup', 'send', 'retail'] },
-  { id: 4, name: 'Окно № 4', operator: 'Ковалев Д.С.', status: 'CLOSED', currentTicketId: null, servedCount: 24, services: ['pickup', 'send'] }
-];
-
 const LOCAL_STORAGE_KEY = 'pochta_suo_3_state_v2';
 
-export default function App() {
+export default function PochtaDemo({ currentPath = '/demo', navigate }: { currentPath?: string, navigate?: (to: string, e?: any) => void }) {
   // Навигационные вкладки
-  const [activeTab, setActiveTab] = useState<'client-booking' | 'client-ticket' | 'operator' | 'admin' | 'tv' | 'kiosk' | 'roadmap'>('client-ticket');
+  let activeTab = 'hub';
+  if (currentPath === '/demo/client') {
+    // В зависимости от того, есть ли у клиента талон, показываем разные экраны
+    activeTab = 'client-booking'; // по умолчанию, ниже мы переопределим если нужно
+  } else if (currentPath === '/demo/operator') {
+    activeTab = 'operator';
+  } else if (currentPath === '/demo/admin') {
+    activeTab = 'admin';
+  } else if (currentPath === '/demo/tv') {
+    activeTab = 'tv';
+  } else if (currentPath === '/demo/terminal') {
+    activeTab = 'kiosk';
+  }
+
+  const setActiveTab = (tab: string) => {
+    if (!navigate) return;
+    if (tab === 'client-ticket' || tab === 'client-booking') navigate('/demo/client');
+    else if (tab === 'operator') navigate('/demo/operator');
+    else if (tab === 'admin') navigate('/demo/admin');
+    else if (tab === 'tv') navigate('/demo/tv');
+    else if (tab === 'kiosk') navigate('/demo/terminal');
+    else if (tab === 'hub') navigate('/demo');
+  };
 
   // Аудио и голосовой диктор (Voice Engine)
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -517,10 +483,9 @@ export default function App() {
   // Режим доступности и эмуляция сети
   const [isAccessibilityMode, setIsAccessibilityMode] = useState<boolean>(false);
   const [isOfflineSimulated, setIsOfflineSimulated] = useState<boolean>(false);
-  const [adminSubTab, setAdminSubTab] = useState<'overview' | 'policy' | 'anomalies' | 'audit'>('overview');
+  const [adminSubTab, setAdminSubTab] = useState<'overview' | 'policy' | 'anomalies' | 'audit' | 'users'>('overview');
   const [isFullscreenTv, setIsFullscreenTv] = useState<boolean>(false);
 
-  // Реестр талонов и окон
   const [tickets, setTickets] = useState<Ticket[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -529,7 +494,7 @@ export default function App() {
         if (Array.isArray(parsed.tickets) && parsed.tickets.length > 0) return parsed.tickets;
       }
     } catch {}
-    return INITIAL_TICKETS;
+    return [];
   });
 
   const [windows, setWindows] = useState<PostalWindow[]>(() => {
@@ -540,10 +505,10 @@ export default function App() {
         if (Array.isArray(parsed.windows) && parsed.windows.length > 0) return parsed.windows;
       }
     } catch {}
-    return INITIAL_WINDOWS;
+    return [];
   });
 
-  const [myTicketId, setMyTicketId] = useState<string>(() => {
+  const [myTicketId, setMyTicketId] = useState<string | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
@@ -551,8 +516,10 @@ export default function App() {
         if (parsed.myTicketId) return parsed.myTicketId;
       }
     } catch {}
-    return 't-105';
+    return null;
   });
+
+  const { overview } = useDemoIntegration(setTickets, setWindows);
 
   // Веса алгоритма Queue Policy (Спринты 2-4)
   const [policyConfig, setPolicyConfig] = useState({
@@ -566,7 +533,7 @@ export default function App() {
 
   // Состояние формы бронирования
   const [bookingMode, setBookingMode] = useState<'qr' | 'appointment'>('qr');
-  const [selectedServiceId, setSelectedServiceId] = useState('pickup');
+  const [selectedServiceId, setSelectedServiceId] = useState('22222222-2222-2222-2222-222222222222');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('18:00');
   const [clientEmail, setClientEmail] = useState('');
   const [emailCodeInput, setEmailCodeInput] = useState('');
@@ -596,6 +563,46 @@ export default function App() {
   // Системное время отделения
   const [currentTime, setCurrentTime] = useState(new Date(2026, 8, 17, 17, 45, 0));
 
+  // Аутентификация
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login'|'register'>('login');
+  
+  useEffect(() => {
+    getMe().then(user => {
+      setCurrentUser(user);
+    }).catch(() => {
+      setCurrentUser(null);
+    }).finally(() => {
+      setAuthLoading(false);
+    });
+  }, []);
+
+  // Ролевая модель доступа (ТЗ: вход обязателен для всех, меню зависит от роли)
+  const userRole = currentUser?.role ?? null;
+  const isOperatorRole = userRole === 'employee' || userRole === 'opc_chief';
+  const isAdminRole = userRole === 'opc_chief';
+  const isClient = userRole === 'client' || (userRole !== null && !isOperatorRole && !isAdminRole);
+
+  const [adminUsers, setAdminUsers] = useState<User[]>([]);
+  const loadAdminUsers = useCallback(async () => {
+    if (currentUser?.role === 'opc_chief') {
+      try {
+        const users = await listUsers();
+        setAdminUsers(users);
+      } catch (err) {
+        console.error('Failed to load users', err);
+      }
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'admin') {
+      loadAdminUsers();
+    }
+  }, [activeTab, loadAdminUsers]);
+
   // Синхронизация состояния с LocalStorage
   useEffect(() => {
     try {
@@ -607,6 +614,13 @@ export default function App() {
       }));
     } catch {}
   }, [tickets, windows, myTicketId, policyConfig]);
+
+  // Умное переключение клиента между booking и ticket
+  if (activeTab === 'client-booking' && myTicketId) {
+    activeTab = 'client-ticket';
+  } else if (activeTab === 'client-ticket' && !myTicketId) {
+    activeTab = 'client-booking';
+  }
 
   // Загрузка голосов синтезатора речи
   useEffect(() => {
@@ -647,11 +661,13 @@ export default function App() {
   /**
    * Комплексное воспроизведение вызова клиента диктором
    */
-  const handleAnnounce = useCallback(async (ticketNumber: string, windowId: number | string) => {
+  const handleAnnounce = useCallback((ticketNumber: string, windowId: number | string) => {
     const phraseData = formatAnnouncementPhrase(ticketNumber, windowId);
+
+    // Обновляем UI сразу (показываем следующее объявление в очереди)
     setCurrentAnnouncement({
       active: true,
-      isSpeaking: true,
+      isSpeaking: false,
       ticketNumber: phraseData.ticketNumber,
       windowId: phraseData.windowId,
       phrase: phraseData.phrase,
@@ -660,21 +676,24 @@ export default function App() {
 
     logAudit('VOICE_ANNOUNCEMENT', `Озвучено в зале: «${phraseData.displayText}»`);
 
-    await announceTicketCall(ticketNumber, windowId, {
-      soundEnabled,
-      voiceEnabled,
-      speechRate,
-      selectedVoiceName,
-      onStart: () => {
-        setCurrentAnnouncement(prev => prev ? { ...prev, isSpeaking: true } : null);
-      },
-      onEnd: () => {
-        setCurrentAnnouncement(prev => prev ? { ...prev, isSpeaking: false } : null);
-        setTimeout(() => {
-          setCurrentAnnouncement(null);
-        }, 3000);
-      }
-    });
+    // Ставим в FIFO-очередь: следующее объявление начнётся только после завершения текущего
+    enqueueAnnouncement(() =>
+      announceTicketCall(ticketNumber, windowId, {
+        soundEnabled,
+        voiceEnabled,
+        speechRate,
+        selectedVoiceName,
+        onStart: () => {
+          setCurrentAnnouncement(prev => prev ? { ...prev, isSpeaking: true } : null);
+        },
+        onEnd: () => {
+          setCurrentAnnouncement(prev => prev ? { ...prev, isSpeaking: false } : null);
+          setTimeout(() => {
+            setCurrentAnnouncement(null);
+          }, 3000);
+        }
+      })
+    );
   }, [soundEnabled, voiceEnabled, speechRate, selectedVoiceName, logAudit]);
 
   /**
@@ -849,9 +868,20 @@ export default function App() {
     }
   }, [calculatedQueueMetrics, myTicketId, tickets, showToast, logAudit, soundEnabled]);
 
-  // Текущий билет для выбранного окна оператора
-  const operatorSelectedWindow = useMemo(() => {
-    return windows.find(w => w.id === operatorWindowId) || windows[0];
+  // Текущий билет для выбранного окна оператора.
+  // Пока список окон ещё не пришёл с бэкенда (или localStorage пуст),
+  // отдаём безопасную заглушку: иначе operatorSelectedWindow === undefined
+  // и экран оператора падает на первом рендере (белая страница).
+  const operatorSelectedWindow = useMemo<PostalWindow>(() => {
+    return windows.find(w => w.id === operatorWindowId) || windows[0] || {
+      id: operatorWindowId,
+      name: `Окно ${operatorWindowId}`,
+      operator: 'Оператор',
+      status: 'ACTIVE',
+      currentTicketId: null,
+      servedCount: 0,
+      services: [],
+    };
   }, [windows, operatorWindowId]);
 
   const operatorCurrentTicket = useMemo(() => {
@@ -860,73 +890,102 @@ export default function App() {
     return tickets.find(t => t.number === win.currentTicketId || t.id === win.currentTicketId) || {
       id: 'mock-current',
       number: win.currentTicketId,
-      serviceId: 'pickup',
+      serviceId: '22222222-2222-2222-2222-222222222222',
       source: 'QR' as const,
       createdAt: Date.now() - 3 * 60 * 1000,
       status: 'CALLED' as const
     };
   }, [operatorSelectedWindow, tickets]);
 
+  // Текущий вызов для произвольного окна (для живого ТВ-табло).
+  const getWindowCurrentTicket = useCallback((winId: number | string) => {
+    const win = windows.find(w => w.id === winId);
+    if (!win || !win.currentTicketId) return null;
+    return tickets.find(t => t.number === win.currentTicketId || t.id === win.currentTicketId) || null;
+  }, [windows, tickets]);
+
   /**
    * Вызов следующего клиента окном оператора
    */
-  const handleOperatorCallNext = useCallback(() => {
+  const handleOperatorCallNext = useCallback(async () => {
     const opWindow = windows.find(w => w.id === operatorWindowId);
-    if (!opWindow) return;
+    if (!opWindow) {
+      showToast(`Окно № ${operatorWindowId} не найдено`);
+      return;
+    }
+    if (!opWindow.windowUuid) {
+      showToast(`Окно № ${operatorWindowId} синхронизируется с сервером. Пожалуйста, подождите секунду или войдите в систему.`);
+      return;
+    }
 
-    if (opWindow.status !== 'ACTIVE') {
+    if (opWindow.status !== 'ACTIVE' && opWindow.status !== 'OPEN') {
       showToast(`Окно № ${operatorWindowId} закрыто. Откройте смену для вызова клиентов`);
       return;
     }
 
-    const candidate = queueScoring.find(t => opWindow.services.includes(t.serviceId));
+    try {
+      const candidate = await callNext(opWindow.windowUuid);
+      
+      const mapped = mapBackendTicketToDemo(candidate);
+      
+      setTickets(prev => {
+        const filtered = prev.filter(t => t.id !== mapped.id);
+        return [mapped, ...filtered];
+      });
 
-    if (!candidate) {
-      showToast(`В очереди нет ожидающих талонов для окна № ${operatorWindowId}`);
-      return;
-    }
+      setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: mapped.number } : w));
+      setOperatorElapsedSeconds(0);
 
-    setTickets(prev => prev.map(t => {
-      if (t.id === candidate.id) {
-        return { ...t, status: 'CALLED', windowId: operatorWindowId, calledAt: currentTime.getTime() };
+      showToast(`Окно № ${operatorWindowId}: Вызван талон ${mapped.number}`);
+      logAudit('CALL_NEXT', `Окно № ${operatorWindowId} вызвало талон ${mapped.number} (${mapped.source})`);
+
+      if (autoAnnounceCalls || voiceEnabled) {
+        handleAnnounce(mapped.number, operatorWindowId);
+      } else if (soundEnabled) {
+        playPostalChime();
       }
-      return t;
-    }));
-
-    setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: candidate.number } : w));
-    setOperatorElapsedSeconds(0);
-
-    showToast(`Окно № ${operatorWindowId}: Вызван талон ${candidate.number}`);
-    logAudit('CALL_NEXT', `Окно № ${operatorWindowId} вызвало талон ${candidate.number} (${candidate.source})`);
-
-    // Воспроизведение официального гонга и голосовой озвучки
-    if (autoAnnounceCalls || voiceEnabled) {
-      handleAnnounce(candidate.number, operatorWindowId);
-    } else if (soundEnabled) {
-      playPostalChime();
+    } catch (e: any) {
+      showToast(`Ошибка: ${e.message}`);
     }
-  }, [windows, operatorWindowId, queueScoring, currentTime, showToast, logAudit, autoAnnounceCalls, voiceEnabled, soundEnabled, handleAnnounce]);
+  }, [windows, operatorWindowId, showToast, logAudit, autoAnnounceCalls, voiceEnabled, soundEnabled, handleAnnounce]);
 
-  const handleOperatorFinish = useCallback(() => {
+  const handleOperatorFinish = useCallback(async () => {
     if (!operatorCurrentTicket) return;
 
-    const finishedNum = operatorCurrentTicket.number;
-    setTickets(prev => prev.map(t => t.number === finishedNum ? { ...t, status: 'COMPLETED' } : t));
-    setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: null, servedCount: w.servedCount + 1 } : w));
+    try {
+      if (operatorCurrentTicket.status === 'CALLED') {
+         await startService(operatorCurrentTicket.id);
+      }
+      const finishedTicket = await completeService(operatorCurrentTicket.id);
+      
+      const finishedNum = finishedTicket.publicNumber;
+      
+      setTickets(prev => prev.map(t => t.number === finishedNum ? { ...t, status: 'COMPLETED' } : t));
+      setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: null, servedCount: w.servedCount + 1 } : w));
 
-    showToast(`Обслуживание талона ${finishedNum} завершено`);
-    logAudit('COMPLETED', `Талон ${finishedNum} успешно обслужен в Окне № ${operatorWindowId}`);
+      showToast(`Обслуживание талона ${finishedNum} завершено`);
+      logAudit('COMPLETED', `Талон ${finishedNum} успешно обслужен в Окне № ${operatorWindowId}`);
+    } catch (e: any) {
+      showToast(`Ошибка: ${e.message}`);
+    }
   }, [operatorCurrentTicket, operatorWindowId, showToast, logAudit]);
 
-  const handleOperatorNoShow = useCallback(() => {
+  const handleOperatorNoShow = useCallback(async () => {
     if (!operatorCurrentTicket) return;
 
-    const targetNum = operatorCurrentTicket.number;
-    setTickets(prev => prev.map(t => t.number === targetNum ? { ...t, status: 'NO_SHOW' } : t));
-    setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: null } : w));
+    try {
+      const ticket = await markNoShow(operatorCurrentTicket.id);
+      
+      const targetNum = ticket.publicNumber;
+      
+      setTickets(prev => prev.map(t => t.number === targetNum ? { ...t, status: 'NO_SHOW' } : t));
+      setWindows(prev => prev.map(w => w.id === operatorWindowId ? { ...w, currentTicketId: null } : w));
 
-    showToast(`Талон ${targetNum} зафиксирован: НЕ ЯВИЛСЯ (NO_SHOW)`);
-    logAudit('NO_SHOW', `Клиент талона ${targetNum} не подошел к Окну № ${operatorWindowId}`);
+      showToast(`Талон ${targetNum} зафиксирован: НЕ ЯВИЛСЯ (NO_SHOW)`);
+      logAudit('NO_SHOW', `Клиент талона ${targetNum} не подошел к Окну № ${operatorWindowId}`);
+    } catch (e: any) {
+      showToast(`Ошибка: ${e.message}`);
+    }
   }, [operatorCurrentTicket, operatorWindowId, showToast, logAudit]);
 
   const handleOperatorReturnToQueue = useCallback(() => {
@@ -940,35 +999,54 @@ export default function App() {
     logAudit('RETURNED', `Талон ${targetNum} возвращен оператором в пул ожидания`);
   }, [operatorCurrentTicket, operatorWindowId, showToast, logAudit]);
 
-  const handleToggleWindowShift = (targetWindowId: number) => {
-    setWindows(prev => prev.map(w => {
-      if (w.id === targetWindowId) {
-        const nextStatus: 'ACTIVE' | 'CLOSED' = w.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
-        const updated: PostalWindow = { ...w, status: nextStatus };
-        logAudit('WINDOW_STATUS_CHANGE', `${w.name}: статус изменен на ${nextStatus === 'ACTIVE' ? 'В РАБОТЕ' : 'ЗАКРЫТО'}`);
-        showToast(`${w.name}: смена ${nextStatus === 'ACTIVE' ? 'открыта' : 'закрыта'}`);
-        return updated;
-      }
-      return w;
-    }));
+  const handleToggleWindowShift = async (targetWindowId: number) => {
+    // Окно в UI нумеруется локально; windowUuid хранит реальный UUID из backend.
+    const w = windows.find(x => x.id === targetWindowId);
+    if (!w || !w.windowUuid) return;
+    const nextStatus: 'ACTIVE' | 'CLOSED' = w.status === 'ACTIVE' ? 'CLOSED' : 'ACTIVE';
+    const apiStatus: 'OPEN' | 'CLOSED' | 'CLOSING' = nextStatus === 'ACTIVE' ? 'OPEN' : 'CLOSED';
+    try {
+      // Persist via API: иначе overview-опрос на 3 сек. откатывает смену статуса.
+      await changeWindowStatus(w.windowUuid, apiStatus);
+      setWindows(prev => prev.map(x => x.id === targetWindowId ? { ...x, status: nextStatus } : x));
+      logAudit('WINDOW_STATUS_CHANGE', `${w.name}: статус изменён на ${nextStatus === 'ACTIVE' ? 'В РАБОТЕ' : 'ЗАКРЫТА'}`);
+      showToast(`${w.name}: смена ${nextStatus === 'ACTIVE' ? 'открыта' : 'закрыта'}`);
+    } catch (e: any) {
+      showToast(`Ошибка смены статуса: ${e?.message || 'сервер недоступен'}`);
+    }
   };
 
-  const handleToggleWindowService = (targetWindowId: number, serviceId: string) => {
-    setWindows(prev => prev.map(w => {
-      if (w.id === targetWindowId) {
-        const hasService = w.services.includes(serviceId);
-        const newServices = hasService
-          ? w.services.filter(s => s !== serviceId)
-          : [...w.services, serviceId];
-        if (newServices.length === 0) {
-          showToast('У окна должна быть доступна хотя бы одна услуга');
-          return w;
-        }
-        logAudit('WINDOW_SERVICES_CHANGE', `${w.name}: обновлен список услуг`);
-        return { ...w, services: newServices };
+  const handleToggleWindowService = async (targetWindowId: number, serviceId: string) => {
+    const w = windows.find(x => x.id === targetWindowId);
+    if (!w || !w.windowUuid) return;
+    const hasService = w.services.includes(serviceId);
+    let newServices: string[];
+    if (hasService) {
+      newServices = w.services.filter(s => s !== serviceId);
+      if (newServices.length === 0) {
+        showToast('У окна должна быть доступна хотя бы одна услуга');
+        return w;
       }
-      return w;
-    }));
+    } else {
+      newServices = [...w.services, serviceId];
+    }
+    try {
+      // Persist capability set: иначе overview-опрос откатывает переключение услуг.
+      await updateWindowServices(w.windowUuid, newServices);
+      setWindows(prev => prev.map(x => x.id === targetWindowId ? { ...x, services: newServices } : x));
+      logAudit('WINDOW_SERVICES_CHANGE', `${w.name}: обновлён список услуг`);
+      showToast(`${w.name}: список услуг сохранён`);
+    } catch (e: any) {
+      const st = e?.status;
+      if (st === 409 || e?.code === 'INVALID_TICKET_STATE') {
+        showToast('Услугу нельзя отключить: есть талоны, обслуженные в окне');
+      } else if (st === 404) {
+        showToast('Окно не найдено');
+      } else {
+        showToast(`Ошибка сохранения услуг: ${e?.message || 'сервер недоступен'}`);
+      }
+    }
+    return undefined;
   };
 
   /**
@@ -994,24 +1072,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTab, handleOperatorCallNext, handleOperatorFinish]);
 
-  const handleAddLiveQueue = (serviceId: string) => {
+  const handleAddLiveQueue = async (serviceId: string) => {
     setIsLiveQueueModalOpen(false);
-    const randNum = Math.floor(10 + Math.random() * 89);
-    const newNum = `Ж-0${randNum}`;
-
-    const newTicket: Ticket = {
-      id: 't-live-' + Date.now(),
-      number: newNum,
-      serviceId,
-      source: 'LIVE',
-      createdAt: currentTime.getTime(),
-      status: 'WAITING',
-      notifiedTriggers: []
-    };
-
-    setTickets(prev => [newTicket, ...prev]);
-    showToast(`Выдан талон живой очереди ${newNum}`);
-    logAudit('LIVE_TICKET_ISSUED', `Оператор Окна № ${operatorWindowId} выдал талон ${newNum} (услуга: ${SERVICES.find(s => s.id === serviceId)?.title})`);
+    try {
+      const ticket = await createLiveTicket(
+        DEMO_BRANCH_ID,
+        serviceId,
+        crypto.randomUUID()
+      );
+      
+      const mapped = mapBackendTicketToDemo(ticket);
+      
+      setTickets(prev => [mapped, ...prev]);
+      showToast(`Выдан талон живой очереди ${mapped.number}`);
+      logAudit('LIVE_TICKET_ISSUED', `Оператор Окна № ${operatorWindowId} выдал талон ${mapped.number} (услуга: ${SERVICES.find(s => s.id === serviceId)?.title})`);
+    } catch (e: any) {
+      showToast(`Ошибка: ${e.message}`);
+    }
   };
 
   const handleRedirectTicket = (targetWindowId: number) => {
@@ -1045,93 +1122,87 @@ export default function App() {
     }
   };
 
-  const handleCreateClientTicket = () => {
-    const srv = SERVICES.find(s => s.id === selectedServiceId) || SERVICES[0];
-    const randNum = Math.floor(10 + Math.random() * 89);
-    const prefix = bookingMode === 'appointment' ? 'В' : srv.prefix;
-    const ticketNumber = `${prefix}-0${randNum}`;
+  const DEMO_BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 
-    const newTicket: Ticket = {
-      id: 't-client-' + Date.now(),
-      number: ticketNumber,
-      serviceId: selectedServiceId,
-      source: bookingMode === 'appointment' ? 'APPOINTMENT' : 'QR',
-      appointmentTime: bookingMode === 'appointment' ? selectedTimeSlot : undefined,
-      createdAt: currentTime.getTime(),
-      status: 'WAITING',
-      clientEmail: clientEmail || 'client@pochta.ru',
-      notifiedTriggers: []
-    };
+  const handleCreateClientTicket = async () => {
+    try {
+      if (bookingMode === 'appointment') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const [hours, minutes] = selectedTimeSlot.split(':');
+        tomorrow.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        
+        const created = await createAppointment(
+          DEMO_BRANCH_ID,
+          selectedServiceId,
+          tomorrow.toISOString(),
+          crypto.randomUUID()
+        );
+        
+        const mapped = mapBackendTicketToDemo(created.ticket);
+        setTickets(prev => [mapped, ...prev]);
+        setMyTicketId(mapped.id);
+        setActiveTab('client-ticket');
+        showToast(`Талон ${mapped.number} на ${selectedTimeSlot} успешно сформирован!`);
+        logAudit('CLIENT_TICKET_CREATED', `Создан талон ${mapped.number} (${mapped.source})`);
+      } else {
+        const created = await createQrTicket(
+          DEMO_BRANCH_ID,
+          selectedServiceId,
+          crypto.randomUUID()
+        );
+        
+        const mapped = mapBackendTicketToDemo(created);
+        setTickets(prev => [mapped, ...prev]);
+        setMyTicketId(mapped.id);
+        setActiveTab('client-ticket');
+        showToast(`Талон ${mapped.number} успешно сформирован!`);
+        logAudit('CLIENT_TICKET_CREATED', `Создан талон ${mapped.number} (${mapped.source})`);
+      }
 
-    setTickets(prev => [newTicket, ...prev]);
-    setMyTicketId(newTicket.id);
-    setActiveTab('client-ticket');
-    showToast(`Талон ${ticketNumber} успешно сформирован!`);
-    logAudit('CLIENT_TICKET_CREATED', `Создан талон ${ticketNumber} (${newTicket.source})`);
-
-    if (soundEnabled) {
-      playPostalChime(0.2);
+      if (soundEnabled) {
+        playPostalChime(0.2);
+      }
+    } catch (e: any) {
+      showToast(`Ошибка: ${e.message}`);
     }
   };
 
   /**
    * Оформление талона в терминале самообслуживания (Киоск)
    */
-  const handleKioskSelectService = (serviceId: string) => {
-    const srv = SERVICES.find(s => s.id === serviceId) || SERVICES[0];
-    const randNum = Math.floor(10 + Math.random() * 89);
-    const ticketNumber = `${srv.prefix}-0${randNum}`;
+  const handleKioskSelectService = async (serviceId: string) => {
+    try {
+      const created = await createQrTicket(
+        DEMO_BRANCH_ID,
+        serviceId,
+        crypto.randomUUID()
+      );
+      
+      const mapped = mapBackendTicketToDemo(created);
+      setTickets(prev => [mapped, ...prev]);
+      setMyTicketId(mapped.id);
+      setKioskCreatedTicket(mapped);
+      setIsKioskSlipModalOpen(true);
+      
+      const srv = SERVICES.find(s => s.id === serviceId) || SERVICES[0];
+      logAudit('KIOSK_TICKET_ISSUED', `Терминал самообслуживания выдал талон ${mapped.number} (${srv.title})`);
 
-    const newTicket: Ticket = {
-      id: 't-kiosk-' + Date.now(),
-      number: ticketNumber,
-      serviceId,
-      source: 'QR',
-      createdAt: currentTime.getTime(),
-      status: 'WAITING',
-      clientEmail: 'kiosk@pochta.local',
-      notifiedTriggers: []
-    };
-
-    setTickets(prev => [newTicket, ...prev]);
-    setMyTicketId(newTicket.id);
-    setKioskCreatedTicket(newTicket);
-    setIsKioskSlipModalOpen(true);
-    logAudit('KIOSK_TICKET_ISSUED', `Терминал самообслуживания выдал талон ${ticketNumber} (${srv.title})`);
-
-    // Озвучиваем клиенту создание талона
-    if (voiceEnabled) {
-      playPostalChime(0.25).then(() => {
-        if ('speechSynthesis' in window) {
-          const u = new SpeechSynthesisUtterance(`Ваш талон сформирован. Пожалуйста, сохраните номер ${ticketNumber} и ожидайте вызова на табло.`);
-          u.lang = 'ru-RU';
-          u.rate = 0.95;
-          window.speechSynthesis.speak(u);
-        }
-      });
-    } else if (soundEnabled) {
-      playPostalChime();
+      if (voiceEnabled) {
+        playPostalChime(0.25).then(() => {
+          if ('speechSynthesis' in window) {
+            const u = new SpeechSynthesisUtterance(`Ваш талон сформирован. Пожалуйста, сохраните номер ${mapped.number} и ожидайте вызова на табло.`);
+            u.lang = 'ru-RU';
+            u.rate = 0.95;
+            window.speechSynthesis.speak(u);
+          }
+        });
+      } else if (soundEnabled) {
+        playPostalChime();
+      }
+    } catch (e: any) {
+      showToast(`Ошибка терминала: ${e.message}`);
     }
-  };
-
-  /**
-   * Вызов клиента на ТВ-табло из любого окна
-   */
-  const handleTvCallNext = (winId: number) => {
-    const targetWin = windows.find(w => w.id === winId);
-    if (!targetWin) return;
-
-    const candidate = queueScoring.find(t => targetWin.services.includes(t.serviceId));
-    if (!candidate) {
-      showToast(`В очереди нет ожидающих клиентов для Окна № ${winId}`);
-      return;
-    }
-
-    setTickets(prev => prev.map(t => t.id === candidate.id ? { ...t, status: 'CALLED', windowId: winId, calledAt: currentTime.getTime() } : t));
-    setWindows(prev => prev.map(w => w.id === winId ? { ...w, currentTicketId: candidate.number } : w));
-
-    showToast(`ТВ-Табло: Окно № ${winId} вызывает талон ${candidate.number}`);
-    handleAnnounce(candidate.number, winId);
   };
 
   const toggleTvFullscreen = () => {
@@ -1432,27 +1503,6 @@ export default function App() {
     }
   };
 
-  const resetToDemoData = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-    setTickets(INITIAL_TICKETS);
-    setWindows(INITIAL_WINDOWS);
-    setMyTicketId('t-105');
-    setPolicyConfig({
-      weightAppointment: 1.5,
-      weightQr: 1.0,
-      weightLive: 1.0,
-      waitMinutesFactor: 0.15,
-      starvationThresholdMinutes: 15,
-      appointmentDecayMinutes: 10
-    });
-    setAuditEvents([
-      { id: 'a1', time: '17:35:10', type: 'COMPLETED', text: 'Талон А-039 успешно обслужен в Окне № 3' },
-      { id: 'a2', time: '17:39:40', type: 'NO_SHOW', text: 'Талон В-012 не явился по вызову к Окну № 2 (статус NO_SHOW)' },
-      { id: 'a3', time: '17:42:00', type: 'STARVATION_ESCALATION', text: 'Талон Ж-003 ожидает 17 мин -> повышен приоритет (Starvation Guard)' }
-    ]);
-    showToast('Демо-состояние очереди успешно сброшено к исходному!');
-  };
-
   // Список аномалий для начальника ОПС
   const anomaliesList = useMemo(() => {
     const list: Array<{
@@ -1499,8 +1549,119 @@ export default function App() {
       });
     });
 
+    // Добавляем аномалии с сервера (Admin Overview API)
+    if (overview?.anomalies && Array.isArray(overview.anomalies)) {
+      overview.anomalies.forEach((a: any) => {
+        if (!list.some(existing => existing.ticket === a.publicNumber)) {
+          list.push({
+            id: `server-${a.id}`,
+            type: a.type || 'ANOMALY',
+            badge: a.type === 'NO_SHOW' ? 'Неявка клиента' : 'Превышение ожидания',
+            ticket: a.publicNumber,
+            details: a.description || `Зафиксировано отклонение по талону`,
+            severity: a.type === 'NO_SHOW' ? 'warning' : 'danger'
+          });
+        }
+      });
+    }
+
     return list;
-  }, [queueScoring, tickets]);
+  }, [queueScoring, tickets, overview]);
+
+  // ===========================================================================
+  // AUTH GATE: вход/регистрация обязательны для всех пользователей.
+  // Пока сессия не подтверждена — никакой интерфейс не рендерится.
+  // ===========================================================================
+  if (authLoading || !currentUser) {
+    const submitGateAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const email = (e.currentTarget.elements.namedItem('email') as HTMLInputElement).value;
+      const password = (e.currentTarget.elements.namedItem('password') as HTMLInputElement).value;
+      try {
+        if (authMode === 'login') {
+          await login(email, password);
+        } else {
+          await register(email, password);
+          await login(email, password);
+        }
+        const user = await getMe();
+        setCurrentUser(user);
+        showToast(authMode === 'login' ? 'Вы успешно вошли в систему' : 'Регистрация успешна. Добро пожаловать!');
+      } catch (err: any) {
+        showToast(`Ошибка: ${err.message}`);
+      }
+    };
+
+    return (
+      <div className="min-h-screen flex flex-col font-sans bg-[#F8FAFC] text-[#0F172A]">
+        {/* Тост об ошибке/успехе */}
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 bg-white text-slate-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 border-[#003B73] animate-in fade-in slide-in-from-top-2 text-xs font-semibold">
+            <Info className="w-4 h-4 text-[#054FA6] shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
+        {authLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex items-center gap-3 text-slate-500 text-sm font-semibold">
+              <RefreshCw className="w-5 h-5 animate-spin text-[#054FA6]" />
+              <span>Проверка сессии…</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-4 py-10">
+            <div className="w-full max-w-md">
+              {/* Бренд */}
+              <div className="flex flex-col items-center mb-8 text-center">
+                <PochtaEmblem className="w-16 h-16 mb-4 drop-shadow-md" bg="#003B73" fg="#FFFFFF" />
+                <h1 className="text-2xl font-black text-[#0A2896] tracking-tight">Электронная очередь Почты России</h1>
+                <p className="text-sm text-slate-500 mt-2">Для работы с системой войдите в учётную запись или зарегистрируйтесь</p>
+              </div>
+
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="font-bold text-lg text-slate-800">
+                    {authMode === 'login' ? 'Вход в систему' : 'Регистрация'}
+                  </h2>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">СУО 3.0</span>
+                </div>
+
+                <form onSubmit={submitGateAuth} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input name="email" type="email" required className="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent" placeholder="user@example.ru" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Пароль</label>
+                    <input name="password" type="password" required minLength={6} className="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent" placeholder="Минимум 6 символов" />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold transition-colors shadow-md">
+                    {authMode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+                  </button>
+                </form>
+
+                <div className="mt-6 text-center">
+                  <button type="button" onClick={() => setAuthMode(m => m === 'login' ? 'register' : 'login')} className="w-full py-2.5 border border-[#054FA6]/30 text-[#054FA6] hover:bg-blue-50 rounded-xl text-xs font-bold transition-colors">
+                    {authMode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+                  </button>
+                  {authMode === 'register' && (
+                    <p className="text-[11px] text-slate-400 mt-3">
+                      Регистрация создаёт учётную запись клиента. Права оператора/начальника выдаёт начальник ОПС.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-center text-[11px] text-slate-400 mt-6 font-mono">
+                Доступ к интерфейсу определяется ролью: клиент, оператор, начальник ОПС
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors ${
@@ -1619,14 +1780,8 @@ export default function App() {
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <PochtaWordmark className="h-4 sm:h-5 w-auto" color="#FFFFFF" />
-                <span className="text-[10px] font-mono font-black uppercase tracking-wider bg-white/15 text-white px-1.5 py-0.5 rounded border border-white/20">
-                  СУО 3.0
-                </span>
               </div>
               <div className="text-[11px] text-blue-200 flex items-center gap-1.5 mt-0.5 font-medium">
-                <MapPin className="w-3 h-3 text-[#86BBFF]" />
-                <span>{BRANCH_CONFIG.name}</span>
-                <span className="text-white/40">•</span>
                 <span className="text-blue-200 font-mono">до {BRANCH_CONFIG.closeTimeStr}</span>
               </div>
             </div>
@@ -1696,99 +1851,47 @@ export default function App() {
               <span>{isOfflineSimulated ? 'Офлайн' : 'Онлайн'}</span>
             </button>
 
-            {/* Сброс демо */}
-            <button
-              type="button"
-              onClick={resetToDemoData}
-              className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-lg bg-black/25 border border-white/15 text-blue-200 hover:bg-white/10 text-[11px]"
-              title="Сбросить состояние к исходному"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Сброс</span>
-            </button>
-
-            {/* Ссылка на базовый MVP */}
-            <a
-              href="/"
-              className="hidden lg:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-blue-100 hover:text-white text-[11px] transition-colors"
-              title="Перейти к классическому интерфейсу MVP"
-            >
-              <span>← MVP (/)</span>
-            </a>
-
             {/* Время отделения */}
             <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/15 text-white font-bold">
               <Clock className="w-3.5 h-3.5 text-[#86BBFF]" />
               <span>{currentTime.toTimeString().split(' ')[0]}</span>
             </div>
 
+            {/* Авторизация */}
+            <div className="flex items-center gap-2 border-l border-white/20 pl-2 ml-1">
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[11px] font-bold text-white">{currentUser.email.split('@')[0]}</span>
+                    <span className="text-[9px] text-blue-200 font-mono uppercase">{currentUser.role}</span>
+                  </div>
+                  <button onClick={async () => { await logout(); setCurrentUser(null); }} className="p-1.5 hover:bg-white/20 rounded-lg text-blue-100 transition-colors" title="Выйти">
+                    <UserX className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => { setAuthMode('login'); setIsAuthModalOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#003B73] hover:bg-blue-50 rounded-lg text-xs font-bold transition-colors">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Войти</span>
+                </button>
+              )}
+            </div>
+
           </div>
 
         </div>
 
-        {/* Навигационные вкладки */}
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between overflow-x-auto py-1.5 text-xs font-semibold scrollbar-none">
-          <nav className="flex items-center gap-1.5">
+        {/* Навигация */}
+        {activeTab !== 'hub' && (
+          <div className="max-w-7xl mx-auto px-4 py-2 flex items-center">
             <button
-              onClick={() => setActiveTab('client-booking')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'client-booking' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
+              onClick={() => setActiveTab('hub')}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-semibold"
             >
-              <Smartphone className="w-4 h-4" />
-              <span>1. Взять талон</span>
+              ← Меню
             </button>
-
-            <button
-              onClick={() => setActiveTab('client-ticket')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'client-ticket' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>2. Мой талон</span>
-              <span className="font-mono bg-[#D92534] text-white text-[11px] font-black px-1.5 py-0.5 rounded shadow-sm">
-                {activeClientTicket?.number || 'А-042'}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('operator')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'operator' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <Activity className="w-4 h-4" />
-              <span>3. Окно оператора (№{operatorWindowId})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'admin' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <Sliders className="w-4 h-4" />
-              <span>4. Начальник ОПС</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tv')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'tv' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <Eye className="w-4 h-4" />
-              <span>5. Табло зала (ТВ)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('kiosk')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'kiosk' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <SquareTerminal className="w-4 h-4" />
-              <span>6. Терминал (Киоск)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('roadmap')}
-              className={`min-h-[40px] px-3.5 py-1.5 rounded-xl flex items-center gap-2 transition-all ${activeTab === 'roadmap' ? 'bg-[#054FA6] text-white shadow-md font-bold' : 'text-blue-100 hover:bg-white/10'}`}
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Архитектура & Спринты</span>
-            </button>
-          </nav>
-        </div>
+          </div>
+        )}
 
         {/* Фирменная тонкая красная линия Почты России */}
         <div className="h-[2px] w-full bg-[#D92534]"></div>
@@ -1798,6 +1901,37 @@ export default function App() {
       {/* ОСНОВНОЕ ТЕЛО СТРАНИЦЫ                                                    */}
       {/* ========================================================================= */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 transition-all">
+
+        {/* 0. ДЕМО-ХАБ (НОВЫЙ) */}
+        {activeTab === 'hub' && (
+          <div className="max-w-5xl mx-auto px-4 py-12">
+            <h2 className="text-3xl font-black text-[#0A2896] mb-3 text-center tracking-tight uppercase">Электронная очередь</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                { path: '/demo/client', icon: Smartphone, title: 'Клиент', desc: 'Взять талон, отслеживать статус ожидания и вызов к окну', roles: ['client'] },
+                { path: '/demo/terminal', icon: SquareTerminal, title: 'Терминал (Киоск)', desc: 'Интерфейс физического киоска для печати талонов в зале', roles: ['client', 'terminal', 'employee', 'opc_chief'] },
+                { path: '/demo/operator', icon: Activity, title: 'Окно оператора', desc: 'Вызов клиентов, обслуживание талонов, перевод и отмена', roles: ['employee', 'opc_chief'] },
+                { path: '/demo/tv', icon: Eye, title: 'Табло зала (ТВ)', desc: 'Отображение текущей очереди, видео и вызовов с озвучкой', roles: ['employee', 'opc_chief'] },
+                { path: '/demo/admin', icon: Sliders, title: 'Начальник ОПС', desc: 'Мониторинг отделения, управление окнами и приоритизацией', roles: ['opc_chief'] },
+              ].filter(link => userRole && (link.roles as string[]).includes(userRole)).map(link => (
+                <button 
+                  key={link.path} 
+                  onClick={() => navigate && navigate(link.path)} 
+                  className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all border border-blue-100/60 flex flex-col items-center text-center gap-4 group cursor-pointer"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-[#F0F5FF] flex items-center justify-center group-hover:scale-110 transition-transform text-[#054FA6]">
+                    <link.icon className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{link.title}</h3>
+                    <p className="text-sm text-gray-500 leading-relaxed">{link.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* ВКЛАДКА 1: БРОНИРОВАНИЕ ТАЛОНА                                           */}
@@ -2098,10 +2232,10 @@ export default function App() {
                 {/* Доминантный номер талона */}
                 <div className="mt-4 text-center">
                   <div className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white drop-shadow-sm">
-                    {activeClientTicket?.number || 'А-042'}
+                    {activeClientTicket?.number || '—'}
                   </div>
                   <div className="text-xs font-semibold text-blue-200 mt-1">
-                    {SERVICES.find(s => s.id === activeClientTicket?.serviceId)?.title || 'Получение писем и посылок'}
+                    {SERVICES.find(s => s.id === activeClientTicket?.serviceId)?.title || 'Ожидание талона'}
                   </div>
                 </div>
               </div>
@@ -2115,7 +2249,7 @@ export default function App() {
                 {/* QR-код */}
                 <div className="flex justify-center">
                   <PostalTicketQr
-                    value={`https://www.pochta.ru/q?ticket=${activeClientTicket?.number || 'А-042'}&ops=390000`}
+                    value={`https://www.pochta.ru/q?ticket=${activeClientTicket?.number || ''}&ops=390000`}
                     className="w-full max-w-[260px]"
                   />
                 </div>
@@ -2215,6 +2349,31 @@ export default function App() {
         {/* ========================================================================= */}
         {activeTab === 'operator' && (
           <div className="space-y-4">
+            {!isOperatorRole ? (
+              <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm">
+                <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
+                <p className="text-slate-600 text-sm mb-6">
+                  Рабочее место оператора доступно только сотрудникам (employee) и начальнику ОПС.
+                  Ваша роль: <strong className="font-mono">{currentUser?.role ?? 'не авторизован'}</strong>.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setActiveTab('hub')}
+                    className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
+                  >
+                    Вернуться в меню
+                  </button>
+                  <button
+                    onClick={async () => { await logout(); setCurrentUser(null); }}
+                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-300 font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Сменить учётную запись
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             
             {/* Панель выбора окна оператора */}
             <div className="bg-white rounded-3xl border border-[#D2D8E2] p-4 sm:p-5 shadow-sm space-y-3">
@@ -2231,7 +2390,7 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Оператор: <strong className="text-slate-800">{operatorSelectedWindow.operator}</strong> • Обслужено за смену: {operatorSelectedWindow.servedCount} чел.
+                      Оператор: <strong className="text-slate-800">{currentUser?.email ?? operatorSelectedWindow.operator}</strong> • Обслужено за смену: {operatorSelectedWindow.servedCount} чел.
                     </p>
                   </div>
                 </div>
@@ -2512,6 +2671,8 @@ export default function App() {
 
             </div>
 
+              </>
+            )}
           </div>
         )}
 
@@ -2520,6 +2681,31 @@ export default function App() {
         {/* ========================================================================= */}
         {activeTab === 'admin' && (
           <div className="space-y-4">
+            {!isAdminRole ? (
+              <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm">
+                <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
+                <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
+                <p className="text-slate-600 text-sm mb-6">
+                  Панель администратора доступна только начальнику ОПС (opc_chief).
+                  Ваша роль: <strong className="font-mono">{currentUser?.role ?? 'не авторизован'}</strong>.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setActiveTab('hub')}
+                    className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors"
+                  >
+                    Вернуться в меню
+                  </button>
+                  <button
+                    onClick={async () => { await logout(); setCurrentUser(null); }}
+                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-300 font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Сменить учётную запись
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             
             {/* Заголовок */}
             <div className="bg-white rounded-3xl border border-[#D2D8E2] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
@@ -2564,6 +2750,14 @@ export default function App() {
                 >
                   Аудит талонов
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminSubTab('users')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${adminSubTab === 'users' ? 'bg-white text-[#003B73] shadow-sm' : 'text-slate-600'}`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Пользователи</span>
+                </button>
               </div>
             </div>
 
@@ -2571,34 +2765,46 @@ export default function App() {
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 font-mono">
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                 <div className="text-xs text-slate-500 uppercase">Ср. ожидание</div>
-                <div className="text-2xl font-black text-slate-900 mt-1">4 мин 20 с</div>
-                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">✓ В нормативе (&lt; 8 мин)</div>
+                <div className="text-2xl font-black text-slate-900 mt-1">
+                  {overview?.metrics ? `${overview.metrics.avgWaitTimeMinutes} мин` : '0 мин'}
+                </div>
+                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">
+                  {overview?.metrics && overview.metrics.avgWaitTimeMinutes <= 8 ? '✓ В нормативе (< 8 мин)' : 'Мониторинг SLA'}
+                </div>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                 <div className="text-xs text-slate-500 uppercase">Макс. ожидание</div>
-                <div className="text-2xl font-black text-amber-700 mt-1">17 мин 00 с</div>
-                <div className="text-xs text-slate-500 mt-1 font-sans">Талон Ж-003 (защищен)</div>
+                <div className="text-2xl font-black text-amber-700 mt-1">
+                  {overview?.metrics ? `${overview.metrics.maxWaitTimeMinutes} мин` : '0 мин'}
+                </div>
+                <div className="text-xs text-slate-500 mt-1 font-sans">
+                  {overview?.metrics && overview.metrics.maxWaitTimeMinutes > 15 ? '⚠ Защита от голодания' : 'В норме'}
+                </div>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                 <div className="text-xs text-slate-500 uppercase">В зале ожидания</div>
-                <div className="text-2xl font-black text-[#054FA6] mt-1">{queueScoring.length} чел.</div>
-                <div className="text-xs text-slate-500 mt-1 font-sans">{windows.filter(w => w.status === 'ACTIVE').length} окна в работе</div>
+                <div className="text-2xl font-black text-[#054FA6] mt-1">
+                  {overview?.metrics ? overview.metrics.waitingClientsCount : tickets.filter(t => t.status === 'WAITING').length} чел.
+                </div>
+                <div className="text-xs text-slate-500 mt-1 font-sans">
+                  {overview?.metrics ? overview.metrics.activeWindowsCount : windows.filter(w => w.status === 'ACTIVE').length} окна в работе
+                </div>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                 <div className="text-xs text-slate-500 uppercase">Обслужено за смену</div>
                 <div className="text-2xl font-black text-slate-900 mt-1">
-                  {windows.reduce((acc, w) => acc + w.servedCount, 0)} чел.
+                  {overview?.metrics ? overview.metrics.servedTodayCount : windows.reduce((acc, w) => acc + w.servedCount, 0)} чел.
                 </div>
-                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">98.2% без задержек</div>
+                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">За текущий день</div>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm col-span-2 lg:col-span-1">
                 <div className="text-xs text-slate-500 uppercase">Неявки (NO_SHOW)</div>
                 <div className="text-2xl font-black text-[#D92534] mt-1">
-                  {tickets.filter(t => t.status === 'NO_SHOW').length} талона
+                  {overview?.anomalies ? overview.anomalies.filter((a: any) => a.type === 'NO_SHOW').length : tickets.filter(t => t.status === 'NO_SHOW').length} талона
                 </div>
                 <div className="text-xs text-slate-500 mt-1 font-sans">Окна освобождены</div>
               </div>
@@ -2859,6 +3065,74 @@ export default function App() {
               </div>
             )}
 
+            {adminSubTab === 'users' && (
+              <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-[#003B73]" />
+                    <span>Управление доступом сотрудников (IAM)</span>
+                  </h3>
+                  <button onClick={loadAdminUsers} className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 hover:bg-slate-50 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-[#003B73]" />
+                    <span>Обновить список</span>
+                  </button>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-700">
+                    <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-500 rounded-t-xl">
+                      <tr>
+                        <th className="px-4 py-3 rounded-tl-xl">Email</th>
+                        <th className="px-4 py-3">Текущая роль</th>
+                        <th className="px-4 py-3">Терминал?</th>
+                        <th className="px-4 py-3 rounded-tr-xl text-right">Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-xs">
+                      {adminUsers.map(u => (
+                        <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-semibold text-slate-900">{u.email}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
+                              u.role === 'opc_chief' ? 'bg-[#D92534]/10 text-[#D92534] border border-[#D92534]/20' :
+                              u.role === 'employee' ? 'bg-[#003B73]/10 text-[#003B73] border border-[#003B73]/20' :
+                              'bg-slate-200 text-slate-600 border border-slate-300'
+                            }`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {u.isTerminal ? <CheckCircle2 className="w-4 h-4 text-emerald-500 inline" /> : <span className="text-slate-300">-</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <select
+                              value={u.role}
+                              onChange={async (e) => {
+                                try {
+                                  await changeUserRole(u.id, e.target.value);
+                                  showToast(`Роль для ${u.email} изменена на ${e.target.value}`);
+                                  loadAdminUsers();
+                                } catch (err: any) {
+                                  showToast(`Ошибка: ${err.message}`);
+                                }
+                              }}
+                              className="px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs"
+                              disabled={u.email === 'admin@pochta.local'}
+                            >
+                              <option value="client">Client</option>
+                              <option value="employee">Employee</option>
+                              <option value="opc_chief">Admin (Chief)</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+              </>
+            )}
           </div>
         )}
 
@@ -2868,7 +3142,7 @@ export default function App() {
         {/* ========================================================================= */}
         {/* ВКЛАДКА 5: ТАБЛО ВЫЗОВА В ЗАЛЕ (ТВ, Светлый чистый дизайн, Высокая видимость) */}
         {/* ========================================================================= */}
-        {activeTab === 'tv' && (
+        {activeTab === 'tv' && (isOperatorRole ? (
           <div className="bg-[#F4F7FB] text-slate-900 rounded-3xl p-6 sm:p-8 border border-[#DCE3EC] shadow-xl space-y-6">
             
             {/* Шапка информационного табло в фирменном синем цвете */}
@@ -2880,7 +3154,6 @@ export default function App() {
                     <span>ПОЧТА РОССИИ</span>
                     <span className="text-blue-200 text-xs font-normal">• ИНФОРМАЦИОННОЕ ТАБЛО ВЫЗОВА</span>
                   </div>
-                  <div className="text-xs font-mono text-blue-200 mt-0.5">{BRANCH_CONFIG.name}</div>
                 </div>
               </div>
 
@@ -2913,10 +3186,6 @@ export default function App() {
                     <span className="w-2.5 h-2.5 rounded-full bg-[#00823C]"></span>
                     <span>СЕЙЧАС ОБСЛУЖИВАЮТСЯ У СТОЕК</span>
                   </div>
-                  <span className="font-mono text-slate-500 text-[11px] bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-[#054FA6]" />
-                    <span>Озвучивание активно</span>
-                  </span>
                 </div>
 
                 <div className="space-y-4">
@@ -2932,10 +3201,10 @@ export default function App() {
                         Талон клиента
                       </div>
                       <div className="text-6xl sm:text-8xl font-black font-mono text-[#003B73] tracking-tight mt-1">
-                        {operatorCurrentTicket ? operatorCurrentTicket.number : 'А-040'}
+                        {operatorCurrentTicket ? operatorCurrentTicket.number : '—'}
                       </div>
                       <div className="text-xs sm:text-sm text-slate-600 font-semibold mt-1.5">
-                        {SERVICES.find(s => s.id === (operatorCurrentTicket?.serviceId || 'srv-letters'))?.title || 'Получение писем и посылок'}
+                        {operatorCurrentTicket ? (SERVICES.find(s => s.id === operatorCurrentTicket.serviceId)?.title || 'Почтовые услуги') : 'Ожидание вызова'}
                       </div>
                     </div>
 
@@ -2943,15 +3212,6 @@ export default function App() {
                       <div className="text-4xl sm:text-5xl text-[#054FA6] font-black">
                         ➔
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleAnnounce(operatorCurrentTicket ? operatorCurrentTicket.number : 'А-040', operatorWindowId)}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#EBF3FC] hover:bg-[#D7E8FA] text-[#003B73] font-bold text-xs flex items-center gap-1.5 border border-[#CDE1F9] transition-all shadow-sm cursor-pointer"
-                        title="Повторить голосовое объявление"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-[#054FA6]" />
-                        <span>Озвучить</span>
-                      </button>
                     </div>
 
                     <div className="text-right">
@@ -2967,82 +3227,28 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Вторичные вызовы: Окно 1 и 2 */}
+                  {/* Вторичные вызовы: остальные окна (без окна оператора) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
-                        <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">П-019</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xl text-slate-400 font-bold">➔</div>
-                        <button
-                          type="button"
-                          onClick={() => handleAnnounce('П-019', 1)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                          title="Озвучить"
-                        >
-                          <Volume2 className="w-4 h-4 text-[#054FA6]" />
-                        </button>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
-                        <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО 1</div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
-                        <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">В-008</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xl text-slate-400 font-bold">➔</div>
-                        <button
-                          type="button"
-                          onClick={() => handleAnnounce('В-008', 2)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                          title="Озвучить"
-                        >
-                          <Volume2 className="w-4 h-4 text-[#054FA6]" />
-                        </button>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
-                        <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО 2</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Панель оперативного вызова с табло для демонстрации */}
-                  <div className="p-3.5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-                    <span className="text-slate-600 font-bold font-sans">Демонстрация вызова диктором:</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleTvCallNext(1)}
-                        className="px-3 py-1.5 rounded-xl bg-[#0055A5] hover:bg-[#004282] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-blue-200" />
-                        <span>Вызвать в Окно 1</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTvCallNext(2)}
-                        className="px-3 py-1.5 rounded-xl bg-[#0055A5] hover:bg-[#004282] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-blue-200" />
-                        <span>Вызвать в Окно 2</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTvCallNext(3)}
-                        className="px-3 py-1.5 rounded-xl bg-[#0055A5] hover:bg-[#004282] text-white font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-blue-200" />
-                        <span>Вызвать в Окно 3</span>
-                      </button>
-                    </div>
+                    {windows.filter(w => w.id !== operatorWindowId).map(win => {
+                      const called = getWindowCurrentTicket(win.id);
+                      return (
+                        <div key={win.id} className="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE3EC] shadow-sm flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Талон</div>
+                            <div className="text-3xl sm:text-4xl font-black font-mono text-slate-800">
+                              {called ? called.number : '—'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xl text-slate-400 font-bold">➔</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
+                            <div className="text-2xl sm:text-3xl font-black font-mono text-[#003B73]">ОКНО {win.id}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                 </div>
@@ -3070,35 +3276,21 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* QR-код бесконтактного получения талона */}
-                <div className="bg-white rounded-2xl p-4 border border-[#DCE3EC] shadow-sm flex items-center gap-4">
-                  <div className="bg-[#F4F7FB] p-2 rounded-xl border border-slate-200 shrink-0">
-                    <QrCode className="w-13 h-13 text-[#003B73]" />
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="font-bold text-slate-900 uppercase">Встать в очередь со смартфона</div>
-                    <p className="text-slate-500 text-[11px] leading-snug">
-                      Наведите камеру смартфона для моментального получения талона
-                    </p>
-                  </div>
-                </div>
-
               </div>
 
             </div>
 
-            {/* Бегущая строка внизу */}
-            <div className="bg-[#EBF3FC] text-[#003B73] p-3 rounded-2xl border border-[#D2E2F4] flex items-center gap-4 text-xs font-semibold overflow-hidden">
-              <span className="bg-[#003B73] text-white px-2.5 py-0.5 rounded-lg text-[10px] font-bold tracking-wider shrink-0 uppercase">
-                Инфо
-              </span>
-              <span className="truncate">
-                Готовьте паспорт или мобильное приложение Почты России • Обслуживание по предварительной записи — без очереди • Выдача посылок без паспорта по простой электронной подписи (ПЭП)
-              </span>
-            </div>
-
           </div>
-        )}
+        ) : (
+          <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm max-w-md mx-auto">
+            <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Доступ закрыт</h2>
+            <p className="text-slate-600 text-sm mb-6">Табло зала доступно только сотрудникам отделения.</p>
+            <button onClick={() => setActiveTab('hub')} className="px-6 py-2.5 bg-[#003B73] text-white font-bold rounded-xl hover:bg-[#054FA6] transition-colors">
+              Вернуться в меню
+            </button>
+          </div>
+        ))}
 
         {/* ========================================================================= */}
         {/* ВКЛАДКА 6: ТЕРМИНАЛ САМООБСЛУЖИВАНИЯ (КИОСК В ЗАЛЕ)                       */}
@@ -3142,10 +3334,6 @@ export default function App() {
                   </div>
                 </button>
               ))}
-            </div>
-
-            <div className="text-center text-xs text-slate-500 font-mono">
-              Сенсорный моноблок терминала ОПС • ГОСТ Р 56501-2015
             </div>
 
           </div>
@@ -3558,10 +3746,58 @@ export default function App() {
         </div>
       )}
 
-      {/* Подвал */}
-      <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 font-mono">
-        АО «Почта России» • Хакатон «Электронная очередь» • Единый Queue Engine v3.2
-      </footer>
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg text-slate-800">
+                {authMode === 'login' ? 'Вход в систему' : 'Регистрация'}
+              </h3>
+              <button onClick={() => setIsAuthModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const email = (e.currentTarget.elements.namedItem('email') as HTMLInputElement).value;
+              const password = (e.currentTarget.elements.namedItem('password') as HTMLInputElement).value;
+              try {
+                if (authMode === 'login') {
+                  await login(email, password);
+                } else {
+                  await register(email, password);
+                  await login(email, password);
+                }
+                const user = await getMe();
+                setCurrentUser(user);
+                setIsAuthModalOpen(false);
+                showToast(authMode === 'login' ? 'Вы успешно вошли' : 'Регистрация успешна');
+              } catch (err: any) {
+                showToast(`Ошибка: ${err.message}`);
+              }
+            }} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                <input name="email" type="email" required className="w-full px-3 py-2 border rounded-xl" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Пароль</label>
+                <input name="password" type="password" required minLength={6} className="w-full px-3 py-2 border rounded-xl" />
+              </div>
+              <button type="submit" className="w-full py-2.5 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold transition-colors">
+                {authMode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+              </button>
+            </form>
+            
+            <div className="mt-4 text-center">
+              <button type="button" onClick={() => setAuthMode(m => m === 'login' ? 'register' : 'login')} className="text-xs text-blue-600 hover:underline">
+                {authMode === 'login' ? 'Нет аккаунта? Создать' : 'Уже есть аккаунт? Войти'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

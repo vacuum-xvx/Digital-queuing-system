@@ -73,12 +73,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
         </div>
         {ticket.calledAt && (
           <div style={{ marginTop: '4px' }}>
-            Время вызова: {new Date(ticket.calledAt).toLocaleTimeString()}
+            Время вызова: {new Date(ticket.calledAt).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
         {ticket.serviceStartedAt && (
           <div style={{ marginTop: '4px' }}>
-            Начало обслуживания: {new Date(ticket.serviceStartedAt).toLocaleTimeString()}
+            Начало обслуживания: {new Date(ticket.serviceStartedAt).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
       </div>

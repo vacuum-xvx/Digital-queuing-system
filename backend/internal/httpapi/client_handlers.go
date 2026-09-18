@@ -19,7 +19,7 @@ func (a *API) ListBranches(w http.ResponseWriter, r *http.Request) {
 	}
 	res := ListBranchesResponse{Items: make([]BranchDTO, len(branches))}
 	for i, b := range branches {
-		res.Items[i] = BranchDTO{ID: b.ID, Name: b.Name}
+		res.Items[i] = BranchDTO{ID: b.ID, Name: b.Name, Address: b.Address, WorkHours: b.WorkHours, TimezoneOffset: b.TimezoneOffset}
 	}
 	writeJSONResponse(w, http.StatusOK, res)
 }

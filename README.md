@@ -128,6 +128,20 @@ docker compose down -v
 Vite обслуживает их через SPA fallback. Новые backend packages добавляются по мере появления кода.
 Для Docker workflow после изменений исходников выполните `docker compose up -d --build`.
 
+### Frontend dev-сервер: stale-модули (Docker Desktop)
+
+Vite внутри контейнера читает исходники с Windows-хоста (bind mount), и inotify может
+терять события изменения файлов. Тогда dev-сервер продолжает отдавать предыдущую версию
+модуля: код на диске уже исправлен, а браузер выполняет старую логику (например, у оператора
+отображалось «0 талонов», хотя талоны есть в БД). `frontend/vite.config.ts` включает
+`server.watch.usePolling`, чтобы dev-сервер всегда отдавал актуальный код.
+
+Если экран всё равно показывает старое поведение — перезапустите frontend и обновите страницу (Ctrl+F5):
+
+```bash
+docker compose restart frontend
+```
+
 ## Testing
 
 С локальными Go 1.25+ и Node 22.12+/npm:

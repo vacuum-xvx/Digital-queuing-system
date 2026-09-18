@@ -585,6 +585,40 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /admin/windows/{windowId}/services:
+    put:
+      summary: Replace the services a window is allowed to serve
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWindowServicesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Window'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/return:
     post:
       summary: Return ticket to queue
@@ -1269,6 +1303,17 @@ components:
       properties:
         status:
           type: string
+    UpdateWindowServicesRequest:
+      type: object
+      required:
+        - serviceIds
+      properties:
+        serviceIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
     RedirectTicketRequest:
       type: object
       required:

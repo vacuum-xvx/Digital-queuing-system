@@ -262,6 +262,145 @@ func TestQueuePolicy_Sprint2(t *testing.T) {
 	})
 }
 
+// TestWindowManagement_Sprint2 covers the window endpoints the operator and chief
+// screens rely on: shift status and the persisted capability set. Both used to be
+// browser-only edits, so the next overview poll reverted them.
+func TestWindowManagement_Sprint2(t *testing.T) {
+	const windowID = "33333333-3333-3333-3333-333333333333"
+	parcels := domain.Service{ID: "22222222-2222-2222-2222-222222222222", Code: "PARCELS", Name: "Посылки"}
+	send := domain.Service{ID: "33333333-2222-2222-2222-222222222222", Code: "SEND", Name: "Отправка писем и посылок"}
+
+	hasService := func(ids []string, target string) bool {
+		for _, id := range ids {
+			if id == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	uc := &FakeUseCases{
+		ChangeWindowStatusFunc: func(ctx context.Context, id string, status domain.WindowStatus) (domain.Window, error) {
+			if id != windowID {
+				return domain.Window{}, application.ErrNotFound
+			}
+			return domain.Window{ID: id, Number: 1, Status: status, Services: []domain.Service{parcels}}, nil
+		},
+		UpdateWindowServicesFunc: func(ctx context.Context, cmd application.UpdateWindowServicesCommand) (domain.Window, error) {
+			if cmd.WindowID != windowID {
+				return domain.Window{}, application.ErrNotFound
+			}
+			if !hasService(cmd.ServiceIDs, send.ID) {
+				// tickets(window_id, service_id) references window_services, so a
+				// capability with ticket history cannot be dropped.
+				return domain.Window{}, application.ErrInvalidState
+			}
+			services := make([]domain.Service, 0, len(cmd.ServiceIDs))
+			if hasService(cmd.ServiceIDs, parcels.ID) {
+				services = append(services, parcels)
+			}
+			services = append(services, send)
+			return domain.Window{ID: cmd.WindowID, Number: 1, Status: domain.WindowStatusOpen, Services: services}, nil
+		},
+	}
+	r := setupTest(uc)
+
+	put := func(t *testing.T, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(body))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	t.Run("close shift", func(t *testing.T) {
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/status", `{"status":"CLOSED"}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var wnd WindowDTO
+		if err := json.NewDecoder(w.Body).Decode(&wnd); err != nil {
+			t.Fatal(err)
+		}
+		if wnd.Status != string(domain.WindowStatusClosed) || wnd.Number != 1 || len(wnd.Services) != 1 {
+			t.Fatalf("unexpected window: %+v", wnd)
+		}
+	})
+
+	t.Run("open shift", func(t *testing.T) {
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/status", `{"status":"OPEN"}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var wnd WindowDTO
+		if err := json.NewDecoder(w.Body).Decode(&wnd); err != nil {
+			t.Fatal(err)
+		}
+		if wnd.Status != string(domain.WindowStatusOpen) {
+			t.Fatalf("expected OPEN, got %s", wnd.Status)
+		}
+	})
+
+	t.Run("unknown status rejected", func(t *testing.T) {
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/status", `{"status":"SLEEPING"}`)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("unknown window status", func(t *testing.T) {
+		w := put(t, "/api/v1/admin/windows/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/status", `{"status":"OPEN"}`)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("replace window services", func(t *testing.T) {
+		body := `{"serviceIds":["22222222-2222-2222-2222-222222222222","33333333-2222-2222-2222-222222222222"]}`
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/services", body)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var wnd WindowDTO
+		if err := json.NewDecoder(w.Body).Decode(&wnd); err != nil {
+			t.Fatal(err)
+		}
+		if len(wnd.Services) != 2 {
+			t.Fatalf("expected persisted capability set, got %+v", wnd.Services)
+		}
+	})
+
+	t.Run("service with ticket history rejected", func(t *testing.T) {
+		body := `{"serviceIds":["22222222-2222-2222-2222-222222222222"]}`
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/services", body)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+		}
+		var res ErrorResponse
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Error.Code != "INVALID_TICKET_STATE" {
+			t.Fatalf("expected INVALID_TICKET_STATE, got %s", res.Error.Code)
+		}
+	})
+
+	t.Run("empty capability set rejected", func(t *testing.T) {
+		w := put(t, "/api/v1/admin/windows/"+windowID+"/services", `{"serviceIds":[]}`)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("unknown window services", func(t *testing.T) {
+		body := `{"serviceIds":["22222222-2222-2222-2222-222222222222"]}`
+		w := put(t, "/api/v1/admin/windows/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/services", body)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", w.Code)
+		}
+	})
+}
+
 func TestTicketEvents_Sprint2(t *testing.T) {
 	now := time.Now().UTC()
 	v1 := int64(1)

@@ -21,6 +21,18 @@ func NewAPI(usecases application.UseCases) *API {
 
 func (a *API) RegisterRoutes(r chi.Router) {
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(a.loadSession)
+
+		// ── Auth (публичные) ──────────────────────────────────────────────
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", a.Register)
+			r.Get("/confirm", a.ConfirmEmail)
+			r.Post("/login", a.Login)
+			r.Post("/logout", a.Logout)
+			r.Get("/me", a.GetMe) // возвращает 401 если нет сессии
+		})
+
+		// ── Клиент: публичные ─────────────────────────────────────────────
 		r.Get("/branches", a.ListBranches)
 		r.Get("/branches/{branchId}/services", a.ListBranchServices)
 		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
@@ -31,8 +43,11 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
+		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
 
+		// ── Оператор (employee + opc_chief) ──────────────────────────────
 		r.Route("/operator", func(r chi.Router) {
+			r.Use(requireRole(domain.RoleEmployee, domain.RoleOPCChief))
 			r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
 			r.Get("/branches/{branchId}/windows", a.ListBranchWindows)
 			r.Get("/windows/{windowId}/current-ticket", a.GetCurrentTicket)
@@ -44,16 +59,34 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
 		})
 
+		// ── Администратор (employee + opc_chief) ─────────────────────────
 		r.Route("/admin", func(r chi.Router) {
+			r.Use(requireRole(domain.RoleEmployee, domain.RoleOPCChief))
 			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
+		r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
+
+			// Управление пользователями — только начальник ОПС
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole(domain.RoleOPCChief))
+				r.Get("/users", a.ListUsers)
+				r.Put("/users/{userID}/role", a.ChangeUserRole)
+			})
+		})
+
+		// ── Терминал (is_terminal=true) ───────────────────────────────────
+		r.Route("/terminal", func(r chi.Router) {
+			r.Use(requireTerminal)
+			r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
+			r.Get("/branches/{branchId}/services", a.ListBranchServices)
 		})
 	})
 }
+
 
 // -----------------------------------------------------------------------------
 // Responses DTOs
@@ -64,8 +97,11 @@ type ListBranchesResponse struct {
 }
 
 type BranchDTO struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Address        string `json:"address"`
+	WorkHours      string `json:"workHours"`
+	TimezoneOffset int    `json:"timezoneOffset"`
 }
 
 type ListServicesResponse struct {
@@ -122,6 +158,21 @@ type ErrorDetail struct {
 // -----------------------------------------------------------------------------
 // Mapping Helpers
 // -----------------------------------------------------------------------------
+
+// mapWindowDTO keeps every window response (operator list, status change, capability
+// change) identical, so the frontend can consume any of them with one mapper.
+func mapWindowDTO(wnd domain.Window) WindowDTO {
+	services := make([]ServiceDTO, len(wnd.Services))
+	for i, s := range wnd.Services {
+		services[i] = ServiceDTO{ID: s.ID, Code: s.Code, Name: s.Name}
+	}
+	return WindowDTO{
+		ID:       wnd.ID,
+		Number:   wnd.Number,
+		Status:   string(wnd.Status),
+		Services: services,
+	}
+}
 
 func mapTicket(t domain.Ticket) TicketDTO {
 	var window *WindowRefDTO

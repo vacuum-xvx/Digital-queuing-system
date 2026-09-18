@@ -1,4 +1,4 @@
-import { QueuePolicy, UpdateQueuePolicyRequest, AdminApiError } from './types';
+import { QueuePolicy, UpdateQueuePolicyRequest, AdminApiError, AdminWindow } from './types';
 import { Branch, BranchListResponse } from '../operator/types';
 
 function getApiBaseUrl(): string {
@@ -63,4 +63,31 @@ export async function listBranches(): Promise<Branch[]> {
     headers: { Accept: 'application/json' },
   });
   return (await handleResponse<BranchListResponse>(res)).items;
+}
+
+export type WindowStatusUpdate = 'OPEN' | 'CLOSED' | 'CLOSING';
+
+// Persist window shift status (OPEN/CLOSED/CLOSING). Without persistence the next
+// overview poll reverts the operator's change.
+export async function changeWindowStatus(windowId: string, status: WindowStatusUpdate): Promise<AdminWindow> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/windows/${encodeURIComponent(windowId)}/status`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  return await handleResponse<AdminWindow>(res);
+}
+
+// Replace the set of services a window is allowed to serve (window_services).
+export async function updateWindowServices(windowId: string, serviceIds: string[]): Promise<AdminWindow> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/windows/${encodeURIComponent(windowId)}/services`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ serviceIds }),
+  });
+  return await handleResponse<AdminWindow>(res);
 }

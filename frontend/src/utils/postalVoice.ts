@@ -344,8 +344,6 @@ export async function announceTicketCall(
   if (voiceEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
     return new Promise((resolve) => {
       try {
-        window.speechSynthesis.cancel(); // сбрасываем зависшие реплики
-
         const utterance = new SpeechSynthesisUtterance(announcementData.phrase);
         utterance.lang = 'ru-RU';
         utterance.rate = speechRate;

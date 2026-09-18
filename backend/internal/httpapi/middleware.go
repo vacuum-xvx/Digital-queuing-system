@@ -6,16 +6,24 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"postcode/backend/internal/domain"
 )
 
 type requestIDKey struct{}
+type userContextKey struct{}
 
 func requestID(r *http.Request) string {
 	id, _ := r.Context().Value(requestIDKey{}).(string)
 	return id
+}
+
+func userFromContext(ctx context.Context) (domain.User, bool) {
+	u, ok := ctx.Value(userContextKey{}).(domain.User)
+	return u, ok
 }
 
 func requestLog(logger *slog.Logger) func(http.Handler) http.Handler {
@@ -55,21 +63,104 @@ func recoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func cors(origin string) func(http.Handler) http.Handler {
+func cors(allowedOrigin string) func(http.Handler) http.Handler {
+	origins := strings.Split(allowedOrigin, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add("Vary", "Origin")
-			if r.Header.Get("Origin") == origin {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
-				if r.Method == http.MethodOptions {
-					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID")
-					w.WriteHeader(http.StatusNoContent)
-					return
+			reqOrigin := r.Header.Get("Origin")
+			if reqOrigin != "" {
+				w.Header().Add("Vary", "Origin")
+				matched := false
+				for _, o := range origins {
+					if o == reqOrigin || o == "*" {
+						matched = true
+						break
+					}
+				}
+				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080") {
+					matched = true
+				}
+				if matched {
+					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+					if r.Method == http.MethodOptions {
+						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+						w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID")
+						w.WriteHeader(http.StatusNoContent)
+						return
+					}
 				}
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// loadSession reads the session cookie, validates it, and stores the user in context.
+// If no valid session is found the request continues without a user (unauthenticated).
+func (a *API) loadSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookie)
+		if err == nil && cookie.Value != "" {
+			u, err := a.usecases.GetSessionUser(r.Context(), cookie.Value)
+			if err == nil {
+				r = r.WithContext(context.WithValue(r.Context(), userContextKey{}, u))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireRole returns 401 if not authenticated, 403 if role is not in the allowed list.
+func requireRole(roles ...domain.UserRole) func(http.Handler) http.Handler {
+	allowed := make(map[domain.UserRole]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := userFromContext(r.Context())
+			if !ok {
+				writeJSONError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Login required")
+				return
+			}
+			if !allowed[u.Role] {
+				writeJSONError(w, r, http.StatusForbidden, "FORBIDDEN", "Insufficient permissions")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// requireTerminal returns 403 if user does not have the is_terminal flag set.
+func requireTerminal(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, ok := userFromContext(r.Context())
+		if !ok {
+			writeJSONError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Login required")
+			return
+		}
+		if !u.IsTerminal {
+			writeJSONError(w, r, http.StatusForbidden, "FORBIDDEN", "Terminal access only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireAuth returns 401 if the request has no valid session (any role accepted).
+func requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ok := userFromContext(r.Context())
+		if !ok {
+			writeJSONError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Login required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
