@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Eye, UserPlus, UserX, Volume2, VolumeX } from 'lucide-react';
+import { BarChart3, Clock, Eye, UserPlus, UserX, Volume2, VolumeX } from 'lucide-react';
 import { PochtaEmblem, PochtaWordmark } from './PochtaBrand';
 import { getMe, logout, User } from '../../api/authApi';
 import { ClientAuthModal } from '../../features/auth/ClientAuthModal';
@@ -175,6 +175,17 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                 Панель начальника ОПС
               </a>
             </nav>
+
+            <a
+              href={`${window.location.protocol}//${window.location.hostname}:3001`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-blue-200 hover:text-white transition-colors font-semibold"
+              title="Перейти в систему мониторинга Grafana (Метрики, Логи, Алерты)"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Grafana (Метрики & Логи) ↗</span>
+            </a>
           </div>
         )}
 
