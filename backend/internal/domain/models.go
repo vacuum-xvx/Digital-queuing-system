@@ -31,11 +31,11 @@ const (
 )
 
 type Branch struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Address         string `json:"address"`
-	WorkHours       string `json:"workHours"`
-	TimezoneOffset  int    `json:"timezoneOffset"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Address        string `json:"address"`
+	WorkHours      string `json:"workHours"`
+	TimezoneOffset int    `json:"timezoneOffset"`
 }
 type Service struct {
 	ID   string `json:"id"`
@@ -94,6 +94,8 @@ const (
 	TicketEventServiceStarted TicketEventType = "SERVICE_STARTED"
 	TicketEventCompleted      TicketEventType = "COMPLETED"
 	TicketEventCancelled      TicketEventType = "CANCELLED"
+	TicketEventReturned       TicketEventType = "RETURNED"
+	TicketEventRedirected     TicketEventType = "REDIRECTED"
 )
 
 type TicketEvent struct {

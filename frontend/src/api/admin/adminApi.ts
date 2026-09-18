@@ -1,6 +1,11 @@
 import { QueuePolicy, UpdateQueuePolicyRequest, AdminApiError, AdminWindow } from './types';
 import { Branch, BranchListResponse } from '../operator/types';
 
+export async function getOverview(branchId: string): Promise<import('./types').AdminBranchOverview> {
+  const response = await fetch(`${getApiBaseUrl()}/admin/branches/${encodeURIComponent(branchId)}/overview`, { credentials: 'include', headers: { Accept: 'application/json' } });
+  return handleResponse(response);
+}
+
 function getApiBaseUrl(): string {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   if (envUrl && typeof envUrl === 'string') {
@@ -35,6 +40,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 export async function getQueuePolicy(branchId: string): Promise<QueuePolicy> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/admin/branches/${encodeURIComponent(branchId)}/queue-policy`, {
+    credentials: 'include',
     headers: { Accept: 'application/json' },
   });
 
@@ -48,6 +54,7 @@ export async function updateQueuePolicy(
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/admin/branches/${encodeURIComponent(branchId)}/queue-policy`, {
     method: 'PUT',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',

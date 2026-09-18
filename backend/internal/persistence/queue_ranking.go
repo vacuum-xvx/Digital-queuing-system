@@ -45,7 +45,7 @@ func rankingArgs(window, branch string, at time.Time, p domain.QueuePolicy) []an
 
 func (p *Postgres) GetQueuePosition(ctx context.Context, ticketID string) (domain.QueuePosition, error) {
 	var out domain.QueuePosition
-	id, err := uuid(ticketID)
+	_, err := uuid(ticketID)
 	if err != nil {
 		return out, err
 	}
@@ -54,12 +54,19 @@ func (p *Postgres) GetQueuePosition(ctx context.Context, ticketID string) (domai
 		return out, dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+	return queuePosition(ctx, tx, ticketID)
+}
+
+// queuePosition is shared by QueuePosition and ETA in a read-only snapshot.
+func queuePosition(ctx context.Context, tx pgx.Tx, ticketID string) (domain.QueuePosition, error) {
+	var out domain.QueuePosition
+	var err error
 	// Establish the snapshot and its one authoritative time before any reads.
 	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&out.CalculatedAt); err != nil {
 		return out, dbError(err)
 	}
 	out.CalculatedAt = out.CalculatedAt.UTC()
-	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, ticketID))
 	if err != nil {
 		return out, err
 	}

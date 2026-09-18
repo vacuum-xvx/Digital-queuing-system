@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
 /**
  * Docker Desktop монтирует исходники с Windows-хоста (bind mount), и inotify
@@ -13,7 +13,8 @@ import { defineConfig } from 'vite';
  * корректно передавалась браузером — при кросс-доменных запросах (5173 vs 8080)
  * браузер блокирует cookie, из-за чего после логина сессия не подхватывалась.
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: { 'import.meta.env.PUBLIC_APP_BASE_URL': JSON.stringify(loadEnv(mode, process.cwd(), '').PUBLIC_APP_BASE_URL || process.env.PUBLIC_APP_BASE_URL || '') },
   server: {
     host: '0.0.0.0',
     watch: {
@@ -22,10 +23,12 @@ export default defineConfig({
       ignored: ['**/node_modules/**', '**/.git/**'],
     },
     proxy: {
+      '/health': { target: 'http://backend:8080', changeOrigin: true },
+      '/ready': { target: 'http://backend:8080', changeOrigin: true },
       '/api': {
         target: 'http://backend:8080',
         changeOrigin: true,
       },
     },
   },
-});
+}));

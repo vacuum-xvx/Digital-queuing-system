@@ -59,14 +59,14 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	err = p.pool.QueryRow(ctx, `
 		SELECT
 			COUNT(CASE WHEN status = 'WAITING' THEN 1 END),
-			COUNT(CASE WHEN status = 'COMPLETED' AND queue_entered_at::date = CURRENT_DATE THEN 1 END),
+			COUNT(CASE WHEN status = 'COMPLETED' AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date THEN 1 END),
 			COALESCE((
 				AVG(EXTRACT(EPOCH FROM (called_at - queue_entered_at)) / 60)
-				FILTER (WHERE called_at IS NOT NULL AND queue_entered_at::date = CURRENT_DATE)
+				FILTER (WHERE called_at IS NOT NULL AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
 			)::int, 0),
 			COALESCE((
 				MAX(EXTRACT(EPOCH FROM (called_at - queue_entered_at)) / 60)
-				FILTER (WHERE called_at IS NOT NULL AND queue_entered_at::date = CURRENT_DATE)
+				FILTER (WHERE called_at IS NOT NULL AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
 			)::int, 0)
 		FROM tickets
 		WHERE branch_id = $1
@@ -132,7 +132,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	rows2, err := p.pool.Query(ctx, `
 		SELECT window_id::text, COUNT(*)
 		FROM tickets
-		WHERE branch_id = $1 AND status = 'COMPLETED' AND queue_entered_at::date = CURRENT_DATE
+		WHERE branch_id = $1 AND status = 'COMPLETED' AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date
 		  AND window_id IS NOT NULL
 		GROUP BY window_id
 	`, id)
@@ -216,7 +216,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	nsRows, err := p.pool.Query(ctx, `
 		SELECT id::text, public_number, no_show_at
 		FROM tickets
-		WHERE branch_id = $1 AND status = 'NO_SHOW' AND queue_entered_at::date = CURRENT_DATE
+		WHERE branch_id = $1 AND status = 'NO_SHOW' AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date
 		ORDER BY no_show_at DESC
 		LIMIT 10
 	`, id)
@@ -289,4 +289,3 @@ func defaultPriorityRules() []domain.PriorityRule {
 		{Source: "LIVE", Name: "Живая очередь", Weight: 10, MaxWaitLimitMinutes: 30, Description: "Талоны от оператора"},
 	}
 }
-

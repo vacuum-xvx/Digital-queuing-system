@@ -1,0 +1,32 @@
+:root {
+  --brand-primary: #003b73;
+  --brand-accent: #054fa6;
+  --text: #172b46;
+  --muted: #586981;
+  --surface: #fff;
+  --background: #f3f6fa;
+  --border: #d2d8e2;
+  --radius: 18px;
+  --space: 1rem;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.product-shell { font-family: var(--font); color: var(--text); background: #f8fafc; min-height: 100vh; padding: 0; box-sizing: border-box; }
+.product-shell * { box-sizing: border-box; }
+.product-header, .product-session { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space); margin-bottom: var(--space); }
+.product-header a { color: var(--brand-primary); font-weight: 700; }
+.product-header nav { display: flex; flex-wrap: wrap; gap: var(--space); }
+.product-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: var(--space) auto; max-width: 1000px; }
+.auth-card { max-width: 460px; }
+.product-shell label { display: grid; gap: .4rem; margin-bottom: var(--space); }
+.product-shell input, .product-shell select { padding: .7rem; border: 1px solid var(--border); border-radius: 8px; max-width: 100%; min-width: 0; font: inherit; }
+.product-shell button { cursor: pointer; font: inherit; padding: .65rem 1rem; border: 1px solid var(--border); border-radius: 10px; }
+.product-shell button:disabled { opacity: .55; cursor: not-allowed; }
+.product-shell :focus-visible { outline: 3px solid var(--brand-accent); outline-offset: 3px; }
+.product-shell [role=alert] { color: #9d2424; }
+.product-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.product-shell .ticket-number { font-size: clamp(2rem, 9vw, 4rem); color: var(--brand-primary); font-weight: 800; }
+.product-shell p, .product-shell strong { overflow-wrap: anywhere; }
+.product-shell img { max-width: 100%; height: auto; }
+.product-shell .action-buttons-group { display: flex; flex-wrap: wrap; gap: .75rem; margin: var(--space) 0; }
+.product-shell .admin-header { flex-wrap: wrap; gap: var(--space); }
+.product-shell .cx-home, .product-shell .cx-wizard, .product-shell .cx-my { max-width: 720px; margin: auto; }

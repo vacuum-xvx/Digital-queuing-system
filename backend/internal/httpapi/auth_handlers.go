@@ -130,7 +130,10 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err == nil {
-		_ = a.usecases.Logout(r.Context(), cookie.Value)
+		if err := a.usecases.Logout(r.Context(), cookie.Value); err != nil {
+			a.respondError(w, r, err)
+			return
+		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:    sessionCookie,

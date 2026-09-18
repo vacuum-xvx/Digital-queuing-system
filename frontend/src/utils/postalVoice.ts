@@ -361,9 +361,11 @@ export async function announceTicketCall(
         }
 
         let isFinished = false;
+        let timeout: ReturnType<typeof setTimeout>;
         const handleFinish = () => {
           if (!isFinished) {
             isFinished = true;
+            clearTimeout(timeout);
             if (onEnd) onEnd();
             resolve(announcementData);
           }
@@ -382,7 +384,8 @@ export async function announceTicketCall(
         window.speechSynthesis.speak(utterance);
 
         // Страховочный таймаут (если синтез зависнет в браузере)
-        setTimeout(() => {
+        timeout = setTimeout(() => {
+          window.speechSynthesis.cancel();
           handleFinish();
         }, 7000);
       } catch (err) {
@@ -393,9 +396,10 @@ export async function announceTicketCall(
     });
   } else {
     if (onStart) onStart();
-    setTimeout(() => {
+    await new Promise<void>(resolve => setTimeout(() => {
       if (onEnd) onEnd();
-    }, 1200);
+      resolve();
+    }, 1200));
     return announcementData;
   }
 }

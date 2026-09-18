@@ -24,11 +24,11 @@ export function formatMoscowTime(
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleTimeString('ru-RU', {
-    timeZone: MOSCOW_TZ,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     ...options,
+    timeZone: MOSCOW_TZ,
   });
 }
 
@@ -44,11 +44,11 @@ export function formatMoscowDate(
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('ru-RU', {
-    timeZone: MOSCOW_TZ,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     ...options,
+    timeZone: MOSCOW_TZ,
   });
 }
 
@@ -64,13 +64,13 @@ export function formatMoscowDateTime(
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleString('ru-RU', {
-    timeZone: MOSCOW_TZ,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     ...options,
+    timeZone: MOSCOW_TZ,
   });
 }
 
@@ -92,10 +92,9 @@ export function moscowTimeString(date: Date): string {
  * смещения (UTC+3), чтобы поле показывало и принимало московское время.
  */
 export function toMoscowDatetimeLocal(date: Date): string {
-  // UTC+3 = +180 минут
-  const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
-  const moscowDate = new Date(date.getTime() + MOSCOW_OFFSET_MS);
-  return moscowDate.toISOString().slice(0, 16);
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: MOSCOW_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const part = (name: string) => parts.find(p => p.type === name)!.value;
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
 /**
@@ -103,6 +102,14 @@ export function toMoscowDatetimeLocal(date: Date): string {
  * и возвращает ISO-строку с явным смещением +03:00.
  */
 export function parseMoscowDatetimeLocal(value: string): string {
-  // value = "2026-09-17T17:45" — предполагаем Москву
-  return value + ':00+03:00';
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('Некорректное московское время');
+  const civil = Date.parse(value + ':00Z');
+  if (!Number.isFinite(civil)) throw new Error('Некорректная дата');
+  let instant = civil;
+  for (let i = 0; i < 3; i++) {
+    const represented = Date.parse(toMoscowDatetimeLocal(new Date(instant)) + ':00Z');
+    instant += civil - represented;
+  }
+  if (toMoscowDatetimeLocal(new Date(instant)) !== value) throw new Error('Некорректная дата');
+  return new Date(instant).toISOString();
 }

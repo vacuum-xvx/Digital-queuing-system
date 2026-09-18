@@ -42,7 +42,7 @@ function parseBranches(value: unknown): BranchListResponse {
   return {
     items: value.items.map((item) => {
       if (!isRecord(item)) throw new ClientApiError('Некорректное отделение');
-      return { id: requireString(item.id, 'id'), name: requireString(item.name, 'name') };
+      return { id: requireString(item.id, 'id'), name: requireString(item.name, 'name'), address: typeof item.address === 'string' ? item.address : undefined, workHours: typeof item.workHours === 'string' ? item.workHours : undefined };
     }),
   };
 }
@@ -210,4 +210,11 @@ function parseQueuePosition(value: unknown): import('./types').QueuePosition {
 
 export async function getQueuePosition(ticketId: string, signal?: AbortSignal): Promise<import('./types').QueuePosition> {
   return request(`/tickets/${encodeURIComponent(ticketId)}/position`, { signal }, parseQueuePosition);
+}
+
+export async function getTicketETA(ticketId: string, signal?: AbortSignal): Promise<import('./types').TicketETA> {
+  return request(`/tickets/${encodeURIComponent(ticketId)}/eta`, { signal }, value => {
+    if (!isRecord(value) || value.ticketId !== ticketId || typeof value.sampleSize !== 'number' || typeof value.usedFallback !== 'boolean' || (value.estimatedWaitSeconds !== null && typeof value.estimatedWaitSeconds !== 'number')) throw new ClientApiError('Некорректный ответ оценки ожидания');
+    return value as unknown as import('./types').TicketETA;
+  });
 }

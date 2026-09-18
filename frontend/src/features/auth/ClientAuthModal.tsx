@@ -1,0 +1,127 @@
+import React, { useState } from 'react';
+import { X, Lock, Mail } from 'lucide-react';
+import { login, register, getMe, User } from '../../api/authApi';
+
+interface ClientAuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onUserChanged: (user: User | null) => void;
+}
+
+export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthModalProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPending(true);
+    setError('');
+    try {
+      if (mode === 'login') {
+        await login(email, password);
+      } else {
+        await register(email, password);
+        await login(email, password);
+      }
+      const me = await getMe();
+      onUserChanged(me);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Ошибка авторизации. Проверьте данные и соединение.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in border border-slate-200">
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="font-black text-lg text-slate-900 tracking-tight">
+            {mode === 'login' ? 'Вход в аккаунт' : 'Регистрация'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {error && (
+          <div role="alert" className="p-3 mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Электронная почта
+            </label>
+            <div className="relative">
+              <input
+                name="email"
+                type="email"
+                required
+                value={email}
+                disabled={pending}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@example.com"
+                className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+              />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Пароль
+            </label>
+            <div className="relative">
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                disabled={pending}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+              />
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="w-full min-h-[44px] py-2.5 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50"
+          >
+            {pending ? 'Проверка…' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+          </button>
+        </form>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setMode((m) => (m === 'login' ? 'register' : 'login'));
+              setError('');
+            }}
+            className="text-xs text-[#054FA6] font-semibold hover:underline"
+          >
+            {mode === 'login' ? 'Нет учётной записи? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

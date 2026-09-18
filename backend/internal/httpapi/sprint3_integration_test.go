@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"postcode/backend/internal/domain"
 	"postcode/backend/internal/persistence"
 )
 
@@ -69,7 +71,24 @@ func TestSprint3HTTPRealCore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	h := NewRouter(pool, persistence.New(pool), slog.New(slog.NewTextHandler(io.Discard, nil)), "")
+	core := persistence.New(pool)
+	h := NewRouter(pool, core, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
+	request3(t, h, "GET", policyURL, "", "", 401)
+	user, err := core.Register(ctx, "integration@example.invalid", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = core.ChangeUserRole(ctx, user.ID, domain.RoleOPCChief); err != nil {
+		t.Fatal(err)
+	}
+	loginBody, _ := json.Marshal(map[string]string{"email": user.Email, "password": schema})
+	loggedIn := request3(t, h, "POST", "/api/v1/auth/login", string(loginBody), "", 200)
+	cookies := loggedIn.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].HttpOnly {
+		t.Fatal("missing HttpOnly session")
+	}
+	router := h
+	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { r.AddCookie(cookies[0]); router.ServeHTTP(w, r) })
 	w := request3(t, h, "GET", policyURL, "", "", 200)
 	var policy QueuePolicyDTO
 	json.Unmarshal(w.Body.Bytes(), &policy)
