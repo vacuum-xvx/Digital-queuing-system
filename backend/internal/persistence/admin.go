@@ -176,7 +176,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 			   EXTRACT(EPOCH FROM (NOW() - t.queue_entered_at)) / 60
 		FROM tickets t
 		JOIN services s ON s.id = t.service_id
-		WHERE t.branch_id = $1 AND t.status IN ('WAITING', 'CALLED', 'SERVING')
+		WHERE t.branch_id = $1 AND t.status IN ('SCHEDULED', 'WAITING', 'CALLED', 'SERVING')
 		ORDER BY t.queue_entered_at ASC
 	`, id)
 	if err != nil {

@@ -1,518 +1,238 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  Branch,
-  OperatorWindow,
-  Ticket,
-  OperatorApiError,
-} from '../../api/operator/types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  ShieldAlert, Clock, Volume2, Check, UserX, RotateCcw,
+  UserPlus, ArrowRightLeft, AlertTriangle, CheckSquare, Square
+} from 'lucide-react';
 import * as api from '../../api/operator/operatorApi';
-import { BranchSelector } from './BranchSelector';
-import { WindowSelector } from './WindowSelector';
-import { TicketCard } from './TicketCard';
-import { ActionControls } from './ActionControls';
-import './operator.css';
+import { OperatorWindow, Ticket } from '../../api/operator/types';
+import { SERVICES } from '../../PochtaDemo'; // Assuming SERVICES is exported from PochtaDemo
 
-const STORAGE_BRANCH_KEY = 'operator_selected_branch_id';
-const STORAGE_WINDOW_KEY = 'operator_selected_window_id';
-
-interface NoticeState {
-  type: 'info' | 'warning' | 'error' | 'success';
-  message: string;
-  retryAction?: () => void;
-  demoAction?: () => void;
-}
-
-export const OperatorWorkspace: React.FC = () => {
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(
-    () => sessionStorage.getItem(STORAGE_BRANCH_KEY) || ''
-  );
-
+export function OperatorWorkspace({ branchId, currentUser, logout, setActiveTab }: { branchId: string, currentUser: any, logout: any, setActiveTab: any }) {
   const [windows, setWindows] = useState<OperatorWindow[]>([]);
-  const [selectedWindow, setSelectedWindow] = useState<OperatorWindow | null>(null);
-
+  const [operatorWindowId, setOperatorWindowId] = useState<string>('1');
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [operatorElapsedSeconds, setOperatorElapsedSeconds] = useState(0);
 
-  const [isLoadingBranches, setIsLoadingBranches] = useState<boolean>(false);
-  const [isLoadingWindows, setIsLoadingWindows] = useState<boolean>(false);
-  const [isLoadingTicket, setIsLoadingTicket] = useState<boolean>(false);
-  const [isActionPending, setIsActionPending] = useState<boolean>(false);
-  const [liveServiceId, setLiveServiceId] = useState('');
-  const [livePending, setLivePending] = useState(false);
-
-  const [notice, setNotice] = useState<NoticeState | null>(null);
-
-  // 1. Load branches on initial mount
+  // Poll for current ticket
   useEffect(() => {
-    let active = true;
-    setIsLoadingBranches(true);
-    api
-      .listBranches()
-      .then((items) => {
-        if (!active) return;
-        setBranches(items);
-      })
-      .catch((err) => {
-        if (!active) return;
-        const isBackend404 = err instanceof OperatorApiError && err.status === 404;
-        setNotice({
-          type: 'warning',
-          message: isBackend404
-            ? 'Сервер запущен, но HTTP-эндпоинт /api/v1/branches еще не реализован бэкендом (HTTP 404). Включите демо-режим для проверки UI.'
-            : err instanceof OperatorApiError
-            ? `Ошибка загрузки отделений: ${err.message}`
-            : 'Не удалось загрузить список отделений',
-          retryAction: () => window.location.reload(),
-          demoAction: () => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('mock', '1');
-            window.location.href = url.toString();
-          },
-        });
-      })
-      .finally(() => {
-        if (active) setIsLoadingBranches(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // 2. Load windows when selectedBranchId changes
-  useEffect(() => {
-    if (!selectedBranchId) {
-      setWindows([]);
-      setSelectedWindow(null);
-      setCurrentTicket(null);
-      sessionStorage.removeItem(STORAGE_WINDOW_KEY);
-      return;
-    }
-
-    let active = true;
-    setIsLoadingWindows(true);
-    setNotice(null);
-
-    api
-      .listWindows(selectedBranchId)
-      .then((items) => {
-        if (!active) return;
-        setWindows(items);
-
-        // Try restoring previously selected window if available
-        const savedWindowId = sessionStorage.getItem(STORAGE_WINDOW_KEY);
-        if (savedWindowId) {
-          const matched = items.find((w) => w.id === savedWindowId);
-          if (matched) {
-            setSelectedWindow(matched);
-          }
-        }
-      })
-      .catch((err) => {
-        if (!active) return;
-        setNotice({
-          type: 'error',
-          message:
-            err instanceof OperatorApiError
-              ? `Ошибка загрузки окон: ${err.message}`
-              : 'Не удалось загрузить окна отделения',
-        });
-      })
-      .finally(() => {
-        if (active) setIsLoadingWindows(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [selectedBranchId]);
-
-  // 3. Restore current ticket whenever selectedWindow changes
-  const restoreCurrentTicket = useCallback(async (windowId: string) => {
-    setIsLoadingTicket(true);
-    try {
-      const ticket = await api.getCurrentTicket(windowId);
-      setCurrentTicket(ticket);
-    } catch (err) {
-      if (err instanceof OperatorApiError && err.code === 'NOT_FOUND') {
-        setNotice({
-          type: 'error',
-          message: 'Выбранное окно не найдено на сервере',
-        });
-        setSelectedWindow(null);
-        setCurrentTicket(null);
-        sessionStorage.removeItem(STORAGE_WINDOW_KEY);
-      } else {
-        setNotice({
-          type: 'error',
-          message:
-            err instanceof OperatorApiError
-              ? `Ошибка получения текущего талона: ${err.message}`
-              : 'Не удалось связаться с сервером при получении талона',
-          retryAction: () => restoreCurrentTicket(windowId),
-        });
+    let timer: number;
+    let unmounted = false;
+    
+    async function load() {
+      if (unmounted) return;
+      try {
+        const wlist = await api.listWindows(branchId);
+        if (!unmounted) setWindows(wlist);
+        
+        const current = await api.getCurrentTicket(operatorWindowId);
+        if (!unmounted) setCurrentTicket(current);
+      } catch (e: any) {
+        if (!unmounted) setError(e.message);
+      } finally {
+        if (!unmounted) timer = window.setTimeout(load, 2000);
       }
-    } finally {
-      setIsLoadingTicket(false);
     }
-  }, []);
+    
+    load();
+    return () => {
+      unmounted = true;
+      clearTimeout(timer);
+    };
+  }, [branchId, operatorWindowId]);
 
+  // Timer for elapsed seconds
   useEffect(() => {
-    if (selectedWindow) {
-      restoreCurrentTicket(selectedWindow.id);
-    } else {
-      setCurrentTicket(null);
-    }
-  }, [selectedWindow, restoreCurrentTicket]);
+    setOperatorElapsedSeconds(0);
+    if (!currentTicket || currentTicket.status === 'COMPLETED' || currentTicket.status === 'NO_SHOW') return;
+    
+    const interval = setInterval(() => {
+      setOperatorElapsedSeconds(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [currentTicket?.id]);
 
-  // Handle branch selection change
-  const handleSelectBranch = (branchId: string) => {
-    setSelectedBranchId(branchId);
-    sessionStorage.setItem(STORAGE_BRANCH_KEY, branchId);
-    // Reset window selection and stale ticket
-    setSelectedWindow(null);
-    setCurrentTicket(null);
-    setLiveServiceId('');
-    sessionStorage.removeItem(STORAGE_WINDOW_KEY);
-    setNotice(null);
-  };
+  const operatorSelectedWindow = useMemo<OperatorWindow>(() => {
+    return windows.find(w => w.id === operatorWindowId) || {
+      id: operatorWindowId,
+      number: parseInt(operatorWindowId, 10),
+      status: 'OPEN',
+      services: [],
+    };
+  }, [windows, operatorWindowId]);
 
-  const liveServices = windows
-    .flatMap((window) => window.services)
-    .filter((service, index, all) => all.findIndex((candidate) => candidate.id === service.id) === index);
-
-  // Handle window selection change
-  const handleSelectWindow = (win: OperatorWindow) => {
-    setSelectedWindow(win);
-    sessionStorage.setItem(STORAGE_WINDOW_KEY, win.id);
-    setNotice(null);
-  };
-
-  // Action 1: Call Next
   const handleCallNext = async () => {
-    if (!selectedWindow) return;
-    setIsActionPending(true);
-    setNotice(null);
-
     try {
-      const ticket = await api.callNext(selectedWindow.id);
+      const ticket = await api.callNext(operatorWindowId);
       setCurrentTicket(ticket);
-    } catch (err) {
-      if (err instanceof OperatorApiError) {
-        if (err.code === 'NO_ELIGIBLE_TICKETS') {
-          setNotice({
-            type: 'info',
-            message: 'Для услуг этого окна сейчас нет подходящих клиентов.',
-          });
-        } else if (err.code === 'WINDOW_BUSY') {
-          setNotice({
-            type: 'warning',
-            message: 'У этого окна уже есть активный клиент. Синхронизируем...',
-          });
-          await restoreCurrentTicket(selectedWindow.id);
-        } else if (err.code === 'INVALID_TICKET_STATE') {
-          setNotice({
-            type: 'warning',
-            message: 'Недопустимое состояние талона на сервере. Синхронизируем...',
-          });
-          await restoreCurrentTicket(selectedWindow.id);
-        } else {
-          setNotice({
-            type: 'error',
-            message: `Ошибка вызова: ${err.message}`,
-          });
-        }
-      } else {
-        // Network error: DO NOT erase known currentTicket!
-        setNotice({
-          type: 'error',
-          message: 'Не удалось связаться с сервером.',
-          retryAction: handleCallNext,
-        });
-      }
-    } finally {
-      setIsActionPending(false);
+    } catch (e: any) {
+      alert(`Не удалось вызвать: ${e.message}`);
     }
   };
 
-  // Action 2: Start Service
-  const handleStartService = async () => {
-    if (!currentTicket || !selectedWindow) return;
-    setIsActionPending(true);
-    setNotice(null);
-
+  const handleFinish = async () => {
+    if (!currentTicket) return;
     try {
-      const updatedTicket = await api.startService(currentTicket.id);
-      setCurrentTicket(updatedTicket);
-    } catch (err) {
-      if (err instanceof OperatorApiError) {
-        if (err.code === 'INVALID_TICKET_STATE' || err.code === 'WINDOW_BUSY') {
-          setNotice({
-            type: 'warning',
-            message: 'Состояние талона изменилось. Выполняем синхронизацию...',
-          });
-          await restoreCurrentTicket(selectedWindow.id);
-        } else {
-          setNotice({
-            type: 'error',
-            message: `Ошибка начала обслуживания: ${err.message}`,
-          });
-        }
-      } else {
-        // Network error: DO NOT erase known ticket!
-        setNotice({
-          type: 'error',
-          message: 'Не удалось связаться с сервером.',
-          retryAction: handleStartService,
-        });
-      }
-    } finally {
-      setIsActionPending(false);
-    }
-  };
-
-  // Action 3: Complete Service
-  const handleCompleteService = async () => {
-    if (!currentTicket || !selectedWindow) return;
-    setIsActionPending(true);
-    setNotice(null);
-
-    try {
-      const completedTicket = await api.completeService(currentTicket.id);
-      // Briefly show completed notice, then clear active ticket
-      setNotice({
-        type: 'success',
-        message: `Талон ${completedTicket.publicNumber} успешно обслужен.`,
-      });
+      await api.completeService(currentTicket.id);
       setCurrentTicket(null);
-    } catch (err) {
-      if (err instanceof OperatorApiError) {
-        if (err.code === 'INVALID_TICKET_STATE') {
-          setNotice({
-            type: 'warning',
-            message: 'Недопустимое состояние талона на сервере. Синхронизируем...',
-          });
-          await restoreCurrentTicket(selectedWindow.id);
-        } else {
-          setNotice({
-            type: 'error',
-            message: `Ошибка завершения обслуживания: ${err.message}`,
-          });
-        }
-      } else {
-        // Network error: DO NOT erase known ticket!
-        setNotice({
-          type: 'error',
-          message: 'Не удалось связаться с сервером.',
-          retryAction: handleCompleteService,
-        });
-      }
-    } finally {
-      setIsActionPending(false);
+    } catch (e: any) {
+      alert(`Ошибка: ${e.message}`);
     }
   };
 
   const handleNoShow = async () => {
-    if (!currentTicket || currentTicket.status !== 'CALLED' || !selectedWindow) return;
-    setIsActionPending(true); setNotice(null);
+    if (!currentTicket) return;
     try {
-      const ticket = await api.markNoShow(currentTicket.id);
+      await api.markNoShow(currentTicket.id);
       setCurrentTicket(null);
-      setNotice({ type: 'success', message: `Талон ${ticket.publicNumber}: клиент не явился.` });
-    } catch (err) {
-      if (err instanceof OperatorApiError && (err.code === 'INVALID_TICKET_STATE' || err.code === 'WINDOW_BUSY')) await restoreCurrentTicket(selectedWindow.id);
-      setNotice({ type: 'error', message: err instanceof OperatorApiError ? err.message : 'Не удалось отметить неявку' });
-    } finally { setIsActionPending(false); }
+    } catch (e: any) {
+      alert(`Ошибка: ${e.message}`);
+    }
   };
-
-  const handleCreateLive = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBranchId || !liveServiceId || livePending) return;
-    setLivePending(true); setNotice(null);
-    const keyStorage = `operator_live_attempt_${selectedBranchId}_${liveServiceId}`;
-    const key = sessionStorage.getItem(keyStorage) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
-    sessionStorage.setItem(keyStorage, key);
+  
+  const handleStartService = async () => {
+    if (!currentTicket) return;
     try {
-      const ticket = await api.createLiveTicket(selectedBranchId, liveServiceId, key);
-      sessionStorage.removeItem(keyStorage);
-      setNotice({ type: 'success', message: `Талон ${ticket.publicNumber} добавлен в живую очередь.` });
-    } catch (err) {
-      setNotice({ type: 'error', message: err instanceof OperatorApiError ? err.message : 'Не удалось создать талон' });
-    } finally { setLivePending(false); }
+      await api.startService(currentTicket.id);
+    } catch (e: any) {
+      alert(`Ошибка: ${e.message}`);
+    }
   };
 
   return (
-    <div className="operator-container">
-      <header className="operator-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>Рабочее место оператора</h1>
-          <p>Электронная очередь ПочтаТех — Управление обслуживанием клиентов</p>
-        </div>
-        <div>
-          {api.isMockEnabled() ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="window-badge badge-open" style={{ padding: '6px 12px', fontSize: '12px' }}>
-                ● Демо-режим активен
-              </span>
-              <button
-                type="button"
-                className="btn btn-retry"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-                onClick={() => {
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('mock');
-                  window.location.href = url.toString();
-                }}
-              >
-                К реальному серверу
-              </button>
+    <div className="space-y-4">
+      <div className="bg-white rounded-3xl border border-[#D2D8E2] p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#003B73] text-white font-mono font-black text-xl flex items-center justify-center shadow-md">
+              № {operatorWindowId}
             </div>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ minWidth: 'auto', padding: '8px 16px', fontSize: '13px' }}
-              onClick={() => {
-                const url = new URL(window.location.href);
-                url.searchParams.set('mock', '1');
-                window.location.href = url.toString();
-              }}
-            >
-              Включить демо-режим
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Notice / Alert Banners */}
-      {notice && (
-        <div
-          role="alert"
-          className={`alert-box ${
-            notice.type === 'info'
-              ? 'alert-info'
-              : notice.type === 'warning'
-              ? 'alert-warning'
-              : notice.type === 'success'
-              ? 'alert-success'
-              : 'alert-error'
-          }`}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <span>{notice.message}</span>
-            {notice.demoAction && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ minWidth: 'auto', padding: '6px 14px', fontSize: '13px' }}
-                onClick={notice.demoAction}
-              >
-                Включить демо-режим
-              </button>
-            )}
-            {notice.retryAction && (
-              <button
-                type="button"
-                className="btn btn-retry"
-                style={{ padding: '6px 14px', fontSize: '13px' }}
-                onClick={notice.retryAction}
-              >
-                Повторить
-              </button>
-            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-black text-base text-slate-900">Окно {operatorSelectedWindow.number}</h2>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border ${operatorSelectedWindow.status === 'OPEN' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>
+                  {operatorSelectedWindow.status === 'OPEN' ? 'СМЕНА АКТИВНА' : 'ОКНО ЗАКРЫТО'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Оператор: <strong className="text-slate-800">{currentUser?.email ?? 'Оператор'}</strong>
+              </p>
+            </div>
           </div>
-          <button
-            type="button"
-            className="alert-close-btn"
-            onClick={() => setNotice(null)}
-            aria-label="Закрыть уведомление"
-          >
-            ×
-          </button>
-        </div>
-      )}
 
-      <div className="operator-grid">
-        {/* Left column: Selection panels */}
-        <aside className="operator-sidebar">
-          <BranchSelector
-            branches={branches}
-            selectedBranchId={selectedBranchId}
-            isLoading={isLoadingBranches}
-            onSelectBranch={handleSelectBranch}
-          />
-
-          <WindowSelector
-            windows={windows}
-            selectedWindowId={selectedWindow?.id ?? null}
-            isLoading={isLoadingWindows}
-            branchSelected={Boolean(selectedBranchId)}
-            onSelectWindow={handleSelectWindow}
-          />
-          {selectedBranchId && (
-            <form className="operator-card live-ticket-form" onSubmit={handleCreateLive}>
-              <h2>Живая очередь</h2>
-              <label htmlFor="live-service">Услуга</label>
-              <select id="live-service" className="operator-select" value={liveServiceId} onChange={(e) => setLiveServiceId(e.target.value)} disabled={livePending || isLoadingWindows}>
-                <option value="">Выберите услугу</option>
-                {liveServices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              {!isLoadingWindows && liveServices.length === 0 && <p role="status">Для этого отделения нет доступных услуг.</p>}
-              <button className="btn btn-primary" type="submit" disabled={!liveServiceId || !liveServices.some((service) => service.id === liveServiceId) || isLoadingWindows || livePending}>{livePending ? 'Добавление…' : 'Добавить талон'}</button>
-            </form>
-          )}
-        </aside>
-
-        {/* Right column: Main Workspace */}
-        <main className="operator-main-workspace">
-          {!selectedWindow ? (
-            <div className="empty-ticket-state">
-              <h3>Окно не выбрано</h3>
-              <p>Пожалуйста, выберите отделение и рабочее окно в левой панели.</p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-slate-500 font-bold hidden sm:inline">Выбор окна:</span>
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+              {['1', '2', '3'].map(wid => (
+                <button
+                  key={wid}
+                  type="button"
+                  onClick={() => setOperatorWindowId(wid)}
+                  className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all ${operatorWindowId === wid ? 'bg-[#003B73] text-white shadow-sm' : 'text-slate-700 hover:bg-white'}`}
+                >
+                  № {wid}
+                </button>
+              ))}
             </div>
-          ) : (
-            <>
-              {/* Window Status Bar */}
-              <div className="current-window-bar">
-                <div>
-                  <h2 className="current-window-title">
-                    Окно №{selectedWindow.number}
-                  </h2>
-                  <p className="current-window-subtitle">
-                    Статус: <strong>{selectedWindow.status}</strong> | Услуги:{' '}
-                    {selectedWindow.services.map((s) => s.name).join(', ') || 'Все'}
-                  </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-7 space-y-4">
+          <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="text-xs font-mono uppercase tracking-wider text-slate-500 font-bold">
+                Текущий клиент у стойки Окна № {operatorWindowId}
+              </div>
+              <div className="flex items-center gap-2 font-mono text-xs font-bold text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                <Clock className="w-4 h-4 text-[#003B73]" />
+                <span>{Math.floor(operatorElapsedSeconds / 60).toString().padStart(2, '0')}:{(operatorElapsedSeconds % 60).toString().padStart(2, '0')}</span>
+              </div>
+            </div>
+
+            {currentTicket ? (
+              <div className="space-y-4">
+                <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-mono uppercase text-[#003B73] font-bold">Талон клиента</div>
+                    <div className="text-5xl sm:text-6xl font-black font-mono text-[#003B73] tracking-tight my-1">
+                      {currentTicket.publicNumber || currentTicket.id.slice(-4)}
+                    </div>
+                    <div className="text-xs font-semibold text-slate-700">
+                      {SERVICES.find((s: any) => s.id === currentTicket.serviceId)?.title || 'Почтовые услуги'}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-xs font-mono sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-200">
+                    <div>
+                      <span className="text-slate-500 font-sans">Источник:</span>
+                      <span className="font-bold text-[#054FA6] ml-1">{currentTicket.source}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-sans">Статус:</span>
+                      <span className="font-bold text-emerald-700 ml-1">{currentTicket.status}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="window-badge badge-open">АКТИВНО</span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCallNext}
+                    className="min-h-[50px] py-3 px-4 rounded-2xl border-2 border-[#003B73] text-[#003B73] hover:bg-blue-50 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Volume2 className="w-4 h-4 text-emerald-600" />
+                    <span>Вызвать след.</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    className="min-h-[50px] py-3 px-4 rounded-2xl bg-[#003B73] hover:bg-[#002d58] active:bg-[#001f3f] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span>Завершить приём</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={handleStartService}
+                    className="min-h-[42px] p-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 flex items-center justify-center gap-1.5 font-bold"
+                  >
+                    <span>Начать обслуж.</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNoShow}
+                    className="min-h-[42px] p-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 flex items-center justify-center gap-1.5 font-bold"
+                  >
+                    <UserX className="w-4 h-4 text-amber-700" />
+                    <span>Не явился (NO_SHOW)</span>
+                  </button>
                 </div>
               </div>
-
-              {/* Active Ticket Card or Empty State */}
-              {isLoadingTicket ? (
-                <div className="empty-ticket-state">
-                  <p>Загрузка статуса окна...</p>
+            ) : (
+              <div className="text-center py-12 space-y-3">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                  <UserX className="w-8 h-8" />
                 </div>
-              ) : (
-                <TicketCard
-                  ticket={currentTicket}
-                  selectedWindow={selectedWindow}
-                />
-              )}
-
-              {/* Action Buttons with strict state logic */}
-              <ActionControls
-                currentTicket={currentTicket}
-                isPending={isActionPending || isLoadingTicket}
-                onCallNext={handleCallNext}
-                onStartService={handleStartService}
-                onCompleteService={handleCompleteService}
-                onNoShow={handleNoShow}
-              />
-            </>
-          )}
-        </main>
+                <div className="text-sm font-bold text-slate-800">Нет активного клиента у Окна № {operatorWindowId}</div>
+                <button
+                  type="button"
+                  onClick={handleCallNext}
+                  className="min-h-[48px] px-6 rounded-2xl bg-[#003B73] text-white font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2 shadow-md hover:bg-[#002d58]"
+                >
+                  <Volume2 className="w-4 h-4 text-emerald-300" />
+                  <span>Вызвать клиента</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
-};
+}
