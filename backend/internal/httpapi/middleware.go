@@ -6,10 +6,14 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"postcode/backend/internal/domain"
 )
 
@@ -163,4 +167,48 @@ func requireAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+var (
+	reqTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total number of HTTP requests processed",
+	}, []string{"method", "path", "status"})
+
+	reqDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_request_duration_seconds",
+		Help:    "HTTP request latency in seconds",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method", "path"})
+)
+
+func metricsMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/metrics" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			start := time.Now()
+			wrapped, ok := w.(middleware.WrapResponseWriter)
+			if !ok {
+				wrapped = middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			}
+			defer func() {
+				path := r.URL.Path
+				if rctx := chi.RouteContext(r.Context()); rctx != nil {
+					if pattern := rctx.RoutePattern(); pattern != "" {
+						path = pattern
+					}
+				}
+				status := wrapped.Status()
+				if status == 0 {
+					status = http.StatusOK
+				}
+				reqTotal.WithLabelValues(r.Method, path, strconv.Itoa(status)).Inc()
+				reqDuration.WithLabelValues(r.Method, path).Observe(time.Since(start).Seconds())
+			}()
+			next.ServeHTTP(wrapped, r)
+		})
+	}
 }

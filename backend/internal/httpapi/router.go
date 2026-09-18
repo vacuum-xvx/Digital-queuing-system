@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"postcode/backend/internal/application"
 )
 
@@ -16,7 +17,8 @@ type Pinger interface{ Ping(context.Context) error }
 
 func NewRouter(db Pinger, usecases application.UseCases, logger *slog.Logger, origin string) http.Handler {
 	r := chi.NewRouter()
-	r.Use(requestLog(logger), recoverPanic(logger), cors(origin))
+	r.Use(requestLog(logger), recoverPanic(logger), cors(origin), metricsMiddleware())
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

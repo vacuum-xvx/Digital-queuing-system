@@ -39,6 +39,8 @@ Compose ждёт PostgreSQL healthcheck (с автоматической ини�
 | CORS_ALLOWED_ORIGIN | `http://localhost:5173`, один origin без завершающего `/` |
 | VITE_API_BASE_URL | `http://localhost:8080`, URL API, доступный **браузеру** |
 | FRONTEND_PORT | `5173`, порт frontend на host |
+| GRAFANA_USER | `admin`, логин администратора Grafana |
+| GRAFANA_PASSWORD | `admin`, пароль администратора Grafana |
 
 Backend валидирует обязательные настройки при старте. `.env` не коммитится.
 Значения `POSTGRES_HOST=postgres` и `POSTGRES_PORT=5432` соответствуют этому Compose;
@@ -55,6 +57,9 @@ Vite получает `VITE_API_BASE_URL` при запуске; это публ
 - Admin placeholder: http://localhost:5173/admin
 - Liveness: http://localhost:8080/health
 - Readiness: http://localhost:8080/ready
+- Backend Metrics: http://localhost:8080/metrics
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3001 (логин/пароль по умолчанию: `admin` / `admin`)
 
 ```bash
 curl -i http://localhost:8080/health

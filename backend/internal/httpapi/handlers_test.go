@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"postcode/backend/internal/application"
@@ -412,4 +413,27 @@ func TestErrors(t *testing.T) {
 			t.Errorf("expected request ID to be present")
 		}
 	})
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	uc := &FakeUseCases{}
+	r := setupTest(uc)
+
+	healthReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	healthRec := httptest.NewRecorder()
+	r.ServeHTTP(healthRec, healthReq)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "http_requests_total") {
+		t.Errorf("expected http_requests_total metric in output")
+	}
+	if !strings.Contains(body, "go_goroutines") {
+		t.Errorf("expected go_goroutines metric in output")
+	}
 }
