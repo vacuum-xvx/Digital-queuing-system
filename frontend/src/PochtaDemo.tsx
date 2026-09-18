@@ -1516,27 +1516,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     }
   };
 
-  const resetToDemoData = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-    setTickets([]);
-    setWindows([]);
-    setMyTicketId(null);
-    setPolicyConfig({
-      weightAppointment: 1.5,
-      weightQr: 1.0,
-      weightLive: 1.0,
-      waitMinutesFactor: 0.15,
-      starvationThresholdMinutes: 15,
-      appointmentDecayMinutes: 10
-    });
-    setAuditEvents([
-      { id: 'a1', time: '17:35:10', type: 'COMPLETED', text: 'Талон А-039 успешно обслужен в Окне № 3' },
-      { id: 'a2', time: '17:39:40', type: 'NO_SHOW', text: 'Талон В-012 не явился по вызову к Окну № 2 (статус NO_SHOW)' },
-      { id: 'a3', time: '17:42:00', type: 'STARVATION_ESCALATION', text: 'Талон Ж-003 ожидает 17 мин -> повышен приоритет (Starvation Guard)' }
-    ]);
-    showToast('Демо-состояние очереди успешно сброшено к исходному!');
-  };
-
   // Список аномалий для начальника ОПС
   const anomaliesList = useMemo(() => {
     const list: Array<{
@@ -1693,10 +1672,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
             </div>
           </div>
         )}
-
-        <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 font-mono">
-          АО «Почта России» • Хакатон «Электронная очередь» • Единый Queue Engine v3.2
-        </footer>
       </div>
     );
   }
@@ -1820,9 +1795,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                 <PochtaWordmark className="h-4 sm:h-5 w-auto" color="#FFFFFF" />
               </div>
               <div className="text-[11px] text-blue-200 flex items-center gap-1.5 mt-0.5 font-medium">
-                <MapPin className="w-3 h-3 text-[#86BBFF]" />
-                <span>{BRANCH_CONFIG.name}</span>
-                <span className="text-white/40">•</span>
                 <span className="text-blue-200 font-mono">до {BRANCH_CONFIG.closeTimeStr}</span>
               </div>
             </div>
@@ -1892,26 +1864,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
               <span>{isOfflineSimulated ? 'Офлайн' : 'Онлайн'}</span>
             </button>
 
-            {/* Сброс демо */}
-            <button
-              type="button"
-              onClick={resetToDemoData}
-              className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-lg bg-black/25 border border-white/15 text-blue-200 hover:bg-white/10 text-[11px]"
-              title="Сбросить состояние к исходному"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Сброс</span>
-            </button>
-
-            {/* Ссылка на базовый MVP */}
-            <a
-              href="/"
-              className="hidden lg:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-blue-100 hover:text-white text-[11px] transition-colors"
-              title="Перейти к классическому интерфейсу MVP"
-            >
-              <span>← MVP (/)</span>
-            </a>
-
             {/* Время отделения */}
             <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/15 text-white font-bold">
               <Clock className="w-3.5 h-3.5 text-[#86BBFF]" />
@@ -1949,7 +1901,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
               onClick={() => setActiveTab('hub')}
               className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-semibold"
             >
-              ← Назад в демо-меню
+              ← Меню
             </button>
           </div>
         )}
@@ -1966,17 +1918,8 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
         {/* 0. ДЕМО-ХАБ (НОВЫЙ) */}
         {activeTab === 'hub' && (
           <div className="max-w-5xl mx-auto px-4 py-12">
-            <h2 className="text-3xl font-black text-[#0A2896] mb-3 text-center tracking-tight">Демонстрационный стенд системы управления очередью</h2>
-            {currentUser && (
-              <p className="text-center text-sm text-slate-500 mb-8">
-                Вы вошли как <strong className="text-slate-700">{currentUser.email}</strong> • роль:{' '}
-                <span className="font-mono font-bold text-[#054FA6] uppercase">{currentUser.role}</span>
-                {userRole === 'client' && ' — доступны разделы «Клиент» и «Терминал»'}
-                {userRole === 'employee' && ' — доступны разделы «Окно оператора» и «Табло»'}
-                {userRole === 'opc_chief' && ' — доступны все разделы, включая панель начальника ОПС'}
-              </p>
-            )}
-            
+            <h2 className="text-3xl font-black text-[#0A2896] mb-3 text-center tracking-tight uppercase">Электронная очередь</h2>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
                 { path: '/demo/client', icon: Smartphone, title: 'Клиент', desc: 'Взять талон, отслеживать статус ожидания и вызов к окну', roles: ['client'] },
@@ -1999,13 +1942,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                   </div>
                 </button>
               ))}
-            </div>
-            
-            <div className="mt-12 p-6 bg-blue-50/50 rounded-2xl border border-blue-100 text-center">
-              <h3 className="text-lg font-bold text-[#054FA6] mb-2">Архитектура демо-режима</h3>
-              <p className="text-sm text-gray-600 max-w-3xl mx-auto">
-                Демо-режим полностью симулирует работу бэкенда в памяти браузера, включая локальный стейт, генерацию талонов, аудио-очередь (TTS) и систему роутинга. Все экраны связаны одним глобальным состоянием, поэтому вы можете открыть несколько вкладок или переключаться между экранами без потери данных.
-              </p>
             </div>
           </div>
         )}
@@ -3504,10 +3440,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
               ))}
             </div>
 
-            <div className="text-center text-xs text-slate-500 font-mono">
-              Сенсорный моноблок терминала ОПС • ГОСТ Р 56501-2015
-            </div>
-
           </div>
         )}
 
@@ -3970,11 +3902,6 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
           </div>
         </div>
       )}
-
-      {/* Подвал */}
-      <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 font-mono">
-        АО «Почта России» • Хакатон «Электронная очередь» • Единый Queue Engine v3.2
-      </footer>
 
     </div>
   );
