@@ -1,0 +1,22 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+  receiver: 'telegram-notifications'
+
+receivers:
+  - name: 'telegram-notifications'
+    telegram_configs:
+      - bot_token: '__TELEGRAM_BOT_TOKEN__'
+        chat_id: __TELEGRAM_CHAT_ID__
+        send_resolved: true
+        parse_mode: 'HTML'
+        message: |-
+          {{ if eq .Status "firing" }}🚨 <b>[АЛЕРТ] {{ .CommonAnnotations.summary }}</b>{{ else }}✅ <b>[РЕШЕНО] {{ .CommonAnnotations.summary }}</b>{{ end }}
+          <b>Уровень:</b> <code>{{ .CommonLabels.severity }}</code>
+          <b>Описание:</b> {{ .CommonAnnotations.description }}
+          <b>Время:</b> {{ .StartsAt.Format "15:04:05 02.01.2006" }}

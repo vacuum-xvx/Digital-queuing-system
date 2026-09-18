@@ -1,0 +1,47 @@
+groups:
+  - name: suo_alerts
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Бэкенд недоступен (API Down)"
+          description: "Инстанс бэкенда {{ $labels.instance }} не отвечает на запросы более 30 секунд."
+
+      - alert: PostgresDown
+        expr: pg_up == 0 or up{job="postgres"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "База данных PostgreSQL недоступна"
+          description: "Postgres exporter потерял связь с базой данных PostgreSQL."
+
+      - alert: HighHttpErrorRate
+        expr: (sum(rate(http_requests_total{status=~"5.."}[1m])) or vector(0)) / (sum(rate(http_requests_total[1m])) or vector(1)) * 100 > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая доля серверных ошибок 5xx (> 5%)"
+          description: "Текущий процент 5xx ошибок составляет {{ $value | printf \"%.1f\" }}%."
+
+      - alert: HighResponseLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le)) > 1.0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая задержка ответов API (p95 > 1s)"
+          description: "95% запросов обрабатываются дольше {{ $value | printf \"%.2f\" }} секунд."
+
+      - alert: HighPostgresConnections
+        expr: pg_stat_database_numbackends{datname="postcode"} > 80
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокое число подключений к БД (> 80)"
+          description: "Количество активных соединений с PostgreSQL достигло {{ $value }}."
