@@ -3,21 +3,30 @@ groups:
     rules:
       - alert: BackendDown
         expr: up{job="backend"} == 0
-        for: 30s
+        for: 2m
         labels:
           severity: critical
         annotations:
           summary: "Бэкенд недоступен (API Down)"
-          description: "Инстанс бэкенда {{ $labels.instance }} не отвечает на запросы более 30 секунд."
+          description: "Инстанс бэкенда {{ $labels.instance }} не отвечает на запросы более 2 минут."
 
       - alert: PostgresDown
-        expr: pg_up == 0 or up{job="postgres"} == 0
-        for: 30s
+        expr: pg_up == 0
+        for: 2m
         labels:
           severity: critical
         annotations:
           summary: "База данных PostgreSQL недоступна"
-          description: "Postgres exporter потерял связь с базой данных PostgreSQL."
+          description: "PostgreSQL не отвечает на запросы более 2 минут."
+
+      - alert: PostgresExporterDown
+        expr: up{job="postgres"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Сборщик метрик Postgres Exporter недоступен"
+          description: "Метрики PostgreSQL не собираются более 3 минут (инстанс {{ $labels.instance }})."
 
       - alert: HighHttpErrorRate
         expr: (sum(rate(http_requests_total{status=~"5.."}[1m])) or vector(0)) / (sum(rate(http_requests_total[1m])) or vector(1)) * 100 > 5
