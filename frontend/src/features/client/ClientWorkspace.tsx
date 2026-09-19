@@ -163,25 +163,25 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     try { sessionStorage.setItem(arrivalStorageKey(ticketId), '1'); } catch { /* ignore */ }
   };
 
-  useEffect(() => {
-    let unmounted = false;
-    async function load() {
-      if (unmounted) return;
-      try {
-        setLoading(true);
-        const blist = await api.listBranches();
-        if (!unmounted) {
-          setBranches(blist);
-        }
-      } catch (err: any) {
-        if (!unmounted) setError(friendlyError(err, 'Не удалось загрузить данные'));
-      } finally {
-        if (!unmounted) setLoading(false);
+  const loadBranches = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const blist = await api.listBranches();
+      setBranches(blist);
+      if (blist.length === 1 && !branchId) {
+        setBranchId(blist[0].id);
       }
+    } catch (err: any) {
+      setError(friendlyError(err, 'Не удалось загрузить данные отделений'));
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => { unmounted = true; };
-  }, []);
+  }, [branchId]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
 
   useEffect(() => {
     if (!branchId) {
@@ -546,6 +546,11 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
               <h3 className="text-sm font-bold text-slate-800">Выберите отделение</h3>
               {loading ? (
                 <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка отделений...</p>
+              ) : branches.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <p>Отделения не найдены или временно недоступны</p>
+                  <button type="button" onClick={() => loadBranches()} className="mt-2 text-xs font-semibold text-[#003B73] underline">Повторить попытку</button>
+                </div>
               ) : (
                 branches.map(b => (
                   <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />
@@ -638,6 +643,11 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
               <h3 className="text-sm font-bold text-slate-800">Выберите отделение</h3>
               {loading ? (
                 <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка отделений...</p>
+              ) : branches.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <p>Отделения не найдены или временно недоступны</p>
+                  <button type="button" onClick={() => loadBranches()} className="mt-2 text-xs font-semibold text-[#003B73] underline">Повторить попытку</button>
+                </div>
               ) : (
                 branches.map(b => (
                   <BranchCard key={b.id} branch={b} selected={branchId === b.id} onSelect={() => handleBranchSelect(b.id)} />

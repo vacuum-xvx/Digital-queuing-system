@@ -28,6 +28,9 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     allowedHosts: [
       'post-queue.duckdns.org',
+      'post-queue.duckdns.com',
+      '.duckdns.org',
+      '.duckdns.com',
       'localhost',
       '127.0.0.1',
     ],

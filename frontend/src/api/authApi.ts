@@ -19,12 +19,31 @@ class ApiAuthError extends Error {
   }
 }
 
-function getApiBaseUrl(): string {
-  const envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
-  if (envUrl && typeof envUrl === 'string') {
-    return `${envUrl.replace(/\/$/, '')}/api/v1`;
+export function getApiBaseUrl(): string {
+  let envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
+
+  if (typeof window !== 'undefined' && window.location) {
+    const isLocalhostHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (envUrl && typeof envUrl === 'string') {
+      const isEnvLocalhost = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+      if (isEnvLocalhost && !isLocalhostHost) {
+        envUrl = undefined;
+      }
+    }
   }
-  return '/api/v1';
+
+  if (!envUrl || typeof envUrl !== 'string' || envUrl.trim() === '' || envUrl === '/') {
+    return '/api/v1';
+  }
+
+  const clean = envUrl.trim().replace(/\/+$/, '');
+  if (clean.endsWith('/api/v1')) {
+    return clean;
+  }
+  if (clean.endsWith('/api')) {
+    return `${clean}/v1`;
+  }
+  return `${clean}/api/v1`;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
