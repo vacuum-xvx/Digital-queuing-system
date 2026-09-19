@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"postcode/backend/internal/application"
 	"postcode/backend/internal/domain"
 )
 
@@ -317,3 +318,92 @@ func defaultPriorityRules() []domain.PriorityRule {
 		{Source: "LIVE", Name: "Живая очередь", Weight: 10, MaxWaitLimitMinutes: 30, Description: "Талоны от оператора"},
 	}
 }
+
+// CreateWindow creates a new window in the branch and assigns default branch services.
+func (p *Postgres) CreateWindow(ctx context.Context, branchID string) (domain.Window, error) {
+	var empty domain.Window
+	bid, err := uuid(branchID)
+	if err != nil {
+		return empty, err
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return empty, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
+	var maxNumber int
+	err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(number), 0) + 1 FROM windows WHERE branch_id = $1`, bid).Scan(&maxNumber)
+	if err != nil {
+		return empty, dbError(err)
+	}
+
+	var newID string
+	err = tx.QueryRow(ctx, `INSERT INTO windows (id, branch_id, number, status)
+		VALUES (gen_random_uuid(), $1, $2, 'CLOSED')
+		RETURNING id::text`, bid, maxNumber).Scan(&newID)
+	if err != nil {
+		return empty, dbError(err)
+	}
+
+	// Assign all branch services as default capabilities
+	_, err = tx.Exec(ctx, `INSERT INTO window_services (window_id, branch_id, service_id)
+		SELECT $1::uuid, $2, service_id FROM branch_services WHERE branch_id = $2`, newID, bid)
+	if err != nil {
+		return empty, dbError(err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return empty, dbError(err)
+	}
+
+	windows, err := p.ListBranchWindows(ctx, branchID)
+	if err != nil {
+		return empty, err
+	}
+	for _, w := range windows {
+		if w.ID == newID {
+			return w, nil
+		}
+	}
+	return domain.Window{ID: newID, BranchID: branchID, Number: maxNumber, Status: domain.WindowStatusClosed}, nil
+}
+
+// DeleteWindow removes a window if it has no active tickets.
+func (p *Postgres) DeleteWindow(ctx context.Context, windowID string) error {
+	wid, err := uuid(windowID)
+	if err != nil {
+		return err
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
+	var hasActive bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE window_id=$1 AND status IN ('CALLED', 'SERVING'))`, wid).Scan(&hasActive)
+	if err != nil {
+		return dbError(err)
+	}
+	if hasActive {
+		return fmt.Errorf("cannot delete window with active ticket: %w", application.ErrWindowBusy)
+	}
+
+	// Delete window capabilities
+	if _, err = tx.Exec(ctx, `DELETE FROM window_services WHERE window_id=$1`, wid); err != nil {
+		return dbError(err)
+	}
+
+	// Delete window
+	res, err := tx.Exec(ctx, `DELETE FROM windows WHERE id=$1`, wid)
+	if err != nil {
+		return dbError(err)
+	}
+	if res.RowsAffected() == 0 {
+		return application.ErrNotFound
+	}
+
+	return dbError(tx.Commit(ctx))
+}
+

@@ -257,6 +257,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                       <button
                         key={val}
                         type="button"
+                        aria-pressed={scale === val && isA11y}
                         onClick={() => {
                           setScale(val);
                           if (!isA11y) toggleA11yMode(true);
@@ -279,6 +280,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
+                      aria-pressed={!contrast}
                       onClick={() => setContrast(false)}
                       className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
                         !contrast
@@ -290,6 +292,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                     </button>
                     <button
                       type="button"
+                      aria-pressed={contrast && isA11y}
                       onClick={() => {
                         setContrast(true);
                         if (!isA11y) toggleA11yMode(true);

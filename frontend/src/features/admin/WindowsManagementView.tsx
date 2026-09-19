@@ -4,19 +4,37 @@ import { AdminWindow } from '../../api/admin/types';
 interface WindowsManagementViewProps {
   windows: AdminWindow[];
   onToggleStatus: (windowId: string, newStatus: 'OPEN' | 'CLOSED') => void;
+  onAddWindow?: () => void;
+  onDeleteWindow?: (windowId: string, windowNumber: number) => void;
 }
 
 export const WindowsManagementView: React.FC<WindowsManagementViewProps> = ({
   windows,
   onToggleStatus,
+  onAddWindow,
+  onDeleteWindow,
 }) => {
   return (
     <div className="admin-panel-card">
-      <h2>Управление окнами и перечнем услуг отделения</h2>
-      <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
-        Руководитель отделения может открывать и закрывать окна, а также контролировать
-        распределение доступных категорий услуг.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div>
+          <h2>Управление окнами и перечнем услуг отделения</h2>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0 0' }}>
+            Руководитель отделения может открывать и закрывать окна, а также контролировать
+            распределение доступных категорий услуг.
+          </p>
+        </div>
+        {onAddWindow && (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onAddWindow}
+            style={{ padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
+          >
+            + Добавить окно
+          </button>
+        )}
+      </div>
 
       <div className="admin-table-container">
         <table className="admin-table">
@@ -63,13 +81,26 @@ export const WindowsManagementView: React.FC<WindowsManagementViewProps> = ({
                   </td>
                   <td>{w.servedCount}</td>
                   <td>
-                    <button
-                      type="button"
-                      className={`btn-sm ${isOpen ? 'btn-toggle-open' : 'btn-toggle-closed'}`}
-                      onClick={() => onToggleStatus(w.id, isOpen ? 'CLOSED' : 'OPEN')}
-                    >
-                      {isOpen ? 'Закрыть окно' : 'Открыть окно'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className={`btn-sm ${isOpen ? 'btn-toggle-open' : 'btn-toggle-closed'}`}
+                        onClick={() => onToggleStatus(w.id, isOpen ? 'CLOSED' : 'OPEN')}
+                      >
+                        {isOpen ? 'Закрыть окно' : 'Открыть окно'}
+                      </button>
+                      {onDeleteWindow && (
+                        <button
+                          type="button"
+                          className="btn-sm btn-danger"
+                          style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                          onClick={() => onDeleteWindow(w.id, w.number)}
+                          title={`Удалить окно №${w.number}`}
+                        >
+                          Удалить
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

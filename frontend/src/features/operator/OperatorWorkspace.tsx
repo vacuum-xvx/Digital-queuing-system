@@ -276,33 +276,9 @@ export function OperatorWorkspace() {
               </select>
             </div>
 
-            {/* Window Selector */}
-            <div className="flex flex-col shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Окно</span>
-              <select
-                aria-label="Окно"
-                value={windowId}
-                disabled={pending}
-                onChange={e => {
-                  if (e.target.value === windowId) return;
-                  ++epoch.current;
-                  setReady(false);
-                  setCurrent(null);
-                  setWindowId(e.target.value);
-                }}
-                className="px-3 h-12 rounded-xl border border-slate-300 text-sm font-medium bg-white text-slate-800 shadow-sm min-w-[160px] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                {windows.map(w => (
-                  <option key={w.id} value={w.id}>
-                    № {w.number} · {w.status === 'OPEN' ? 'Открыто' : w.status === 'CLOSING' ? 'Закрывается' : 'Закрыто'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Quick Window Buttons */}
             <div className="flex flex-col shrink-0">
-              <span aria-hidden="true" className="text-[10px] font-bold uppercase tracking-wider mb-1 pl-1 invisible select-none">Окна</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Окно</span>
               <div className="flex items-center gap-2 h-12">
               {windows.map(w => (
                 <button

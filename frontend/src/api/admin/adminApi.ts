@@ -146,3 +146,26 @@ export async function updateBranchSchedule(branchId: string, workHours: string):
   return await handleResponse<Branch>(res);
 }
 
+export async function createWindow(branchId: string): Promise<AdminWindow> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/branches/${encodeURIComponent(branchId)}/windows`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  return await handleResponse<AdminWindow>(res);
+}
+
+export async function deleteWindow(windowId: string): Promise<void> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/windows/${encodeURIComponent(windowId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    await handleResponse(res);
+  }
+}
+
+

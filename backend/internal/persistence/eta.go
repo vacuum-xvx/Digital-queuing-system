@@ -55,7 +55,87 @@ func (p *Postgres) GetTicketETA(ctx context.Context, ticketID string) (domain.Ti
 	out.WeightedWaitSeconds = intPtr(int(math.Floor(weighted)))
 	out.MedianSeconds = intPtr(int(math.Floor(median)))
 	out.P90WaitSeconds = intPtr(int(math.Floor(p90)))
-	wait := etaWait(*position.Position, weighted)
+
+	// Discrete-event queue simulation across open compatible windows
+	type windowSim struct {
+		isBusy  bool
+		elapsed float64
+	}
+	var openWindows []windowSim
+	wRows, err := tx.Query(ctx, `
+		SELECT
+			EXISTS(SELECT 1 FROM tickets cur WHERE cur.window_id = w.id AND cur.status IN ('CALLED', 'SERVING')) AS is_busy,
+			COALESCE((
+				SELECT EXTRACT(EPOCH FROM (clock_timestamp() - cur.service_started_at))
+				FROM tickets cur
+				WHERE cur.window_id = w.id AND cur.status = 'SERVING' AND cur.service_started_at IS NOT NULL
+				LIMIT 1
+			), 0)::float8 AS elapsed_seconds
+		FROM windows w
+		JOIN tickets t ON t.id = $1::uuid
+		WHERE w.branch_id = t.branch_id AND w.status = 'OPEN'
+		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = w.id AND ws.service_id = t.service_id)
+		ORDER BY w.number, w.id
+	`, ticketID)
+	if err == nil {
+		for wRows.Next() {
+			var ws windowSim
+			if scanErr := wRows.Scan(&ws.isBusy, &ws.elapsed); scanErr == nil {
+				openWindows = append(openWindows, ws)
+			}
+		}
+		wRows.Close()
+	}
+
+	var wait int
+	if len(openWindows) == 0 {
+		wait = etaWait(*position.Position, weighted)
+	} else {
+		// Initialize availability times for open windows
+		avail := make([]float64, len(openWindows))
+		for i, win := range openWindows {
+			if !win.isBusy {
+				avail[i] = 0
+			} else {
+				rem := weighted - win.elapsed
+				if rem < 30 {
+					rem = 30
+				}
+				avail[i] = rem
+			}
+		}
+
+		srvDuration := math.Floor(weighted)
+		if srvDuration < 30 {
+			srvDuration = 30
+		}
+		// Dispatch ahead tickets to earliest available window
+		ahead := *position.Position - 1
+		if ahead < 0 {
+			ahead = 0
+		}
+		for step := 0; step < ahead; step++ {
+			minIdx := 0
+			minTime := avail[0]
+			for wIdx := 1; wIdx < len(avail); wIdx++ {
+				if avail[wIdx] < minTime {
+					minTime = avail[wIdx]
+					minIdx = wIdx
+				}
+			}
+			avail[minIdx] += srvDuration
+		}
+
+		// Next available window time is the ticket's estimated wait
+		minTime := avail[0]
+		for wIdx := 1; wIdx < len(avail); wIdx++ {
+			if avail[wIdx] < minTime {
+				minTime = avail[wIdx]
+			}
+		}
+		wait = int(math.Max(60, math.Min(1800, math.Floor(minTime))))
+	}
+
 	callAt := out.CalculatedAt.Add(time.Duration(wait) * time.Second)
 	out.EstimatedWaitSeconds, out.EstimatedCallAt = &wait, &callAt
 	return out, nil

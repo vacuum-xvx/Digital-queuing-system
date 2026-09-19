@@ -69,6 +69,13 @@ type Ticket struct {
 	ServiceStartedAt *time.Time
 	CompletedAt      *time.Time
 	NoShowAt         *time.Time
+	CheckinAt        *time.Time
+	ReadyAt          *time.Time
+	DueAt            *time.Time
+	SourceRank       int
+	PolicyVersion    int64
+	RecallCount      int
+	ClientID         *string
 }
 
 type QueuePolicy struct {
@@ -108,6 +115,11 @@ type TicketEvent struct {
 	PolicyVersion    *int64
 	DecisionPriority *int64
 	OccurredAt       time.Time
+	Actor            *string
+	Reason           *string
+	DueAt            *time.Time
+	RequestID        *string
+	At               *time.Time
 }
 
 type QueuePositionReason string

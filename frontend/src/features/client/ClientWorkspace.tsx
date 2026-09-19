@@ -59,19 +59,48 @@ function StatusBadge({ status, source }: { status: TicketStatus; source?: Ticket
   return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status, source)}</span>;
 }
 
+function getBezierPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function ETASparkline({ eta }: { eta: TicketETA }) {
   const samples = eta.distribution?.samples ?? [];
   if (samples.length === 0) return null;
   const min = Math.min(...samples);
   const range = Math.max(Math.max(...samples) - min, 1);
-  const points = samples.map((value, index) => `${(index / Math.max(samples.length - 1, 1)) * 100},${28 - ((value - min) / range) * 24}`).join(' ');
+  const pts = samples.map((value, index) => ({
+    x: (index / Math.max(samples.length - 1, 1)) * 100,
+    y: 28 - ((value - min) / range) * 24,
+  }));
+  const pathD = getBezierPath(pts);
   const distribution = eta.distribution!;
   return (
-    <span className="flex items-center justify-center gap-2 mt-1" title={`Среднее ${distribution.avg} / Взвешенное ${distribution.weightedAvg} / Медиана ${distribution.median}`}>
-      <svg viewBox="0 0 100 32" className="w-24 h-8 text-[#054FA6]" role="img" aria-label="Распределение времени обслуживания">
-        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+    <span className="flex items-center justify-center gap-2 mt-1" title={`Среднее ${distribution.avg}с / Взвешенное ${distribution.weightedAvg}с / Медиана ${distribution.median}с`}>
+      <svg viewBox="0 0 100 32" className="w-24 h-8 text-[#0055A5] overflow-visible" role="img" aria-label="Распределение времени обслуживания">
+        <path d={pathD} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
-      {distribution.p90 - distribution.median > 0.5 * distribution.median && <span className="text-[10px] text-slate-600 border border-slate-300 rounded px-1.5 py-0.5">Повышенная дисперсия</span>}
+      {distribution.p90 - distribution.median > 0.5 * distribution.median && (
+        <span className="text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+          Повышенная нагрузка
+        </span>
+      )}
     </span>
   );
 }

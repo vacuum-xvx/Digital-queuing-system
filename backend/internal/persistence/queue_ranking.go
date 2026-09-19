@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"postcode/backend/internal/application"
 	"postcode/backend/internal/domain"
 )
 
@@ -77,7 +76,16 @@ func queuePosition(ctx context.Context, tx pgx.Tx, ticketID string) (domain.Queu
 	if t.Status != domain.TicketStatusWaiting && t.Status != domain.TicketStatusScheduled {
 		return out, nil
 	}
-	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt.After(out.CalculatedAt.Add(15*time.Minute)) && t.ArrivedAt == nil {
+	if t.Source == domain.TicketSourceAppointment && t.ArrivedAt == nil {
+		if t.ScheduledAt != nil && t.ScheduledAt.After(out.CalculatedAt.Add(15*time.Minute)) {
+			out.Reason = domain.QueuePositionNotEligibleYet
+			return out, nil
+		}
+		if t.ReadyAt != nil && t.ReadyAt.After(out.CalculatedAt) {
+			out.Reason = domain.QueuePositionNotEligibleYet
+			return out, nil
+		}
+	} else if t.ReadyAt != nil && t.ReadyAt.After(out.CalculatedAt) {
 		out.Reason = domain.QueuePositionNotEligibleYet
 		return out, nil
 	}
@@ -98,23 +106,51 @@ func queuePosition(ctx context.Context, tx pgx.Tx, ticketID string) (domain.Queu
 	if err != nil {
 		return out, dbError(err)
 	}
-	policy, err := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, t.BranchID))
-	if errors.Is(err, application.ErrNotFound) {
-		return out, errors.New("queue policy missing for branch")
+
+	dueAt := time.Now()
+	if t.DueAt != nil {
+		dueAt = *t.DueAt
+	} else if t.ScheduledAt != nil {
+		dueAt = *t.ScheduledAt
 	}
-	if err != nil {
-		return out, err
+	checkinAt := t.QueueEnteredAt
+	if t.CheckinAt != nil {
+		checkinAt = *t.CheckinAt
+	} else if t.ArrivedAt != nil {
+		checkinAt = *t.ArrivedAt
 	}
-	args := rankingArgs(w.ID, t.BranchID, out.CalculatedAt, policy)
-	args = append(args, t.ID)
-	err = tx.QueryRow(ctx, `SELECT rank,effective_priority,effective_queue_time FROM (
- SELECT id,effective_priority,effective_queue_time,
- row_number() OVER (ORDER BY `+rankingOrder+`) AS rank
- FROM (`+rankedCandidates+`) candidates) ranked WHERE id=$12::uuid`, args...).Scan(&out.Position, &out.EffectivePriority, &out.EffectiveQueueTime)
+
+	var rank int
+	err = tx.QueryRow(ctx, `
+		SELECT count(*) + 1
+		FROM tickets c
+		WHERE c.branch_id = $1::uuid
+		  AND (c.status = 'WAITING' OR (c.source = 'APPOINTMENT' AND c.status = 'SCHEDULED'))
+		  AND (c.window_id IS NULL OR c.window_id = $2::uuid)
+		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = c.service_id)
+		  AND c.ready_at <= $3::timestamptz
+		  AND (c.due_at, c.source_rank, c.checkin_at, c.id) < ($4::timestamptz, $5::int, $6::timestamptz, $7::uuid)
+	`, t.BranchID, w.ID, out.CalculatedAt, dueAt, t.SourceRank, checkinAt, t.ID).Scan(&rank)
 	if err != nil {
 		return out, dbError(err)
 	}
-	*out.EffectiveQueueTime = out.EffectiveQueueTime.UTC()
+
+	out.Position = &rank
+
+	var prio int64 = int64(t.SourceRank)
+	if legacyPolicy, pErr := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, t.BranchID)); pErr == nil {
+		if t.Source == domain.TicketSourceAppointment {
+			prio = int64(legacyPolicy.AppointmentDuePriority)
+		} else if t.Source == domain.TicketSourceQR {
+			prio = int64(legacyPolicy.QRPriority)
+		} else {
+			prio = int64(legacyPolicy.LivePriority)
+		}
+	}
+	out.EffectivePriority = &prio
+
+	eqt := checkinAt.UTC()
+	out.EffectiveQueueTime = &eqt
 	out.Reason = domain.QueuePositionAvailable
 	out.ReferenceWindow = &w
 	return out, nil

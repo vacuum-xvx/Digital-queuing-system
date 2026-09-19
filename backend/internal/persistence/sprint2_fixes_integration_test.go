@@ -83,7 +83,7 @@ func TestLegacyLiveSharesQRFIFO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2012-01-01Z' WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, live.Ticket.ID)
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at='2012-01-01Z', source_rank=1 WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, live.Ticket.ID)
 	first, second := qr.ID, live.Ticket.ID
 	if second < first {
 		first, second = second, first
@@ -163,7 +163,8 @@ func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 	var before, after string
-	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&before); err != nil {
+	const legacyCols = `(to_jsonb(t)-'arrived_at'-'no_show_at'-'checkin_at'-'ready_at'-'due_at'-'source_rank'-'policy_version'-'recall_count'-'client_id')::text`
+	if err = p.pool.QueryRow(ctx, `SELECT `+legacyCols+` FROM tickets t WHERE id=$1::uuid`, completed).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Up(); err != nil {
@@ -179,11 +180,11 @@ func TestLegacyAssignedAppointmentNormalization(t *testing.T) {
 		t.Fatalf("cancel normalized: %+v %v", cancelled, err)
 	}
 	events(t, ctx, p, pending, 1)
-	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
+	if err = p.pool.QueryRow(ctx, `SELECT `+legacyCols+` FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on up: %s -> %s (%v)", before, after, err)
 	}
 	downTo(t, m, migrationPreSprint2)
-	if err = p.pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'arrived_at'-'no_show_at')::text FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
+	if err = p.pool.QueryRow(ctx, `SELECT `+legacyCols+` FROM tickets t WHERE id=$1::uuid`, completed).Scan(&after); err != nil || after != before {
 		t.Fatalf("terminal changed on down: %s -> %s (%v)", before, after, err)
 	}
 }

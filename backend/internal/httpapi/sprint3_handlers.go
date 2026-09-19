@@ -31,7 +31,18 @@ func validUUID(value string) bool {
 
 func validPublicNumber(value string) bool {
 	v := strings.TrimSpace(value)
-	return strings.HasPrefix(v, "A-") || strings.HasPrefix(v, "Q-") || strings.HasPrefix(v, "L-") || (len(v) >= 3 && len(v) <= 16)
+	if strings.HasPrefix(v, "A-") || strings.HasPrefix(v, "Q-") || strings.HasPrefix(v, "L-") {
+		return len(v) >= 3 && len(v) <= 32
+	}
+	if len(v) >= 1 && len(v) <= 16 {
+		for _, c := range v {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func ticketPath(w http.ResponseWriter, r *http.Request) (string, bool) {

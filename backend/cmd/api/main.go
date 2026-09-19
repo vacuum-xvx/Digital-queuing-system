@@ -13,6 +13,7 @@ import (
 
 	"postcode/backend/internal/config"
 	"postcode/backend/internal/database"
+	"postcode/backend/internal/domain"
 	"postcode/backend/internal/httpapi"
 	"postcode/backend/internal/observability"
 	"postcode/backend/internal/persistence"
@@ -52,7 +53,65 @@ func run() int {
 		return 1
 	}
 	defer pool.Close()
-	usecases := persistence.New(pool)
+
+	policyPath := "queue_policy.yaml"
+	if p := os.Getenv("QUEUE_POLICY_PATH"); p != "" {
+		policyPath = p
+	}
+	policyCfg, err := domain.LoadQueuePolicyFile(policyPath)
+	if err != nil {
+		logger.Warn("Failed to load queue policy file, using default", "path", policyPath, "error", err.Error())
+		policyCfg = domain.DefaultQueuePolicy()
+	} else {
+		logger.Info("Queue policy loaded", "version", policyCfg.PolicyVersion, "path", policyPath)
+	}
+
+	usecases := persistence.New(pool, policyCfg)
+
+	// Background hot-reload of queue_policy.yaml
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		var lastMod time.Time
+		if fi, err := os.Stat(policyPath); err == nil {
+			lastMod = fi.ModTime()
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if fi, err := os.Stat(policyPath); err == nil && fi.ModTime().After(lastMod) {
+					lastMod = fi.ModTime()
+					if reloaded, err := domain.LoadQueuePolicyFile(policyPath); err == nil {
+						usecases.SetPolicy(reloaded)
+						logger.Info("Queue policy hot-reloaded successfully", "version", reloaded.PolicyVersion)
+					} else {
+						logger.Warn("Failed to hot-reload invalid queue policy file", "error", err.Error())
+					}
+				}
+			}
+		}
+	}()
+
+	// Background recovery worker: reconcile stale CALLED tickets
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				recCtx, recCancel := context.WithTimeout(ctx, 4*time.Second)
+				if err := usecases.ReconcileStaleTickets(recCtx, time.Now().UTC()); err != nil && !errors.Is(err, context.Canceled) {
+					logger.Warn("ReconcileStaleTickets warning", "error", err.Error())
+				}
+				recCancel()
+			}
+		}
+	}()
+
 	server := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: httpapi.NewRouter(pool, usecases, logger, cfg.AllowedOrigin), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()

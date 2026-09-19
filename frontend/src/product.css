@@ -156,10 +156,15 @@ html.a11y-mode.a11y-contrast :where(
 html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn):hover,
 html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn)[aria-current="true"],
 html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn)[aria-selected="true"],
-html.a11y-mode.a11y-contrast button[aria-pressed="true"] {
+html.a11y-mode.a11y-contrast button[aria-pressed="true"],
+html.a11y-mode.a11y-contrast [aria-pressed="true"] {
   background: var(--a11y-accent) !important;
   color: #000000 !important;
   border-color: var(--a11y-accent) !important;
+}
+
+html.a11y-mode.a11y-contrast [aria-pressed="true"] * {
+  color: #000000 !important;
 }
 
 html.a11y-mode.a11y-contrast :where(

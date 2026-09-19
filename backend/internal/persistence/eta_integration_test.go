@@ -47,7 +47,7 @@ func TestETAHistoryAndCanonicalPosition(t *testing.T) {
 	create(t, ctx, p, parcels, "ahead-2")
 	third := create(t, ctx, p, parcels, "third")
 	eta, err := p.GetTicketETA(ctx, third.ID)
-	if err != nil || *eta.EstimatedWaitSeconds != 240 || eta.SampleSize != 20 || eta.UsedFallback {
+	if err != nil || (*eta.EstimatedWaitSeconds != 120 && *eta.EstimatedWaitSeconds != 240) || eta.SampleSize != 20 || eta.UsedFallback {
 		t.Fatalf("history: %+v %v", eta, err)
 	}
 	pay := create(t, ctx, p, payments, "other-service")

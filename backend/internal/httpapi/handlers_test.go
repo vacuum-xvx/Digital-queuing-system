@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"postcode/backend/internal/application"
 	"postcode/backend/internal/domain"
@@ -99,6 +100,10 @@ func (f *FakeUseCases) CallNext(ctx context.Context, windowID string) (domain.Ti
 	return f.CallNextFunc(ctx, windowID)
 }
 
+func (f *FakeUseCases) ReconcileStaleTickets(ctx context.Context, authoritativeTime time.Time) error {
+	return nil
+}
+
 func (f *FakeUseCases) StartService(ctx context.Context, ticketID string) (domain.Ticket, error) {
 	return f.StartServiceFunc(ctx, ticketID)
 }
@@ -159,6 +164,14 @@ func (f *FakeUseCases) UpdateWindowServices(ctx context.Context, cmd application
 		return f.UpdateWindowServicesFunc(ctx, cmd)
 	}
 	return domain.Window{}, nil
+}
+
+func (f *FakeUseCases) CreateWindow(ctx context.Context, branchID string) (domain.Window, error) {
+	return domain.Window{ID: "new-window-id", BranchID: branchID, Number: 99, Status: domain.WindowStatusClosed}, nil
+}
+
+func (f *FakeUseCases) DeleteWindow(ctx context.Context, windowID string) error {
+	return nil
 }
 
 func (f *FakeUseCases) ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
