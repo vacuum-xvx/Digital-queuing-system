@@ -70,6 +70,9 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
     try {
       await logout();
       setCurrentUser(null);
+      // Уведомляем AuthBoundary, чтобы на /operator и /admin сразу
+      // показалась форма входа без перезагрузки страницы.
+      window.dispatchEvent(new CustomEvent('pochta:logout'));
     } catch {
       // ignore
     }
@@ -99,36 +102,28 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             <button
               type="button"
               onClick={() => setSoundEnabled((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border transition-all ${
-                soundEnabled
-                  ? 'bg-white/15 border-white/30 text-white hover:bg-white/25'
-                  : 'bg-black/20 border-white/15 text-blue-200 hover:bg-white/10'
-              }`}
+              className="flex items-center justify-center gap-1.5 h-8 min-w-[108px] px-2.5 rounded-lg border transition-all bg-white/15 border-white/30 text-white hover:bg-white/25"
               title="Звуковое оповещение"
             >
               {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-[#86BBFF]" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
-              <span className="font-bold text-white hidden sm:inline">{soundEnabled ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ'}</span>
+              <span className="font-bold text-white hidden sm:inline whitespace-nowrap">{soundEnabled ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ'}</span>
             </button>
 
             {/* Accessibility Button */}
             <button
               type="button"
               onClick={() => setIsA11y((prev) => !prev)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border transition-all ${
-                isA11y
-                  ? 'bg-[#FFE600] text-black border-[#FFE600] font-bold shadow-md'
-                  : 'bg-black/20 border-white/15 text-blue-100 hover:bg-white/10'
-              }`}
-              title={isA11y ? 'Версия для слабовидящих: включена (нажмите для выключения)' : 'Включить версию для слабовидящих'}
+              className="flex items-center justify-center gap-1.5 h-8 min-w-[108px] px-2.5 rounded-lg border transition-all bg-white/15 border-white/30 text-white hover:bg-white/25"
+              title="Включить версию для слабовидящих"
             >
               <Eye className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Доступность</span>
+              <span className="font-bold text-white hidden sm:inline whitespace-nowrap">Доступность</span>
             </button>
 
             {/* Moscow Clock */}
-            <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/15 text-white font-bold">
+            <div className="flex items-center justify-center gap-1.5 h-8 min-w-[108px] px-2.5 rounded-lg border transition-all bg-white/15 border-white/30 text-white hover:bg-white/25">
               <Clock className="w-3.5 h-3.5 text-[#86BBFF]" />
-              <span>{timeStr || 'МСК'}</span>
+              <span className="font-bold text-white tabular-nums whitespace-nowrap">{timeStr || 'МСК'}</span>
             </div>
 
             {/* Auth / Account Area */}

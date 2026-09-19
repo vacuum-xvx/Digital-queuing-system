@@ -205,7 +205,7 @@ export function OperatorWorkspace() {
     <div className="max-w-7xl mx-auto space-y-4">
       {/* 1. TOP WORKSTATION CARD */}
       <section className="bg-white rounded-3xl border border-[#D2D8E2] p-5 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col gap-4 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-[#003B73] text-white font-mono font-black text-2xl flex items-center justify-center shadow-md shrink-0">
               № {selected?.number ?? '—'}
@@ -213,7 +213,7 @@ export function OperatorWorkspace() {
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="font-black text-lg text-slate-900 tracking-tight">
-                  {selected ? `Окно № ${selected.number} · Универсальное` : 'Рабочее место оператора'}
+                                    {selected ? `Окно № ${selected.number}` : 'Рабочее место оператора'}
                 </h1>
                 {selected && (
                   <span
@@ -238,10 +238,10 @@ export function OperatorWorkspace() {
           </div>
 
           {/* Branch and Window Selectors + Shift Toggle */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-end justify-start gap-3 w-full">
             {/* Branch Selector */}
-            <div className="flex flex-col text-xs">
-              <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">Отделение</span>
+            <div className="flex flex-col shrink-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Отделение</span>
               <select
                 aria-label="Отделение"
                 value={branchId}
@@ -253,7 +253,7 @@ export function OperatorWorkspace() {
                   setCurrent(null);
                   setBranchId(e.target.value);
                 }}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white text-slate-800"
+                className="px-3 h-12 rounded-xl border border-slate-300 text-sm font-medium bg-white text-slate-800 shadow-sm min-w-[200px] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
               >
                 {branches.map(b => (
                   <option key={b.id} value={b.id}>
@@ -264,8 +264,8 @@ export function OperatorWorkspace() {
             </div>
 
             {/* Window Selector */}
-            <div className="flex flex-col text-xs">
-              <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">Окно</span>
+            <div className="flex flex-col shrink-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Окно</span>
               <select
                 aria-label="Окно"
                 value={windowId}
@@ -277,7 +277,7 @@ export function OperatorWorkspace() {
                   setCurrent(null);
                   setWindowId(e.target.value);
                 }}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold bg-white text-slate-800 font-mono"
+                className="px-3 h-12 rounded-xl border border-slate-300 text-sm font-medium bg-white text-slate-800 shadow-sm min-w-[160px] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
               >
                 {windows.map(w => (
                   <option key={w.id} value={w.id}>
@@ -287,8 +287,10 @@ export function OperatorWorkspace() {
               </select>
             </div>
 
-            {/* Quick Window Button Pills */}
-            <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+            {/* Quick Window Buttons */}
+            <div className="flex flex-col shrink-0">
+              <span aria-hidden="true" className="text-[10px] font-bold uppercase tracking-wider mb-1 pl-1 invisible select-none">Окна</span>
+              <div className="flex items-center gap-2 h-12">
               {windows.map(w => (
                 <button
                   key={w.id}
@@ -300,35 +302,42 @@ export function OperatorWorkspace() {
                     setCurrent(null);
                     setWindowId(w.id);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                  className={`h-full px-3 rounded-xl border text-sm font-medium shadow-sm transition-all flex items-center justify-center gap-1.5 whitespace-nowrap overflow-visible shrink-0 ${
                     windowId === w.id
-                      ? 'bg-[#003B73] text-white shadow-sm'
-                      : 'text-slate-700 hover:bg-white'
+                      ? 'bg-[#003B73] text-white border-[#003B73] ring-2 ring-[#003B73]/20 shadow-[#003B73]/20'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
                   }`}
                 >
-                  № {w.number} {w.status === 'OPEN' ? '🟢' : '⚪'}
+                  Окно {w.number}
+                  <span className={`w-2.5 h-2.5 rounded-full ${w.status === 'OPEN' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-slate-300'}`}></span>
                 </button>
               ))}
+              </div>
             </div>
 
             {/* Shift Open/Close Button */}
             {selected && (
-              <button
-                type="button"
-                disabled={pending || !ready}
-                onClick={() =>
-                  void act(() =>
-                    changeWindowStatus(windowId, selected.status === 'OPEN' ? 'CLOSED' : 'OPEN')
-                  )
-                }
-                className={`min-h-[38px] px-3.5 rounded-xl font-bold text-xs border transition-colors ${
-                  selected.status === 'OPEN'
-                    ? 'text-[#D92534] border-red-200 hover:bg-red-50'
-                    : 'text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100'
-                }`}
-              >
-                {selected.status === 'OPEN' ? 'Закрыть окно' : 'Открыть окно'}
-              </button>
+              <div className="flex flex-col shrink-0">
+                <span aria-hidden="true" className="text-[10px] font-bold uppercase tracking-wider mb-1 pl-1 invisible select-none">Смена</span>
+                <div className="h-12 flex items-center">
+                  <button
+                    type="button"
+                    disabled={pending || !ready}
+                    onClick={() =>
+                      void act(() =>
+                        changeWindowStatus(windowId, selected.status === 'OPEN' ? 'CLOSED' : 'OPEN')
+                      )
+                    }
+                    className={`h-full px-4 rounded-xl border shadow-sm text-sm font-semibold flex items-center justify-center whitespace-nowrap overflow-visible shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                      selected.status === 'OPEN'
+                        ? 'text-red-700 border-red-200 bg-red-50 hover:bg-red-100 focus:ring-red-500'
+                        : 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 focus:ring-emerald-500'
+                    }`}
+                  >
+                    {selected.status === 'OPEN' ? 'Закрыть окно' : 'Открыть окно'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -363,9 +372,6 @@ export function OperatorWorkspace() {
               );
             })}
           </div>
-          <span className="font-mono text-[11px] text-slate-400">
-            Нажмите на услугу, чтобы включить или отключить её для окна
-          </span>
         </div>
       </section>
 
@@ -429,7 +435,7 @@ export function OperatorWorkspace() {
               <div className="p-4 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-3">
                 <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
                   <UserPlus className="w-4 h-4 text-[#054FA6]" />
-                  <span>Живая очередь (LIVE)</span>
+                  <span>Живая очередь</span>
                 </div>
                 <p className="text-[11px] text-slate-500">
                   Выдача талона клиенту без мобильного устройства

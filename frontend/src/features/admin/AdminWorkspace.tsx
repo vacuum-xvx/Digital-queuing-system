@@ -12,15 +12,13 @@ import {
   Activity,
   Sliders,
   AlertTriangle,
-  FileText,
   Users,
   QrCode,
   CheckCircle2,
-  RefreshCw,
-  Search
+  RefreshCw
 } from 'lucide-react';
 
-type AdminTab = 'overview' | 'policy' | 'anomalies' | 'audit' | 'users' | 'qr';
+type AdminTab = 'overview' | 'policy' | 'anomalies' | 'users' | 'qr';
 
 export const AdminWorkspace: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -31,12 +29,6 @@ export const AdminWorkspace: React.FC = () => {
 
   // Real backend overview data
   const [overview, setOverview] = useState<AdminBranchOverview | null>(null);
-
-  // Ticket audit search
-  const [auditTicketId, setAuditTicketId] = useState('');
-  const [auditEvents, setAuditEvents] = useState<any[]>([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditError, setAuditError] = useState('');
 
   // Initial branches fetch
   useEffect(() => {
@@ -99,26 +91,6 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
-  const handleSearchAudit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!auditTicketId.trim()) return;
-    setAuditLoading(true);
-    setAuditError('');
-    try {
-      const res = await fetch(`/api/v1/admin/tickets/${encodeURIComponent(auditTicketId.trim())}/events`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setAuditEvents(data?.items || []);
-    } catch {
-      setAuditError('Не удалось найти события для указанного ID талона');
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
   const anomaliesList = overview?.anomalies || [];
   const noShowCount = anomaliesList.filter(a => a.type === 'NO_SHOW').length;
 
@@ -130,9 +102,6 @@ export const AdminWorkspace: React.FC = () => {
           <div className="flex items-center gap-3.5">
             <PochtaEmblem className="w-11 h-11 drop-shadow-sm shrink-0" bg="#003B73" fg="#FFFFFF" />
             <div>
-              <div className="text-[11px] font-mono uppercase text-slate-500 font-bold tracking-wider">
-                Мониторинг ОПС · Главпочтамт
-              </div>
               <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                 Панель управления начальника ОПС
               </h1>
@@ -207,19 +176,6 @@ export const AdminWorkspace: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setActiveTab('audit')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
-              activeTab === 'audit'
-                ? 'bg-white text-[#003B73] shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Аудит талонов</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveTab('users')}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'users'
@@ -228,7 +184,7 @@ export const AdminWorkspace: React.FC = () => {
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Пользователи (IAM)</span>
+            <span>Пользователи</span>
           </button>
 
           <button
@@ -340,8 +296,6 @@ export const AdminWorkspace: React.FC = () => {
                 </div>
               </div>
 
-              {/* Branch QR card is also visible on overview for quick access */}
-              <BranchQR branchId={selectedBranchId} />
             </div>
           )}
 
@@ -408,72 +362,10 @@ export const AdminWorkspace: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 4: AUDIT */}
-          {activeTab === 'audit' && (
-            <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-6 shadow-sm space-y-4">
-              <div className="border-b border-slate-100 pb-3">
-                <h3 className="font-bold text-sm text-slate-900">
-                  Аудит жизненного цикла талонов (Audit Trail)
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Неизменяемый журнал переходов состояний очереди
-                </p>
-              </div>
-
-              <form onSubmit={handleSearchAudit} className="flex gap-2 max-w-lg">
-                <input
-                  type="text"
-                  value={auditTicketId}
-                  onChange={(e) => setAuditTicketId(e.target.value)}
-                  placeholder="UUID талона (например 22222222-...)"
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-mono"
-                />
-                <button
-                  type="submit"
-                  disabled={auditLoading}
-                  className="px-4 py-2 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs flex items-center gap-1.5"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                  <span>Поиск</span>
-                </button>
-              </form>
-
-              {auditError && (
-                <div role="alert" className="p-3 rounded-xl bg-red-50 text-red-700 text-xs">
-                  {auditError}
-                </div>
-              )}
-
-              {auditEvents.length > 0 && (
-                <div className="space-y-1.5 text-xs font-mono">
-                  {auditEvents.map((evt) => (
-                    <div
-                      key={evt.id}
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-bold text-[#054FA6]">[{evt.type}]</span>
-                        <span className="ml-2 text-slate-700 font-sans">
-                          {evt.fromStatus ? `${evt.fromStatus} → ` : ''}{evt.toStatus}
-                        </span>
-                        {evt.windowId && (
-                          <span className="ml-2 text-slate-500">Окно: {evt.windowId.slice(0, 8)}…</span>
-                        )}
-                      </div>
-                      <span className="text-slate-400 text-[11px]">
-                        {formatMoscowDateTime(evt.createdAt)} МСК
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 5: USERS (IAM) */}
+          {/* TAB 4: USERS (IAM) */}
           {activeTab === 'users' && <UsersManagement />}
 
-          {/* TAB 6: QR CODE */}
+          {/* TAB 5: QR CODE */}
           {activeTab === 'qr' && <BranchQR branchId={selectedBranchId} />}
         </main>
       ) : (
