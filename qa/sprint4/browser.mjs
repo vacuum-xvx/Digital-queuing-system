@@ -21,9 +21,9 @@ async function login(page, area, email, password) {
   await page.getByLabel('Пароль', { exact:true }).fill(password);
   await page.getByRole('button', { name:'Войти', exact:true }).click();
   await page.getByRole('link', { name:'Открыть рабочее место' }).click();
-  await page.getByRole('button', { name:'Выйти', exact:true }).waitFor();
+  await page.getByRole('button', { name:'Выйти из учётной записи' }).waitFor();
   await page.reload();
-  await page.getByRole('button', { name:'Выйти', exact:true }).waitFor();
+  await page.getByRole('button', { name:'Выйти из учётной записи' }).waitFor();
 }
 try {
   const clientContext = await context('America/New_York');
@@ -97,14 +97,14 @@ try {
   await operator.getByRole('button',{name:'Вызвать следующего',exact:true}).click();
   await operator.getByRole('button',{name:'Не явился',exact:true}).click();
   await operator.getByRole('heading',{name:'Нет активного талона'}).waitFor();
-  await operator.getByRole('button',{name:'Выйти',exact:true}).click();
+  await operator.getByRole('button',{name:'Выйти из учётной записи'}).click();
   await operator.getByRole('button',{name:'Войти',exact:true}).waitFor();
   const admin = await (await context()).newPage();
   await login(admin,'admin',process.env.QA_CHIEF_EMAIL || 'admin@pochta.local',process.env.QA_CHIEF_PASSWORD);
   await admin.getByRole('heading',{name:'QR-код отделения'}).waitFor();
   await admin.getByRole('img',{name:/QR-код для получения/}).waitFor();
   await overflow(admin);
-  await admin.getByRole('button',{name:'Выйти',exact:true}).click();
+  await admin.getByRole('button',{name:'Выйти из учётной записи'}).click();
   for (const zone of ['UTC','Europe/Berlin','America/New_York']) {
     const page = await (await context(zone)).newPage();
     await page.goto(baseURL);
