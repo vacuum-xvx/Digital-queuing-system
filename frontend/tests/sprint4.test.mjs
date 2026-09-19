@@ -61,3 +61,9 @@ test('auth getMe returns null on 401 unauthenticated without fatal error', async
     globalThis.fetch = originalFetch;
   }
 });
+
+test('auth getApiBaseUrl normalizes api prefixes without duplicating', async () => {
+  const auth = await loadTS('../src/api/authApi.ts');
+  assert.equal(typeof auth.getApiBaseUrl, 'function');
+  assert.equal(auth.getApiBaseUrl(), '/api/v1');
+});

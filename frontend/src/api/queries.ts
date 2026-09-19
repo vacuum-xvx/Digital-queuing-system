@@ -1,5 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
 
+function getApiBaseUrl(): string {
+  let envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
+
+  if (typeof window !== 'undefined' && window.location) {
+    const isLocalhostHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (envUrl && typeof envUrl === 'string') {
+      const isEnvLocalhost = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+      if (isEnvLocalhost && !isLocalhostHost) {
+        envUrl = undefined;
+      }
+    }
+  }
+
+  if (!envUrl || typeof envUrl !== 'string' || envUrl.trim() === '' || envUrl === '/') {
+    return '/api/v1';
+  }
+
+  const clean = envUrl.trim().replace(/\/+$/, '');
+  if (clean.endsWith('/api/v1')) {
+    return clean;
+  }
+  if (clean.endsWith('/api')) {
+    return `${clean}/v1`;
+  }
+  return `${clean}/api/v1`;
+}
+
 // A simple hook for polling data from a URL
 export function usePoll<T>(url: string, intervalMs: number = 3000) {
   const [data, setData] = useState<T | null>(null);
@@ -12,8 +39,7 @@ export function usePoll<T>(url: string, intervalMs: number = 3000) {
       return;
     }
     try {
-      const envUrl = import.meta.env.VITE_API_BASE_URL;
-      const apiPrefix = envUrl ? `${envUrl.replace(/\/$/, '')}/api/v1` : '/api/v1';
+      const apiPrefix = getApiBaseUrl();
       const cleanPath = url.startsWith('/api/v1') ? url.replace(/^\/api\/v1/, '') : url;
       const fullUrl = `${apiPrefix}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
       

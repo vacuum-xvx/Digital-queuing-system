@@ -84,7 +84,8 @@ func cors(allowedOrigin string) func(http.Handler) http.Handler {
 						break
 					}
 				}
-				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080") {
+				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080" ||
+					strings.HasSuffix(reqOrigin, "duckdns.org") || strings.HasSuffix(reqOrigin, "duckdns.com")) {
 					matched = true
 				}
 				if matched {
@@ -93,7 +94,7 @@ func cors(allowedOrigin string) func(http.Handler) http.Handler {
 					w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 					if r.Method == http.MethodOptions {
 						w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-						w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID")
+						w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Idempotency-Key, X-Request-ID, Authorization")
 						w.WriteHeader(http.StatusNoContent)
 						return
 					}
