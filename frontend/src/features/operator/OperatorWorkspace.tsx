@@ -407,7 +407,7 @@ export function OperatorWorkspace() {
                 </div>
               ) : (
                 <>
-                  <TicketCard ticket={current} selectedWindow={selected} />
+                  <TicketCard ticket={current} selectedWindow={selected} services={services} />
 
                   <div className="pt-2">
                     <ActionControls
