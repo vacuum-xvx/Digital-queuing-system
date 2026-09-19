@@ -21,6 +21,12 @@ export function App() {
     return () => window.removeEventListener('popstate', onLocationChange);
   }, []);
 
+  useEffect(() => {
+    const kiosk = currentPath.startsWith('/kiosk/') || new URLSearchParams(window.location.search).get('kiosk') === '1';
+    document.documentElement.classList.toggle('kiosk-mode', kiosk);
+    return () => document.documentElement.classList.remove('kiosk-mode');
+  }, [currentPath]);
+
   const navigate = (to: string, event?: MouseEvent<HTMLAnchorElement>) => {
     if (event) {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -47,7 +53,8 @@ export function App() {
     return <><p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p><PochtaDemo currentPath={currentPath} navigate={navigate} /></>;
   }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
-    ...(currentPath.startsWith('/q/') ? [{ path: currentPath, label: 'QR', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(3)} /> }] : []),
+    ...(currentPath.startsWith('/q/') ? [{ path: currentPath, label: 'QR', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(3)} kiosk={new URLSearchParams(window.location.search).get('kiosk') === '1'} /> }] : []),
+    ...(currentPath.startsWith('/kiosk/') ? [{ path: currentPath, label: 'Kiosk', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(7)} kiosk /> }] : []),
     { path: '/', label: 'Client', page: <ClientPage /> },
     { path: '/operator/login', label: 'Operator login', page: <AuthBoundary area="operator" loginPage><OperatorPage /></AuthBoundary> },
     { path: '/operator', label: 'Operator', page: <AuthBoundary area="operator" loginPage={false}><OperatorPage /></AuthBoundary> },
@@ -63,7 +70,7 @@ export function App() {
   return (
     <div className="product-shell min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
       <ProductHeader currentPath={currentPath} />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-6">
+      <main id="main" className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-6">
         {activeRoute.page}
       </main>
     </div>

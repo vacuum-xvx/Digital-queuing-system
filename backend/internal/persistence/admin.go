@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -67,7 +69,9 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 			COALESCE((
 				MAX(EXTRACT(EPOCH FROM (called_at - queue_entered_at)) / 60)
 				FILTER (WHERE called_at IS NOT NULL AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
-			)::int, 0)
+			)::int, 0),
+			percentile_cont(0.9) WITHIN GROUP (ORDER BY (EXTRACT(EPOCH FROM (NOW() - queue_entered_at)) / 60)::double precision)
+			FILTER (WHERE status = 'WAITING')
 		FROM tickets
 		WHERE branch_id = $1
 	`, id).Scan(
@@ -75,6 +79,7 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 		&overview.Metrics.ServedTodayCount,
 		&overview.Metrics.AvgWaitTimeMinutes,
 		&overview.Metrics.MaxWaitTimeMinutes,
+		&overview.Metrics.P90WaitMinutes,
 	)
 	if err != nil {
 		return overview, dbError(err)
@@ -168,6 +173,26 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 			aw.CurrentService = &at.serviceName
 		}
 		overview.Windows = append(overview.Windows, aw)
+	}
+	if overview.Metrics.P90WaitMinutes != nil {
+		closedCount := 0
+		for _, window := range overview.Windows {
+			if window.Status == domain.WindowStatusClosed { closedCount++ }
+		}
+		p90 := *overview.Metrics.P90WaitMinutes
+		shouldRecommend := p90 > 12 || (float64(overview.Metrics.AvgWaitTimeMinutes) > 8 && overview.Metrics.WaitingClientsCount > overview.Metrics.ActiveWindowsCount*3)
+		if shouldRecommend && closedCount > 0 {
+			recommended := int(math.Ceil((p90 - 8) / 5))
+			if recommended < 1 { recommended = 1 }
+			if recommended > closedCount { recommended = closedCount }
+			severity := "warning"
+			if p90 > 15 { severity = "critical" }
+			overview.WindowRecommendation = &domain.WindowRecommendation{
+				RecommendedCount: recommended,
+				Reason: fmt.Sprintf("P90=%.0f мин > SLA 12, риск нарушения — рекомендуем открыть %d окно", p90, recommended),
+				Severity: severity, P90WaitMinutes: p90,
+			}
+		}
 	}
 
 	// 8. Queue (WAITING, CALLED, SERVING) — single query

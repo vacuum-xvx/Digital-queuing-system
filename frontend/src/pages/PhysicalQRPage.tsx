@@ -1,10 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { listBranches } from '../api/client/clientApi';
 import { ClientWorkspace } from '../features/client/ClientWorkspace';
-import { AlertCircle, MapPin, ArrowLeft } from 'lucide-react';
+import { AlertCircle, MapPin, ArrowLeft, Maximize } from 'lucide-react';
 
-export function PhysicalQRPage({ branchId }: { branchId: string }) {
+export function PhysicalQRPage({ branchId, kiosk = false }: { branchId: string; kiosk?: boolean }) {
   const [state, setState] = useState<'loading' | 'valid' | 'invalid' | 'error'>('loading');
+  const [resetToken, setResetToken] = useState(0);
+
+  useEffect(() => {
+    if (!kiosk) return;
+    let timer = window.setTimeout(() => setResetToken((value) => value + 1), 120000);
+    const resetIdleTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setResetToken((value) => value + 1), 120000);
+    };
+    const events = ['pointerdown', 'keydown', 'touchstart'];
+    events.forEach((event) => window.addEventListener(event, resetIdleTimer));
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((event) => window.removeEventListener(event, resetIdleTimer));
+    };
+  }, [kiosk]);
 
   useEffect(() => {
     let active = true;
@@ -57,5 +73,15 @@ export function PhysicalQRPage({ branchId }: { branchId: string }) {
     );
   }
 
-  return <ClientWorkspace key={branchId} qrBranchId={branchId} />;
+  return (
+    <div className={`relative ${kiosk ? 'kiosk-shell' : ''}`}>
+      {kiosk && (
+        <button type="button" className="absolute right-0 top-0 z-10 inline-flex items-center gap-2" onClick={() => document.documentElement.requestFullscreen?.()}>
+          <Maximize className="w-4 h-4" />
+          Полный экран
+        </button>
+      )}
+      <ClientWorkspace key={branchId} qrBranchId={branchId} kiosk={kiosk} resetToken={resetToken} />
+    </div>
+  );
 }
