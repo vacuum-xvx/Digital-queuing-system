@@ -270,15 +270,6 @@ func TestWindowManagement_Sprint2(t *testing.T) {
 	parcels := domain.Service{ID: "22222222-2222-2222-2222-222222222222", Code: "PARCELS", Name: "Посылки"}
 	send := domain.Service{ID: "33333333-2222-2222-2222-222222222222", Code: "SEND", Name: "Отправка писем и посылок"}
 
-	hasService := func(ids []string, target string) bool {
-		for _, id := range ids {
-			if id == target {
-				return true
-			}
-		}
-		return false
-	}
-
 	uc := &FakeUseCases{
 		ChangeWindowStatusFunc: func(ctx context.Context, id string, status domain.WindowStatus) (domain.Window, error) {
 			if id != windowID {
@@ -290,16 +281,17 @@ func TestWindowManagement_Sprint2(t *testing.T) {
 			if cmd.WindowID != windowID {
 				return domain.Window{}, application.ErrNotFound
 			}
-			if !hasService(cmd.ServiceIDs, send.ID) {
-				// tickets(window_id, service_id) references window_services, so a
-				// capability with ticket history cannot be dropped.
-				return domain.Window{}, application.ErrInvalidState
-			}
+			// Since 000012 any requested capability set is accepted: ticket history no
+			// longer pins a capability, so dropping a service always succeeds.
 			services := make([]domain.Service, 0, len(cmd.ServiceIDs))
-			if hasService(cmd.ServiceIDs, parcels.ID) {
-				services = append(services, parcels)
+			for _, id := range cmd.ServiceIDs {
+				switch id {
+				case parcels.ID:
+					services = append(services, parcels)
+				case send.ID:
+					services = append(services, send)
+				}
 			}
-			services = append(services, send)
 			return domain.Window{ID: cmd.WindowID, Number: 1, Status: domain.WindowStatusOpen, Services: services}, nil
 		},
 	}
@@ -370,18 +362,18 @@ func TestWindowManagement_Sprint2(t *testing.T) {
 		}
 	})
 
-	t.Run("service with ticket history rejected", func(t *testing.T) {
+	t.Run("service with ticket history can be dropped", func(t *testing.T) {
 		body := `{"serviceIds":["22222222-2222-2222-2222-222222222222"]}`
 		w := put(t, "/api/v1/admin/windows/"+windowID+"/services", body)
-		if w.Code != http.StatusConflict {
-			t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
-		var res ErrorResponse
-		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+		var wnd WindowDTO
+		if err := json.NewDecoder(w.Body).Decode(&wnd); err != nil {
 			t.Fatal(err)
 		}
-		if res.Error.Code != "INVALID_TICKET_STATE" {
-			t.Fatalf("expected INVALID_TICKET_STATE, got %s", res.Error.Code)
+		if len(wnd.Services) != 1 || wnd.Services[0].Code != "PARCELS" {
+			t.Fatalf("expected PARCELS-only capability set, got %+v", wnd.Services)
 		}
 	})
 

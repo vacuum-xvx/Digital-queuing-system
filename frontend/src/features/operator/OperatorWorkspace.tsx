@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as api from '../../api/operator/operatorApi';
-import { changeWindowStatus } from '../../api/admin/adminApi';
+import { changeWindowStatus, updateWindowServices } from '../../api/admin/adminApi';
+import { AdminApiError } from '../../api/admin/types';
 import { listServices } from '../../api/client/clientApi';
 import { Branch, OperatorWindow, Ticket, OperatorApiError } from '../../api/operator/types';
 import { Service } from '../../api/client/types';
@@ -13,6 +14,7 @@ import {
   ArrowRightLeft,
   RotateCcw,
   CheckSquare,
+  Square,
   AlertCircle,
   Users,
   Layers,
@@ -158,6 +160,41 @@ export function OperatorWorkspace() {
 
   const selected = windows.find(w => w.id === windowId);
 
+  // Переключение услуги окна (window_services). Набор не может стать пустым.
+  // С миграции 000012 услугу можно отключить всегда — даже если окно уже
+  // обслуживало по ней талоны; ветка 409 ниже оставлена как защитный fallback.
+  async function toggleWindowService(serviceId: string) {
+    if (!selected || busy.current) return;
+    const currentIds = selected.services.map(s => s.id);
+    const nextIds = currentIds.includes(serviceId)
+      ? currentIds.filter(id => id !== serviceId)
+      : [...currentIds, serviceId];
+    if (nextIds.length === 0) {
+      setNotice('У окна должна остаться доступной хотя бы одна услуга.');
+      return;
+    }
+    busy.current = true; ++epoch.current; setPending(true); setError(''); setNotice('');
+    try {
+      const updated = await updateWindowServices(selected.id, nextIds);
+      setWindows(prev => prev.map(w => (w.id === updated.id ? { ...w, services: updated.services } : w)));
+      setNotice(`Окно № ${updated.number}: список услуг обновлён.`);
+    } catch (err) {
+      if (err instanceof AdminApiError && err.status === 409) {
+        setNotice('Услугу нельзя отключить: в этом окне уже обслуживали талоны с такой услугой.');
+      } else if (err instanceof AdminApiError && err.status === 404) {
+        setNotice('Окно не найдено. Обновите страницу и попробуйте снова.');
+      } else if (err instanceof AdminApiError && (err.status === 401 || err.status === 403)) {
+        setError('Недостаточно прав или сессия истекла. Войдите заново и повторите попытку.');
+      } else {
+        setNotice('Не удалось сохранить список услуг окна. Проверьте соединение и попробуйте снова.');
+      }
+    } finally {
+      busy.current = false;
+      setPending(false);
+      setRevision(n => n + 1);
+    }
+  }
+
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -296,22 +333,38 @@ export function OperatorWorkspace() {
           </div>
         </div>
 
-        {/* Window Services List */}
+        {/* Window Services List — чипы-переключатели услуг окна */}
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-500">Услуги окна:</span>
-            {services.map(srv => (
-              <span
-                key={srv.id}
-                className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold bg-blue-50/70 border-blue-200 text-[#054FA6] flex items-center gap-1"
-              >
-                <CheckSquare className="w-3 h-3" />
-                <span>{srv.name}</span>
-              </span>
-            ))}
+            {services.map(srv => {
+              const isEnabled = selected?.services.some(ws => ws.id === srv.id) ?? false;
+              return (
+                <button
+                  key={srv.id}
+                  type="button"
+                  aria-pressed={isEnabled}
+                  disabled={pending || !selected}
+                  title={
+                    isEnabled
+                      ? `Отключить услугу «${srv.name}» для этого окна`
+                      : `Включить услугу «${srv.name}» для этого окна`
+                  }
+                  onClick={() => void toggleWindowService(srv.id)}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                    isEnabled
+                      ? 'bg-blue-50/70 border-blue-200 text-[#054FA6] hover:bg-blue-100'
+                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                  } ${pending || !selected ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  {isEnabled ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                  <span className={isEnabled ? '' : 'line-through'}>{srv.name}</span>
+                </button>
+              );
+            })}
           </div>
           <span className="font-mono text-[11px] text-slate-400">
-            Режим обслуживания: автоматическое распределение
+            Нажмите на услугу, чтобы включить или отключить её для окна
           </span>
         </div>
       </section>
