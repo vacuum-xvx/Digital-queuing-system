@@ -1,11 +1,13 @@
 import React from 'react';
 import { formatMoscowTime } from '../../utils/time';
 import { Ticket, OperatorWindow } from '../../api/operator/types';
+import { Service } from '../../api/client/types';
 import { UserX, Clock, Tag } from 'lucide-react';
 
 interface TicketCardProps {
   ticket: Ticket | null;
   selectedWindow: OperatorWindow;
+  services?: Service[];
 }
 
 function getTicketSourceLabel(source: Ticket['source']): string {
@@ -34,7 +36,7 @@ function getTicketStatusLabel(status: Ticket['status']): string {
   return labels[status] || status;
 }
 
-export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }) => {
+export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, services }) => {
   if (!ticket) {
     return (
       <div className="text-center py-10 px-4 space-y-3 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200">
@@ -53,6 +55,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
   const isCalled = ticket.status === 'CALLED';
   const isServing = ticket.status === 'SERVING';
   const sourceLabel = getTicketSourceLabel(ticket.source);
+
+  // Тип услуги: сначала каталог услуг отделения, затем услуги выбранного окна
+  const serviceName =
+    services?.find(s => s.id === ticket.serviceId)?.name ||
+    selectedWindow.services.find(s => s.id === ticket.serviceId)?.name ||
+    'Услуга не указана';
 
   return (
     <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm space-y-4">
@@ -90,7 +98,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow }
             {ticket.publicNumber}
           </div>
           <div className="text-xs font-semibold text-slate-700">
-            {(ticket as any).service?.name || 'Почтовые услуги'}
+            {serviceName}
           </div>
         </div>
 
