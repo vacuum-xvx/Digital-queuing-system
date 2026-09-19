@@ -18,7 +18,8 @@
 .product-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: var(--space) auto; max-width: 1000px; }
 .auth-card { max-width: 460px; }
 .product-shell label { display: grid; gap: .4rem; margin-bottom: var(--space); }
-.product-shell input, .product-shell select { padding: .7rem; border: 1px solid var(--border); border-radius: 8px; max-width: 100%; min-width: 0; font: inherit; }
+.product-shell input:not([style*="padding-left"]), .product-shell select { padding: .7rem; border: 1px solid var(--border); border-radius: 8px; max-width: 100%; min-width: 0; font: inherit; }
+.product-shell input[style*="padding-left"] { border: 1px solid var(--border); border-radius: 12px; font: inherit; }
 .product-shell button { cursor: pointer; font: inherit; padding: .65rem 1rem; border: 1px solid var(--border); border-radius: 10px; }
 .product-shell button:disabled { opacity: .55; cursor: not-allowed; }
 .product-shell :focus-visible { outline: 3px solid var(--brand-accent); outline-offset: 3px; }
@@ -30,3 +31,29 @@
 .product-shell .action-buttons-group { display: flex; flex-wrap: wrap; gap: .75rem; margin: var(--space) 0; }
 .product-shell .admin-header { flex-wrap: wrap; gap: var(--space); }
 .product-shell .cx-home, .product-shell .cx-wizard, .product-shell .cx-my { max-width: 720px; margin: auto; }
+
+/* Режим доступности / Версия для слабовидящих */
+html.a11y-mode {
+  font-size: 115%;
+}
+
+html.a11y-mode body {
+  font-weight: 500;
+}
+
+html.a11y-mode input,
+html.a11y-mode select,
+html.a11y-mode textarea {
+  border-color: #003B73 !important;
+  border-width: 2px !important;
+  font-weight: 600;
+}
+
+html.a11y-mode button {
+  border-width: 2px !important;
+}
+
+html.a11y-mode :focus-visible {
+  outline: 3px solid #FFE600 !important;
+  outline-offset: 2px !important;
+}

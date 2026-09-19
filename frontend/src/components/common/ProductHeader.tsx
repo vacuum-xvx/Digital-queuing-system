@@ -11,9 +11,29 @@ interface ProductHeaderProps {
 export function ProductHeader({ currentPath }: ProductHeaderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isHighContrast, setIsHighContrast] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isA11y, setIsA11y] = useState(() => {
+    try {
+      return localStorage.getItem('pochta_a11y') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [timeStr, setTimeStr] = useState('');
+
+  useEffect(() => {
+    if (isA11y) {
+      document.documentElement.classList.add('a11y-mode');
+      try {
+        localStorage.setItem('pochta_a11y', 'true');
+      } catch {}
+    } else {
+      document.documentElement.classList.remove('a11y-mode');
+      try {
+        localStorage.removeItem('pochta_a11y');
+      } catch {}
+    }
+  }, [isA11y]);
 
   useEffect(() => {
     let active = true;
@@ -55,23 +75,11 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
     }
   };
 
-  const toggleContrast = () => {
-    setIsHighContrast((prev) => {
-      const next = !prev;
-      if (next) {
-        document.documentElement.classList.add('high-contrast');
-      } else {
-        document.documentElement.classList.remove('high-contrast');
-      }
-      return next;
-    });
-  };
-
   const isStaffArea = currentPath.startsWith('/operator') || currentPath.startsWith('/admin');
 
   return (
     <>
-      <header className="bg-[#003B73] text-white shadow-lg sticky top-0 z-40">
+      <header className="main-product-header bg-[#003B73] text-white shadow-lg sticky top-0 z-40">
         {/* Top Status & Brand Line */}
         <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10">
           {/* Brand Block */}
@@ -80,7 +88,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             <div className="flex flex-col">
               <PochtaWordmark className="h-4 sm:h-5 w-auto" color="#FFFFFF" />
               <div className="text-[11px] text-blue-200 flex items-center gap-1.5 mt-0.5 font-medium">
-                <span className="font-mono">Главпочтамт · Электронная очередь</span>
+                <span className="font-mono">Электронная очередь</span>
               </div>
             </div>
           </a>
@@ -99,19 +107,19 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
               title="Звуковое оповещение"
             >
               {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-[#86BBFF]" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
-              <span className="font-bold hidden sm:inline">{soundEnabled ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ'}</span>
+              <span className="font-bold text-white hidden sm:inline">{soundEnabled ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ'}</span>
             </button>
 
-            {/* Accessibility Mode */}
+            {/* Accessibility Button */}
             <button
               type="button"
-              onClick={toggleContrast}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all ${
-                isHighContrast
-                  ? 'bg-[#FFE600] text-black border-black font-black'
-                  : 'bg-black/25 border-white/15 text-blue-100 hover:bg-white/10'
+              onClick={() => setIsA11y((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border transition-all ${
+                isA11y
+                  ? 'bg-[#FFE600] text-black border-[#FFE600] font-bold shadow-md'
+                  : 'bg-black/20 border-white/15 text-blue-100 hover:bg-white/10'
               }`}
-              title="Режим для слабовидящих"
+              title={isA11y ? 'Версия для слабовидящих: включена (нажмите для выключения)' : 'Включить версию для слабовидящих'}
             >
               <Eye className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Доступность</span>
@@ -149,8 +157,8 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#003B73] hover:bg-blue-50 rounded-lg text-xs font-bold transition-colors shadow-sm"
                   title="Войти в личный кабинет клиента"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Личный кабинет</span>
+                  <UserPlus className="w-3.5 h-3.5 text-[#003B73]" />
+                  <span className="text-[#003B73] font-bold">Личный кабинет</span>
                 </button>
               ) : null}
             </div>
