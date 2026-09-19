@@ -90,6 +90,10 @@ type UseCases interface {
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
 
+	GetBranchWorkload(ctx context.Context, branchID string) (domain.BranchWorkload, error)
+	CloseShift(ctx context.Context, branchID string) (domain.ShiftClosureResult, error)
+	UpdateBranchSchedule(ctx context.Context, branchID string, workHours string) (domain.Branch, error)
+
 	// Auth & Roles
 	Register(ctx context.Context, email, password string) (domain.User, error)
 	ConfirmEmail(ctx context.Context, token string) error

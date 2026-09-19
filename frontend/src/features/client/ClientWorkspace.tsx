@@ -60,6 +60,28 @@ function ETASparkline({ eta }: { eta: TicketETA }) {
   );
 }
 
+function ErrorBanner({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center justify-between gap-2 shadow-sm animate-fade-in"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+        <span className="truncate">{message}</span>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="text-red-400 hover:text-red-700 p-1 rounded-lg hover:bg-red-100 transition-colors shrink-0 leading-none font-bold"
+        aria-label="Закрыть ошибку"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function StepIndicator({ steps, current }: { steps: string[]; current: number }) {
   return (
     <ol className="cx-steps" aria-label="Этапы оформления">
@@ -173,6 +195,12 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [kioskTicket, setKioskTicket] = useState<Ticket | null>(null);
@@ -695,11 +723,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
         <div className="space-y-4">
           <StepIndicator steps={steps} current={bookingStep} />
-          {error && (
-            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
           {bookingStep === 0 && (
             <div className="space-y-3">
@@ -817,11 +841,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
         <div className="space-y-4">
           <StepIndicator steps={steps} current={walkinStep} />
-          {error && (
-            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
           {walkinStep === 0 && (
             <div className="space-y-3">
@@ -915,7 +935,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         </header>
 
         <div className="space-y-4">
-          {error && <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">{error}</div>}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
           {pollError && <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
 
           {tickets.length === 0 ? (

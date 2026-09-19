@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Branch } from '../../api/client/types';
+import { getBranchWorkload, BranchWorkload } from '../../api/client/clientApi';
 import {
   DAYS_OF_WEEK,
   DayOfWeekRu,
@@ -8,7 +9,7 @@ import {
   evaluateServiceFeasibility,
   HourlyLoad,
 } from '../../utils/workload';
-import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info, DoorOpen } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info, DoorOpen, BarChart3, Users } from 'lucide-react';
 
 export interface BranchWorkloadCardProps {
   branch?: Branch | null;
@@ -31,6 +32,7 @@ export function BranchWorkloadCard({
   const moscowNow = useMemo(() => getMoscowTimeComponents(), []);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(moscowNow.dayIndex);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const [backendWorkload, setBackendWorkload] = useState<BranchWorkload | null>(null);
   const [hasLoadData, setHasLoadData] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
@@ -40,12 +42,47 @@ export function BranchWorkloadCard({
     return initialHasLoadData;
   });
 
+  // Загрузка реальных данных загрузки из PostgreSQL бэкенда
+  useEffect(() => {
+    if (!branch?.id) {
+      setBackendWorkload(null);
+      return;
+    }
+    let active = true;
+    getBranchWorkload(branch.id)
+      .then((data) => {
+        if (active) {
+          setBackendWorkload(data);
+        }
+      })
+      .catch((err) => {
+        // Fallback to local baseline without throwing
+        console.warn('Backend workload fetch fallback:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [branch?.id]);
+
   const workHours = branch?.workHours || '08:00–20:00';
 
-  // Почасовые данные для выбранного дня
-  const hourlyData = useMemo(() => {
+  // Почасовые данные для выбранного дня (из БД или базовая модель)
+  const hourlyData = useMemo<HourlyLoad[]>(() => {
+    if (
+      backendWorkload?.hourly &&
+      backendWorkload.hourly.length > 0 &&
+      selectedDayIndex === moscowNow.dayIndex
+    ) {
+      return backendWorkload.hourly.map((h) => ({
+        hour: h.hour,
+        label: `${String(h.hour).padStart(2, '0')}:00`,
+        loadPercent: h.loadPercent,
+        isPeak: h.isPeak,
+        estimatedWaitMinutes: h.waitMinutes,
+      }));
+    }
     return getBranchHourlyWorkload(branch?.id || '', selectedDayIndex);
-  }, [branch?.id, selectedDayIndex]);
+  }, [branch?.id, selectedDayIndex, backendWorkload, moscowNow.dayIndex]);
 
   // Оценка успеваемости обслуживания
   const activeHour = selectedHour ?? (selectedDayIndex === moscowNow.dayIndex ? moscowNow.hour : 14);
@@ -104,14 +141,28 @@ export function BranchWorkloadCard({
       className={`bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-6 shadow-sm space-y-4 text-left transition-all ${className}`}
     >
       {/* Шапка карточки */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             Загруженность
           </h3>
-          <p className="text-xs text-slate-500 font-medium pt-0.5">
-            Режим работы: <strong className="text-slate-700">{workHours}</strong>
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <p className="text-xs text-slate-500 font-medium">
+              Режим работы: <strong className="text-slate-700">{workHours}</strong>
+            </p>
+            {backendWorkload && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#003B73] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                <Users className="w-3 h-3 text-[#003B73]" />
+                <span>В очереди сейчас: {backendWorkload.currentWaiting} чел.</span>
+              </span>
+            )}
+            {backendWorkload?.isHistorical && backendWorkload.sampleCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                <BarChart3 className="w-3 h-3 text-slate-400" />
+                <span>По статистике {backendWorkload.sampleCount} талонов</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Переключатель для демонстрации сценариев (наличие/отсутствие данных) */}

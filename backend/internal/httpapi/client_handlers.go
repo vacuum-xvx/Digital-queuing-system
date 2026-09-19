@@ -214,3 +214,15 @@ func (a *API) CancelTicket(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
+
+func (a *API) GetBranchWorkload(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	workload, err := a.usecases.GetBranchWorkload(r.Context(), branchID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, workload)
+}
+

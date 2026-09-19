@@ -1,6 +1,7 @@
 export type Branch = {
   id: string;
   name: string;
+  workHours?: string;
 };
 
 export type BranchListResponse = {

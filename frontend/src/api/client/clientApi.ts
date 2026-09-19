@@ -247,3 +247,24 @@ export async function getTicketETA(ticketId: string, signal?: AbortSignal): Prom
     return value as unknown as import('./types').TicketETA;
   });
 }
+
+export type HourlyWorkload = {
+  hour: number;
+  loadPercent: number;
+  waitMinutes: number;
+  isPeak: boolean;
+};
+
+export type BranchWorkload = {
+  branchId: string;
+  currentHour: number;
+  currentWaiting: number;
+  sampleCount: number;
+  isHistorical: boolean;
+  hourly: HourlyWorkload[];
+};
+
+export async function getBranchWorkload(branchId: string, signal?: AbortSignal): Promise<BranchWorkload> {
+  return request(`/branches/${encodeURIComponent(branchId)}/workload`, { signal });
+}
+

@@ -8,6 +8,7 @@ import { UsersManagement } from './UsersManagement';
 import { KpiCards } from './KpiCards';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { formatMoscowDateTime } from '../../utils/time';
+import { BranchScheduleShiftManager } from './BranchScheduleShiftManager';
 import {
   Activity,
   Sliders,
@@ -15,10 +16,11 @@ import {
   Users,
   QrCode,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Calendar,
 } from 'lucide-react';
 
-type AdminTab = 'overview' | 'policy' | 'anomalies' | 'users' | 'qr';
+type AdminTab = 'overview' | 'policy' | 'schedule' | 'anomalies' | 'users' | 'qr';
 
 export const AdminWorkspace: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -154,6 +156,19 @@ export const AdminWorkspace: React.FC = () => {
           >
             <Sliders className="w-4 h-4" />
             <span>Queue Policy</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('schedule')}
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTab === 'schedule'
+                ? 'bg-white text-[#003B73] shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Режим работы и смена</span>
           </button>
 
           <button
@@ -326,6 +341,35 @@ export const AdminWorkspace: React.FC = () => {
               key={selectedBranchId}
               branchId={selectedBranchId}
               branchName={branches.find((b) => b.id === selectedBranchId)?.name}
+            />
+          )}
+
+          {/* TAB 3: SCHEDULE & SHIFT */}
+          {activeTab === 'schedule' && (
+            <BranchScheduleShiftManager
+              branch={
+                branches.find((b) => b.id === selectedBranchId) || {
+                  id: selectedBranchId,
+                  name: 'Отделение',
+                  workHours: '08:00–20:00',
+                }
+              }
+              overview={overview}
+              onBranchUpdated={(updated) => {
+                setBranches((prev) =>
+                  prev.map((b) => (b.id === updated.id ? { ...b, workHours: updated.workHours } : b))
+                );
+              }}
+              onRefreshOverview={async () => {
+                if (selectedBranchId) {
+                  try {
+                    const next = await api.getOverview(selectedBranchId);
+                    setOverview(next);
+                  } catch {
+                    // silent
+                  }
+                }
+              }}
             />
           )}
 

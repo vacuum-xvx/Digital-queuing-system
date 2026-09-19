@@ -117,3 +117,32 @@ export async function updateWindowServices(windowId: string, serviceIds: string[
   });
   return await handleResponse<AdminWindow>(res);
 }
+
+export type ShiftClosureResult = {
+  branchId: string;
+  cancelledTicketsCount: number;
+  windowsClosingCount: number;
+  windowsClosedCount: number;
+};
+
+export async function closeShift(branchId: string): Promise<ShiftClosureResult> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/branches/${encodeURIComponent(branchId)}/close-shift`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  return await handleResponse<ShiftClosureResult>(res);
+}
+
+export async function updateBranchSchedule(branchId: string, workHours: string): Promise<Branch> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/admin/branches/${encodeURIComponent(branchId)}/schedule`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workHours }),
+  });
+  return await handleResponse<Branch>(res);
+}
+

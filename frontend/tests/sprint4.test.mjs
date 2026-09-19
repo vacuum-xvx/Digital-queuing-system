@@ -132,3 +132,36 @@ test('ClientWorkspace supports refusing waiting tickets and shows Отказат
   assert.match(content, /ticket\.status\s*===\s*'WAITING'/);
 });
 
+test('adminApi exports closeShift and updateBranchSchedule', async () => {
+  const content = await readFile(new URL('../src/api/admin/adminApi.ts', import.meta.url), 'utf8');
+  assert.match(content, /export async function closeShift/);
+  assert.match(content, /export async function updateBranchSchedule/);
+  assert.match(content, /\/admin\/branches\/\$\{encodeURIComponent\(branchId\)\}\/close-shift/);
+  assert.match(content, /\/admin\/branches\/\$\{encodeURIComponent\(branchId\)\}\/schedule/);
+});
+
+test('QueuePolicyEditor supports human-friendly Low/Medium/High and presets', async () => {
+  const content = await readFile(new URL('../src/features/admin/QueuePolicyEditor.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Баланс \(Стандарт\)/);
+  assert.match(content, /Час пик \(Борьба с очередями\)/);
+  assert.match(content, /Низкий/);
+  assert.match(content, /Средний/);
+  assert.match(content, /Высокий/);
+  assert.match(content, /Экспертный режим/);
+});
+
+test('BranchScheduleShiftManager renders schedule presets and shift closure modal', async () => {
+  const content = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Стандарт Почты России \(08:00–20:00\)/);
+  assert.match(content, /Плавное закрытие окон/);
+  assert.match(content, /Завершить смену отделения/);
+  assert.match(content, /Подтверждение завершения смены/);
+});
+
+test('BranchWorkloadCard loads real workload from getBranchWorkload and renders waiting count', async () => {
+  const content = await readFile(new URL('../src/features/client/BranchWorkloadCard.tsx', import.meta.url), 'utf8');
+  assert.match(content, /getBranchWorkload/);
+  assert.match(content, /В очереди сейчас:/);
+});
+
+

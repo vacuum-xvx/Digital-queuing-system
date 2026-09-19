@@ -47,6 +47,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
 		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
+		r.Get("/branches/{branchId}/workload", a.GetBranchWorkload)
 
 		// ── Оператор (employee + opc_chief) ──────────────────────────────
 		r.Route("/operator", func(r chi.Router) {
@@ -69,6 +70,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
+			r.Post("/branches/{branchId}/close-shift", a.CloseShift)
+			r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)

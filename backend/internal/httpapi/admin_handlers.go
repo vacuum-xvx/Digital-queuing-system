@@ -278,3 +278,36 @@ func (a *API) ListTicketEvents(w http.ResponseWriter, r *http.Request) {
 		Items: items,
 	})
 }
+
+type UpdateBranchScheduleRequest struct {
+	WorkHours string `json:"workHours"`
+}
+
+func (a *API) CloseShift(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	res, err := a.usecases.CloseShift(r.Context(), branchID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, res)
+}
+
+func (a *API) UpdateBranchSchedule(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	var req UpdateBranchScheduleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.WorkHours == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body: workHours required")
+		return
+	}
+
+	branch, err := a.usecases.UpdateBranchSchedule(r.Context(), branchID, req.WorkHours)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, branch)
+}
+

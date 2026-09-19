@@ -268,6 +268,44 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /branches/{branchId}/workload:
+    get:
+      summary: Get branch workload distribution and waiting count
+      tags:
+        - Client
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Branch workload statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branchId: { type: string }
+                  currentHour: { type: integer }
+                  currentWaiting: { type: integer }
+                  sampleCount: { type: integer }
+                  isHistorical: { type: boolean }
+                  hourly:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hour: { type: integer }
+                        loadPercent: { type: integer }
+                        waitMinutes: { type: integer }
+                        isPeak: { type: boolean }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /branches/{branchId}/tickets/qr:
     post:
       summary: Create a QR ticket
@@ -700,6 +738,68 @@ paths:
           $ref: '#/components/responses/PolicyVersionConflict'
         '500':
           $ref: '#/components/responses/InternalError'
+  /admin/branches/{branchId}/close-shift:
+    post:
+      security: [{ sessionCookie: [] }]
+      summary: Close shift and cancel uncalled tickets
+      tags:
+        - Admin
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shift closed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branchId: { type: string }
+                  cancelledTicketsCount: { type: integer }
+                  windowsClosingCount: { type: integer }
+                  windowsClosedCount: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /admin/branches/{branchId}/schedule:
+    put:
+      security: [{ sessionCookie: [] }]
+      summary: Update branch working hours
+      tags:
+        - Admin
+      parameters:
+        - name: branchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workHours]
+              properties:
+                workHours: { type: string }
+      responses:
+        '200':
+          description: Branch schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /admin/tickets/{ticketId}/events:
     get:
       security: [{ sessionCookie: [] }]

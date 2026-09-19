@@ -516,3 +516,97 @@ func TestTicketEvents_Sprint2(t *testing.T) {
 		}
 	})
 }
+
+func TestBranchWorkload_Shift_Schedule(t *testing.T) {
+	uc := &FakeUseCases{
+		GetBranchWorkloadFunc: func(ctx context.Context, branchID string) (domain.BranchWorkload, error) {
+			if branchID == "notfound" {
+				return domain.BranchWorkload{}, application.ErrNotFound
+			}
+			return domain.BranchWorkload{
+				BranchID:       branchID,
+				CurrentHour:    14,
+				CurrentWaiting: 3,
+				SampleCount:    45,
+				IsHistorical:   true,
+				Hourly: []domain.HourlyWorkload{
+					{Hour: 14, LoadPercent: 75, WaitMinutes: 15, IsPeak: true},
+				},
+			}, nil
+		},
+		CloseShiftFunc: func(ctx context.Context, branchID string) (domain.ShiftClosureResult, error) {
+			if branchID == "notfound" {
+				return domain.ShiftClosureResult{}, application.ErrNotFound
+			}
+			return domain.ShiftClosureResult{
+				BranchID:              branchID,
+				CancelledTicketsCount: 5,
+				WindowsClosingCount:   2,
+				WindowsClosedCount:    1,
+			}, nil
+		},
+		UpdateBranchScheduleFunc: func(ctx context.Context, branchID string, workHours string) (domain.Branch, error) {
+			if branchID == "notfound" {
+				return domain.Branch{}, application.ErrNotFound
+			}
+			return domain.Branch{
+				ID:        branchID,
+				Name:      "Отделение №1",
+				WorkHours: workHours,
+			}, nil
+		},
+	}
+	r := setupTest(uc)
+
+	t.Run("workload 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/branches/b1/workload", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var res domain.BranchWorkload
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+		if res.BranchID != "b1" || res.CurrentWaiting != 3 || len(res.Hourly) != 1 {
+			t.Fatalf("unexpected workload result: %+v", res)
+		}
+	})
+
+	t.Run("close shift 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/branches/b1/close-shift", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var res domain.ShiftClosureResult
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+		if res.CancelledTicketsCount != 5 || res.WindowsClosingCount != 2 {
+			t.Fatalf("unexpected shift result: %+v", res)
+		}
+	})
+
+	t.Run("update schedule 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/branches/b1/schedule", bytes.NewBufferString(`{"workHours":"09:00–21:00"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var res domain.Branch
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+		if res.WorkHours != "09:00–21:00" {
+			t.Fatalf("expected 09:00–21:00, got %s", res.WorkHours)
+		}
+	})
+}

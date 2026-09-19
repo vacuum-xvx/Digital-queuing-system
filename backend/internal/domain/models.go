@@ -129,3 +129,26 @@ type QueuePosition struct {
 	EffectivePriority  *int64
 	EffectiveQueueTime *time.Time
 }
+
+type HourlyWorkload struct {
+	Hour        int  `json:"hour"`
+	LoadPercent int  `json:"loadPercent"`
+	WaitMinutes int  `json:"waitMinutes"`
+	IsPeak      bool `json:"isPeak"`
+}
+
+type BranchWorkload struct {
+	BranchID       string           `json:"branchId"`
+	CurrentHour    int              `json:"currentHour"`
+	CurrentWaiting int              `json:"currentWaiting"`
+	SampleCount    int              `json:"sampleCount"`
+	IsHistorical   bool             `json:"isHistorical"`
+	Hourly         []HourlyWorkload `json:"hourly"`
+}
+
+type ShiftClosureResult struct {
+	BranchID              string `json:"branchId"`
+	CancelledTicketsCount int    `json:"cancelledTicketsCount"`
+	WindowsClosingCount   int    `json:"windowsClosingCount"`
+	WindowsClosedCount    int    `json:"windowsClosedCount"`
+}
