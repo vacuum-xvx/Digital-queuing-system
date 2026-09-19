@@ -118,7 +118,7 @@ export function BranchWorkloadCard({
         <button
           type="button"
           onClick={() => setHasLoadData(prev => !prev)}
-          className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs ${
+          className={`group flex items-center gap-1.5 !py-1 !px-2.5 sm:!py-1.5 sm:!px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all border shadow-2xs whitespace-nowrap shrink-0 ${
             hasLoadData
               ? 'bg-blue-50/70 border-blue-200 text-[#003B73] hover:bg-blue-100'
               : 'bg-amber-50/70 border-amber-200 text-amber-900 hover:bg-amber-100'
@@ -127,7 +127,7 @@ export function BranchWorkloadCard({
           aria-pressed={hasLoadData}
         >
           <span
-            className={`w-2 h-2 rounded-full transition-transform group-hover:scale-125 ${
+            className={`w-2 h-2 rounded-full transition-transform group-hover:scale-125 shrink-0 ${
               hasLoadData ? 'bg-emerald-500' : 'bg-amber-500'
             }`}
           />
