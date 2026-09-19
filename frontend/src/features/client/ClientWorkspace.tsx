@@ -610,7 +610,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
   const resetKioskScreen = () => {
     if (!kiosk) return;
-    if (kioskTicket) removeSavedTicketId(kioskTicket.id);
+    if (kioskTicket) removeSavedTicketId(kioskTicket.id, ownerScope);
     setKioskTicket(null);
     setTickets([]);
     setServiceId('');
