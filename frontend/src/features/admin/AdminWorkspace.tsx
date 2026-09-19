@@ -245,7 +245,7 @@ export const AdminWorkspace: React.FC = () => {
           </button>
 
           <a
-            href={`${window.location.protocol}//${window.location.hostname}:3001`}
+            href="/grafana/"
             target="_blank"
             rel="noopener noreferrer"
             className="px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 bg-blue-50 text-[#003B73] hover:bg-blue-100 font-bold ml-auto border border-blue-200"

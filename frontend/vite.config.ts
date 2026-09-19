@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => ({
         target: 'http://backend:8080',
         changeOrigin: true,
       },
+      '/grafana': {
+        target: 'http://grafana:3000',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 }));

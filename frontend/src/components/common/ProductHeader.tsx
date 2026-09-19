@@ -177,7 +177,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             </nav>
 
             <a
-              href={`${window.location.protocol}//${window.location.hostname}:3001`}
+              href="/grafana/"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-blue-200 hover:text-white transition-colors font-semibold"
