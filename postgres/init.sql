@@ -325,9 +325,22 @@ ALTER TABLE ticket_events
 
 
 
+-- === 000012_window_services_unfreeze.up.sql ===
+-- Operators must always be able to drop a window capability, even when the window
+-- already served tickets of that service. The composite foreign key from tickets to
+-- window_services was the only blocker: it froze historical capabilities in place and
+-- made DELETE FROM window_services fail with SQLSTATE 23503. Ticket integrity stays
+-- protected by the remaining tickets foreign keys — (window_id, branch_id) references
+-- windows(id, branch_id) and (branch_id, service_id) references
+-- branch_services(branch_id, service_id).
+ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_window_id_service_id_fkey;
+
+
+
 -- === schema_migrations (golang-migrate compatibility) ===
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version bigint NOT NULL PRIMARY KEY,
   dirty boolean NOT NULL
 );
 INSERT INTO schema_migrations (version, dirty) VALUES (11, false) ON CONFLICT (version) DO NOTHING;
+INSERT INTO schema_migrations (version, dirty) VALUES (12, false) ON CONFLICT (version) DO NOTHING;

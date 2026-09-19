@@ -40,21 +40,22 @@ func TestWindowServicesCapabilitySet(t *testing.T) {
 	if err != nil || called.ID != pay.ID || called.Window == nil || called.Window.Number != 3 {
 		t.Fatalf("call next=%+v err=%v", called, err)
 	}
-	// tickets(window_id, service_id) references window_services, so the capability of a
-	// ticket that already visited this window cannot be dropped (frozen Sprint #1
-	// schema) — the boundary reports a conflict instead of a driver error.
-	_, err = p.UpdateWindowServices(ctx, application.UpdateWindowServicesCommand{
+	// Since 000012 tickets no longer reference window_services: a capability can be
+	// dropped even when the window already served the service, and the historical
+	// ticket keeps its (window, service) record.
+	updated, err := p.UpdateWindowServices(ctx, application.UpdateWindowServicesCommand{
 		WindowID:   window3,
 		ServiceIDs: []string{parcels},
 	})
-	wantError(t, err, application.ErrInvalidState)
-	// A rejected update must not leave a partially replaced capability set behind.
-	if codes := windowCodes(t, ctx, p, window3); len(codes) != 2 || codes[0] != "PARCELS" || codes[1] != "PAYMENTS" {
-		t.Fatalf("capabilities after rejected update=%v", codes)
+	if err != nil || len(updated.Services) != 1 || updated.Services[0].Code != "PARCELS" {
+		t.Fatalf("update=%+v err=%v", updated, err)
+	}
+	if codes := windowCodes(t, ctx, p, window3); len(codes) != 1 || codes[0] != "PARCELS" {
+		t.Fatalf("capabilities after update=%v", codes)
 	}
 
-	// SEND never visited this window, so the capability can be granted again.
-	updated, err := p.UpdateWindowServices(ctx, application.UpdateWindowServicesCommand{
+	// The dropped capability can be granted back at any time.
+	updated, err = p.UpdateWindowServices(ctx, application.UpdateWindowServicesCommand{
 		WindowID:   window3,
 		ServiceIDs: []string{serviceSend, payments, parcels},
 	})

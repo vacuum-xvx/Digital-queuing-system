@@ -453,10 +453,9 @@ func (p *Postgres) UpdateWindowServices(ctx context.Context, cmd application.Upd
 		return empty, application.ErrNotFound
 	}
 
-	// Only the capabilities that actually disappear are dropped: tickets(window_id,
-	// service_id) references window_services, so deleting and re-inserting a retained
-	// capability with ticket history would fail even when the resulting set is a
-	// superset of the current one.
+	// Only the capabilities that actually disappear are dropped; retained rows are
+	// never rewritten. Since 000012 tickets no longer reference window_services, a
+	// capability can be dropped even when the window already served the service.
 	if _, err = tx.Exec(ctx,
 		`DELETE FROM window_services WHERE window_id=$1 AND service_id <> ALL($2::uuid[])`,
 		windowID, serviceIDs); err != nil {
@@ -486,9 +485,10 @@ func (p *Postgres) UpdateWindowServices(ctx context.Context, cmd application.Upd
 }
 
 // windowServicesError maps capability foreign-key violations to the boundary state
-// error. tickets(window_id, service_id) references window_services, so a service that
-// already has ticket history in this window cannot be dropped (frozen Sprint #1
-// schema) — callers get 409 instead of a sanitized 500.
+// error. Since 000012 tickets no longer reference window_services, capability
+// removal cannot fail on ticket history; the mapping only remains as a defensive
+// guard against concurrent reference removals — callers get 409 instead of a
+// sanitized 500.
 func windowServicesError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" {

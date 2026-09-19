@@ -881,8 +881,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/InvalidState'
         '500':
           $ref: '#/components/responses/InternalError'
   /operator/tickets/{ticketId}/return:
