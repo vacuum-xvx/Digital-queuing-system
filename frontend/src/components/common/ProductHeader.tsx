@@ -92,6 +92,8 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
       // Уведомляем AuthBoundary, чтобы на /operator и /admin сразу
       // показалась форма входа без перезагрузки страницы.
       window.dispatchEvent(new CustomEvent('pochta:logout'));
+      // Клиентские экраны должны сбросить «мои талоны» на анонимного владельца.
+      window.dispatchEvent(new CustomEvent('pochta:auth'));
     } catch {
       // ignore
     }
@@ -243,7 +245,11 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
       <ClientAuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onUserChanged={(user) => setCurrentUser(user)}
+        onUserChanged={(user) => {
+          setCurrentUser(user);
+          // Сообщаем клиентским экранам, что сменился владелец талонов.
+          window.dispatchEvent(new CustomEvent('pochta:auth'));
+        }}
       />
     </>
   );
