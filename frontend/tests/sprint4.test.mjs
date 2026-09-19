@@ -176,5 +176,23 @@ test('BranchWorkloadCard aligns columns, multi-tier bar styles and provides inte
   assert.match(content, /effectiveWaitMinutes/);
 });
 
+test('AdminWorkspace has exactly one Grafana link in product header and no duplicate in tabs bar', async () => {
+  const content = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  assert.equal(content.includes('href="/grafana/"'), false);
+});
+
+test('Appointment24hPicker and schedule manager strictly enforce 24-hour format', async () => {
+  const picker = await readFile(new URL('../src/features/client/Appointment24hPicker.tsx', import.meta.url), 'utf8');
+  assert.match(picker, /24-часовой формат/);
+  assert.match(picker, /POPULAR_24H_SLOTS/);
+  assert.match(picker, /Часы \(00–23\)/);
+
+  const shift = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
+  assert.match(shift, /24-часовой формат/);
+  assert.match(shift, /open-h-/);
+  assert.match(shift, /close-h-/);
+});
+
+
 
 

@@ -27,6 +27,7 @@ export function formatMoscowTime(
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    hour12: false,
     ...options,
     timeZone: MOSCOW_TZ,
   });
@@ -69,6 +70,7 @@ export function formatMoscowDateTime(
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
     ...options,
     timeZone: MOSCOW_TZ,
   });
@@ -84,6 +86,7 @@ export function moscowTimeString(date: Date): string {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    hour12: false,
   });
 }
 

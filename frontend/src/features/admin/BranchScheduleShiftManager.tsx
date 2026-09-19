@@ -200,32 +200,81 @@ export const BranchScheduleShiftManager: React.FC<BranchScheduleShiftManagerProp
           </div>
         </div>
 
-        {/* Ручная точная настройка часов */}
+        {/* Ручная точная настройка часов (строго 24-часовой формат) */}
         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-          <label className="block text-xs font-bold text-slate-700">
-            Индивидуальная настройка времени (открытие и закрытие):
-          </label>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600">С</span>
-              <input
-                type="time"
-                value={customOpen}
-                onChange={(e) => handleCustomTimeChange(e.target.value, customClose)}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
-              />
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700">
+              Индивидуальная настройка времени (открытие и закрытие):
+            </label>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-[#003B73] border border-blue-200">
+              24-часовой формат
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-600">С:</span>
+              <select
+                value={customOpen.split(':')[0] || '08'}
+                onChange={(e) => {
+                  const m = customOpen.split(':')[1] || '00';
+                  handleCustomTimeChange(`${e.target.value.padStart(2, '0')}:${m}`, customClose);
+                }}
+                className="px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
+                aria-label="Час открытия ОПС (24-часовой формат)"
+              >
+                {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                  <option key={`open-h-${h}`} value={h}>{h}:00</option>
+                ))}
+              </select>
+              <span className="text-xs font-mono font-bold text-slate-400">:</span>
+              <select
+                value={customOpen.split(':')[1] || '00'}
+                onChange={(e) => {
+                  const h = customOpen.split(':')[0] || '08';
+                  handleCustomTimeChange(`${h}:${e.target.value}`, customClose);
+                }}
+                className="px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
+                aria-label="Минуты открытия ОПС"
+              >
+                {['00', '15', '30', '45'].map(m => (
+                  <option key={`open-m-${m}`} value={m}>:{m}</option>
+                ))}
+              </select>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600">До</span>
-              <input
-                type="time"
-                value={customClose}
-                onChange={(e) => handleCustomTimeChange(customOpen, e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
-              />
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-600">До:</span>
+              <select
+                value={customClose.split(':')[0] || '20'}
+                onChange={(e) => {
+                  const m = customClose.split(':')[1] || '00';
+                  handleCustomTimeChange(customOpen, `${e.target.value.padStart(2, '0')}:${m}`);
+                }}
+                className="px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
+                aria-label="Час закрытия ОПС (24-часовой формат)"
+              >
+                {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                  <option key={`close-h-${h}`} value={h}>{h}:00</option>
+                ))}
+              </select>
+              <span className="text-xs font-mono font-bold text-slate-400">:</span>
+              <select
+                value={customClose.split(':')[1] || '00'}
+                onChange={(e) => {
+                  const h = customClose.split(':')[0] || '20';
+                  handleCustomTimeChange(customOpen, `${h}:${e.target.value}`);
+                }}
+                className="px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs font-bold bg-white text-slate-800 shadow-2xs focus:ring-2 focus:ring-[#003B73]"
+                aria-label="Минуты закрытия ОПС"
+              >
+                {['00', '15', '30', '45'].map(m => (
+                  <option key={`close-m-${m}`} value={m}>:{m}</option>
+                ))}
+              </select>
             </div>
-            <div className="text-xs text-slate-500 font-mono">
-              Итоговая строка: <strong className="text-slate-900">{workHours}</strong>
+
+            <div className="text-xs text-slate-600 font-mono bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+              График: <strong className="text-slate-900">{workHours} (24ч)</strong>
             </div>
           </div>
         </div>

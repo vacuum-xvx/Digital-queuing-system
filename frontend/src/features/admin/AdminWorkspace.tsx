@@ -214,17 +214,6 @@ export const AdminWorkspace: React.FC = () => {
             <QrCode className="w-4 h-4" />
             <span>QR отделения</span>
           </button>
-
-          <a
-            href="/grafana/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 bg-blue-50 text-[#003B73] hover:bg-blue-100 font-bold ml-auto border border-blue-200"
-            title="Открыть дашборд Grafana со всеми метриками и логами"
-          >
-            <Activity className="w-4 h-4 text-blue-600" />
-            <span>Grafana ↗</span>
-          </a>
         </div>
       </section>
 

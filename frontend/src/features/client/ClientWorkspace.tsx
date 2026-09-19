@@ -7,6 +7,7 @@ import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { BranchWorkloadCard } from './BranchWorkloadCard';
+import { Appointment24hPicker } from './Appointment24hPicker';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
@@ -773,19 +774,12 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
             <div className="space-y-4">
               <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
               <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Укажите время визита</h3>
-              <label className="block text-xs font-bold text-slate-700 space-y-1">
-                <span>Дата и время (МСК)</span>
-                <input
-                  type="datetime-local"
-                  value={scheduledAtInput}
-                  min={localDateTimeValue(new Date(Date.now() + 60_000))}
-                  onChange={e => setScheduledAtInput(e.target.value)}
-                  disabled={creating}
-                  aria-label="Дата и время (МСК)"
-                  className="w-full px-3.5 py-3 text-base sm:text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] min-h-[48px]"
-                />
-              </label>
+              <Appointment24hPicker
+                value={scheduledAtInput}
+                onChange={setScheduledAtInput}
+                disabled={creating}
+                workHours={branches.find(b => b.id === branchId)?.workHours}
+              />
               <button
                 type="button"
                 className="w-full min-h-[48px] py-3 bg-[#003B73] hover:bg-[#054FA6] active:bg-[#00274D] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
