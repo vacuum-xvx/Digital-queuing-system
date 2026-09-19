@@ -9,6 +9,7 @@ import './product.css';
 import { PhysicalQRPage } from './pages/PhysicalQRPage';
 import { ProductHeader } from './components/common/ProductHeader';
 import { ClientQueueBoard } from './features/client/ClientQueueBoard';
+import { TVBoard } from './features/client/TVBoard';
 
 export function App() {
   const [health, setHealth] = useState<'Checking...' | 'Available' | 'Unavailable'>('Checking...');
@@ -49,6 +50,10 @@ export function App() {
       .finally(() => window.clearTimeout(timeout));
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
+
+  if (currentPath === '/tv') {
+    return <TVBoard />;
+  }
 
   if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
     return <><p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p><PochtaDemo currentPath={currentPath} navigate={navigate} /></>;
