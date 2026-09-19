@@ -19,4 +19,7 @@ receivers:
           {{ if eq .Status "firing" }}🚨 <b>[АЛЕРТ] {{ .CommonAnnotations.summary }}</b>{{ else }}✅ <b>[РЕШЕНО] {{ .CommonAnnotations.summary }}</b>{{ end }}
           <b>Уровень:</b> <code>{{ .CommonLabels.severity }}</code>
           <b>Описание:</b> {{ .CommonAnnotations.description }}
-          <b>Время:</b> {{ .StartsAt.Format "15:04:05 02.01.2006" }}
+          {{ if eq .Status "firing" }}<b>Время:</b> {{ ((index .Alerts 0).StartsAt.Local).Format "15:04:05 02.01.2006 (MST)" }}
+          {{ else }}<b>Время начала:</b> {{ ((index .Alerts 0).StartsAt.Local).Format "15:04:05 02.01.2006 (MST)" }}
+          <b>Время решения:</b> {{ ((index .Alerts 0).EndsAt.Local).Format "15:04:05 02.01.2006 (MST)" }}
+          {{ end }}
