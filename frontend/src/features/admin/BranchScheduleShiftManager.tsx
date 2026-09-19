@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Branch } from '../../api/operator/types';
 import { AdminBranchOverview } from '../../api/admin/types';
 import * as api from '../../api/admin/adminApi';
@@ -54,6 +54,18 @@ export const BranchScheduleShiftManager: React.FC<BranchScheduleShiftManagerProp
   // Opening shift state
   const [openingShift, setOpeningShift] = useState(false);
   const [openShiftSuccess, setOpenShiftSuccess] = useState<string | null>(null);
+
+  // Вычисляем продолжительность смены из customOpen / customClose
+  const shiftDuration = useMemo(() => {
+    const [oH, oM] = customOpen.split(':').map(Number);
+    const [cH, cM] = customClose.split(':').map(Number);
+    if ([oH, oM, cH, cM].some(Number.isNaN)) return '';
+    let totalMin = (cH * 60 + cM) - (oH * 60 + oM);
+    if (totalMin <= 0) totalMin += 24 * 60;
+    const hours = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    return mins > 0 ? `${hours}ч ${mins}мин` : `${hours}ч`;
+  }, [customOpen, customClose]);
 
   useEffect(() => {
     setWorkHours(branch.workHours || '08:00–20:00');
@@ -274,7 +286,7 @@ export const BranchScheduleShiftManager: React.FC<BranchScheduleShiftManagerProp
             </div>
 
             <div className="text-xs text-slate-600 font-mono bg-white px-3 py-1.5 rounded-xl border border-slate-200">
-              График: <strong className="text-slate-900">{workHours} (24ч)</strong>
+              График: <strong className="text-slate-900">{workHours}{shiftDuration ? ` (${shiftDuration})` : ''}</strong>
             </div>
           </div>
         </div>

@@ -85,15 +85,19 @@ func (p *Postgres) CreateLiveTicket(ctx context.Context, c application.CreateLiv
 func (p *Postgres) ArriveAppointment(ctx context.Context, ticketID string) (application.AppointmentView, error) {
 	var empty application.AppointmentView
 	id, err := uuid(ticketID)
-	if err != nil {
-		return empty, err
-	}
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return empty, dbError(err)
+	tx, errTx := p.pool.Begin(ctx)
+	if errTx != nil {
+		return empty, dbError(errTx)
 	}
 	defer tx.Rollback(context.Background())
-	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id))
+
+	var row pgx.Row
+	if err == nil {
+		row = tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id)
+	} else {
+		row = tx.QueryRow(ctx, ticketSelect+`WHERE (UPPER(t.public_number)=UPPER($1) OR UPPER(t.public_number)=UPPER('A-' || $1) OR UPPER(t.public_number)=UPPER('A-' || LPAD($1, 6, '0'))) FOR UPDATE OF t`, strings.TrimSpace(ticketID))
+	}
+	t, err := scanTicket(row)
 	if err != nil {
 		return empty, err
 	}
@@ -103,7 +107,7 @@ func (p *Postgres) ArriveAppointment(ctx context.Context, ticketID string) (appl
 	if t.ArrivedAt != nil {
 		return appointmentView(t), nil
 	}
-	if err = tx.QueryRow(ctx, `UPDATE tickets SET arrived_at=transaction_timestamp() WHERE id=$1 RETURNING arrived_at`, id).Scan(&t.ArrivedAt); err != nil {
+	if err = tx.QueryRow(ctx, `UPDATE tickets SET arrived_at=transaction_timestamp() WHERE id=$1 RETURNING arrived_at`, t.ID).Scan(&t.ArrivedAt); err != nil {
 		return empty, dbError(err)
 	}
 	*t.ArrivedAt = t.ArrivedAt.UTC()
