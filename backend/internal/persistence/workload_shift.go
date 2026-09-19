@@ -39,7 +39,8 @@ func (p *Postgres) GetBranchWorkload(ctx context.Context, branchID string) (doma
 		17: {17, 85, 25},
 		18: {18, 90, 28},
 		19: {19, 70, 18},
-		20: {20, 35, 10},
+		20: {20, 50, 12},
+		21: {21, 20, 5},
 	}
 	if nowMoscow.Weekday() == time.Saturday {
 		baseMap = map[int]baseline{
@@ -56,6 +57,24 @@ func (p *Postgres) GetBranchWorkload(ctx context.Context, branchID string) (doma
 			18: {18, 60, 15},
 			19: {19, 88, 25},
 			20: {20, 65, 16},
+			21: {21, 25, 6},
+		}
+	} else if nowMoscow.Weekday() == time.Sunday {
+		baseMap = map[int]baseline{
+			8:  {8, 12, 4},
+			9:  {9, 25, 6},
+			10: {10, 35, 8},
+			11: {11, 48, 12},
+			12: {12, 55, 14},
+			13: {13, 65, 16},
+			14: {14, 68, 17},
+			15: {15, 60, 15},
+			16: {16, 52, 13},
+			17: {17, 45, 11},
+			18: {18, 40, 10},
+			19: {19, 35, 8},
+			20: {20, 25, 6},
+			21: {21, 15, 4},
 		}
 	}
 
@@ -90,17 +109,21 @@ func (p *Postgres) GetBranchWorkload(ctx context.Context, branchID string) (doma
 	var currentWaiting int
 	_ = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE branch_id = $1 AND status = 'WAITING'`, id).Scan(&currentWaiting)
 
-	// 4. Construct hourly distribution 8..20
-	hourly := make([]domain.HourlyWorkload, 0, 13)
-	for h := 8; h <= 20; h++ {
+	// 4. Construct hourly distribution 8..21 (14 hours)
+	hourly := make([]domain.HourlyWorkload, 0, 14)
+	for h := 8; h <= 21; h++ {
 		base := baseMap[h]
 		loadPct := base.load
 		waitMin := base.wait
 
-		if totalHistory >= 10 && maxCount > 0 {
+		if totalHistory > 0 && maxCount > 0 {
 			histRatio := float64(historicalCounts[h]) / float64(maxCount)
 			histPct := int(histRatio * 100)
-			loadPct = int(float64(histPct)*0.7 + float64(base.load)*0.3)
+			weight := float64(totalHistory) / 20.0
+			if weight > 1.0 {
+				weight = 1.0
+			}
+			loadPct = int(float64(histPct)*0.7*weight + float64(base.load)*(1.0-0.7*weight))
 			if loadPct < 5 {
 				loadPct = 5
 			}

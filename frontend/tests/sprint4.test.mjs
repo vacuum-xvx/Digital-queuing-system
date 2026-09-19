@@ -158,10 +158,23 @@ test('BranchScheduleShiftManager renders schedule presets and shift closure moda
   assert.match(content, /Подтверждение завершения смены/);
 });
 
-test('BranchWorkloadCard loads real workload from getBranchWorkload and renders waiting count', async () => {
-  const content = await readFile(new URL('../src/features/client/BranchWorkloadCard.tsx', import.meta.url), 'utf8');
-  assert.match(content, /getBranchWorkload/);
-  assert.match(content, /В очереди сейчас:/);
+test('UsersManagement supports instant user search, role filtering, and empty state', async () => {
+  const content = await readFile(new URL('../src/features/admin/UsersManagement.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Поиск по email, роли/);
+  assert.match(content, /filteredUsers/);
+  assert.match(content, /roleFilter/);
+  assert.match(content, /Пользователи не найдены/);
+  assert.match(content, /Сбросить фильтры/);
 });
+
+test('BranchWorkloadCard aligns columns, multi-tier bar styles and provides interactive hour details', async () => {
+  const content = await readFile(new URL('../src/features/client/BranchWorkloadCard.tsx', import.meta.url), 'utf8');
+  assert.match(content, /axisTicks\s*=\s*\[8,\s*11,\s*14,\s*17,\s*20\]/);
+  assert.match(content, /cx-workload-bar-blue/);
+  assert.match(content, /cx-workload-bar-closed/);
+  assert.match(content, /activeSlot/);
+  assert.match(content, /effectiveWaitMinutes/);
+});
+
 
 
