@@ -27,6 +27,7 @@ type FakeUseCases struct {
 	GetTicketFunc          func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetCurrentTicketFunc   func(ctx context.Context, windowID string) (*domain.Ticket, error)
 	CallNextFunc           func(ctx context.Context, windowID string) (domain.Ticket, error)
+	CallSpecificTicketFunc func(ctx context.Context, windowID string, ticketIDOrNumber string) (domain.Ticket, error)
 	StartServiceFunc       func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteServiceFunc    func(ctx context.Context, ticketID string) (domain.Ticket, error)
 
@@ -97,6 +98,13 @@ func (f *FakeUseCases) GetCurrentTicket(ctx context.Context, windowID string) (*
 }
 
 func (f *FakeUseCases) CallNext(ctx context.Context, windowID string) (domain.Ticket, error) {
+	return f.CallNextFunc(ctx, windowID)
+}
+
+func (f *FakeUseCases) CallSpecificTicket(ctx context.Context, windowID string, ticketIDOrNumber string) (domain.Ticket, error) {
+	if f.CallSpecificTicketFunc != nil {
+		return f.CallSpecificTicketFunc(ctx, windowID, ticketIDOrNumber)
+	}
 	return f.CallNextFunc(ctx, windowID)
 }
 

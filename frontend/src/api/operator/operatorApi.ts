@@ -128,10 +128,13 @@ export async function getCurrentTicket(windowId: string): Promise<Ticket | null>
   return await handleResponse<Ticket>(res);
 }
 
-export async function callNext(windowId: string): Promise<Ticket> {
+export async function callNext(windowId: string, specificTicket?: string): Promise<Ticket> {
   if (isMockEnabled()) {
     const matchedWindow = DEMO_WINDOWS.find((w) => w.id === windowId) || DEMO_WINDOWS[0];
     const ticket = createMockTicket(matchedWindow.number, 'CALLED');
+    if (specificTicket) {
+      ticket.publicNumber = specificTicket;
+    }
     setMockActiveTicket(ticket);
     return ticket;
   }
@@ -144,6 +147,7 @@ export async function callNext(windowId: string): Promise<Ticket> {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
+    body: specificTicket ? JSON.stringify({ publicNumber: specificTicket }) : undefined,
   });
 
   return await handleResponse<Ticket>(res);

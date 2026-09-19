@@ -487,6 +487,148 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	}
 	return t, nil
 }
+
+func (p *Postgres) CallSpecificTicket(ctx context.Context, windowID string, ticketIDOrNumber string) (domain.Ticket, error) {
+	return p.CallSpecificTicketAt(ctx, windowID, ticketIDOrNumber, time.Now().UTC())
+}
+
+func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ticketIDOrNumber string, decisionTime time.Time) (domain.Ticket, error) {
+	var empty domain.Ticket
+	clean := strings.TrimSpace(ticketIDOrNumber)
+	if clean == "" {
+		return p.CallNextAt(ctx, windowID, decisionTime)
+	}
+
+	id, err := uuid(windowID)
+	if err != nil {
+		return empty, err
+	}
+	reqID := domain.RequestIDFromContext(ctx)
+
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return empty, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
+	// Idempotency check by request_id if provided
+	if reqID != "" {
+		var replayID string
+		err = tx.QueryRow(ctx, `SELECT ticket_id::text FROM ticket_events WHERE request_id=$1 AND type='CALLED' ORDER BY id DESC LIMIT 1`, reqID).Scan(&replayID)
+		if err == nil {
+			t, scanErr := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, replayID))
+			if scanErr == nil {
+				return t, nil
+			}
+		}
+	}
+
+	var branch string
+	var status domain.WindowStatus
+	err = tx.QueryRow(ctx, `SELECT branch_id::text,status FROM windows WHERE id=$1 FOR UPDATE`, id).Scan(&branch, &status)
+	if err != nil {
+		return empty, dbError(err)
+	}
+	if status != domain.WindowStatusOpen {
+		return empty, application.ErrWindowClosed
+	}
+
+	var busyID *string
+	err = tx.QueryRow(ctx, `SELECT id::text FROM tickets WHERE window_id=$1 AND status IN ('CALLED','SERVING') LIMIT 1`, id).Scan(&busyID)
+	if err == nil && busyID != nil {
+		if reqID != "" {
+			var match bool
+			_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ticket_events WHERE ticket_id=$1::uuid AND request_id=$2 AND type='CALLED')`, *busyID, reqID).Scan(&match)
+			if match {
+				t, scanErr := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, *busyID))
+				if scanErr == nil {
+					return t, nil
+				}
+			}
+		}
+		return empty, application.ErrWindowBusy
+	}
+
+	legacyPolicy, pErr := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, branch))
+	if errors.Is(pErr, application.ErrNotFound) {
+		return empty, errors.New("queue policy missing for branch")
+	}
+	if pErr != nil {
+		return empty, dbError(pErr)
+	}
+
+	// Query target ticket by id or public_number
+	row := tx.QueryRow(ctx, `
+		SELECT `+ticketColumns+`
+		FROM tickets t
+		LEFT JOIN windows w ON w.id = t.window_id
+		WHERE t.branch_id = $1::uuid
+		  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
+		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
+		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND (t.status = 'SCHEDULED' OR t.status = 'WAITING')))
+		  AND (
+		    t.id::text = $3
+		    OR UPPER(t.public_number) = UPPER($3)
+		    OR UPPER(t.public_number) = UPPER('A-' || $3)
+		    OR UPPER(t.public_number) = UPPER('Q-' || $3)
+		    OR UPPER(t.public_number) = UPPER('L-' || $3)
+		  )
+		LIMIT 1
+		FOR UPDATE OF t
+	`, branch, windowID, clean)
+
+	target, err := scanTicket(row)
+	if errors.Is(err, application.ErrNotFound) {
+		var exists bool
+		_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE branch_id=$1::uuid AND (id::text=$2 OR UPPER(public_number)=UPPER($2)))`, branch, clean).Scan(&exists)
+		if !exists {
+			return empty, application.ErrNotFound
+		}
+		return empty, application.ErrNoOpenCompatibleWindow
+	}
+	if err != nil {
+		return empty, dbError(err)
+	}
+
+	from := target.Status
+
+	_, err = tx.Exec(ctx, `
+		UPDATE tickets
+		SET status = 'CALLED',
+		    window_id = $1::uuid,
+		    called_at = $2::timestamptz,
+		    arrived_at = CASE WHEN source = 'APPOINTMENT' THEN COALESCE(arrived_at, $2::timestamptz) ELSE NULL END
+		WHERE id = $3::uuid
+	`, windowID, decisionTime, target.ID)
+	if err != nil {
+		return empty, dbError(err)
+	}
+
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, target.ID))
+	if err != nil {
+		return empty, err
+	}
+
+	policyVersion := legacyPolicy.Version
+	priority := calculateLegacyPriority(target, decisionTime, legacyPolicy)
+
+	extra := EventExtra{
+		Actor:     "operator",
+		Reason:    fmt.Sprintf("operator manual call for ticket %s", target.PublicNumber),
+		DueAt:     target.DueAt,
+		RequestID: reqID,
+		At:        &decisionTime,
+	}
+
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCalled, &from, &policyVersion, &priority, extra); err != nil {
+		return empty, err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return empty, dbError(err)
+	}
+	return t, nil
+}
 func (p *Postgres) StartService(ctx context.Context, ticketID string) (domain.Ticket, error) {
 	return p.transition(ctx, ticketID, domain.TicketStatusCalled, domain.TicketStatusServing, "service_started_at")
 }

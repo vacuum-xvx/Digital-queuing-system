@@ -47,6 +47,14 @@ func run() int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Apply database migrations automatically on service startup
+	if version, dirty, err := database.Migrate(cfg.DatabaseURL, "up"); err != nil {
+		logger.Warn("Auto-migration notice", "error", err.Error())
+	} else {
+		logger.Info("Database schema up to date", "version", version, "dirty", dirty)
+	}
+
 	pool, err := database.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("Database setup failed", "error", err.Error())

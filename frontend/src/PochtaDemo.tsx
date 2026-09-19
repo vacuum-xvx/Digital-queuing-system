@@ -20,6 +20,7 @@ import {
   formatAnnouncementPhrase,
   getRussianSpeechVoices,
   announceTicketCall,
+  isSoundEnabled,
   AnnouncementData
 } from './utils/postalVoice';
 import { enqueueAnnouncement } from './utils/announcementQueue';
@@ -466,8 +467,8 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
   };
 
   // Аудио и голосовой диктор (Voice Engine)
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => isSoundEnabled());
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => isSoundEnabled());
   const [speechRate, setSpeechRate] = useState<number>(0.88);
   const [autoAnnounceCalls, setAutoAnnounceCalls] = useState<boolean>(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);

@@ -3,6 +3,7 @@ import { BarChart3, Clock, Eye, RotateCcw, UserPlus, UserX, Volume2, VolumeX, X 
 import { PochtaEmblem, PochtaWordmark } from './PochtaBrand';
 import { getMe, logout, User } from '../../api/authApi';
 import { ClientAuthModal } from '../../features/auth/ClientAuthModal';
+import { isSoundEnabled, setSoundEnabled } from '../../utils/postalVoice';
 
 interface ProductHeaderProps {
   currentPath: string;
@@ -11,7 +12,7 @@ interface ProductHeaderProps {
 export function ProductHeader({ currentPath }: ProductHeaderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [isA11y, setIsA11y] = useState(() => {
     try {
       return localStorage.getItem('pochta_a11y') === 'true';
@@ -27,6 +28,23 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
 
   const a11yRef = useRef<HTMLDivElement>(null);
   const a11yButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const handleSound = (e: Event) => {
+      const custom = e as CustomEvent<{ enabled: boolean }>;
+      if (custom.detail && typeof custom.detail.enabled === 'boolean') {
+        setSoundEnabledState(custom.detail.enabled);
+      }
+    };
+    window.addEventListener('pochta:sound', handleSound);
+    return () => window.removeEventListener('pochta:sound', handleSound);
+  }, []);
+
+  const toggleSound = (val?: boolean) => {
+    const next = typeof val === 'boolean' ? val : !soundEnabled;
+    setSoundEnabledState(next);
+    setSoundEnabled(next);
+  };
 
   useEffect(() => {
     if (!a11yOpen) return;
@@ -172,7 +190,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             {/* Audio Toggle */}
             <button
               type="button"
-              onClick={() => setSoundEnabled((v) => !v)}
+              onClick={() => toggleSound()}
               className="cx-header-btn h-8 w-8 sm:w-auto sm:min-w-[104px] sm:px-2.5 sm:gap-1.5"
               title="Звуковое оповещение"
             >
@@ -324,7 +342,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                     <input
                       type="checkbox"
                       checked={soundEnabled}
-                      onChange={(e) => setSoundEnabled(e.target.checked)}
+                      onChange={(e) => toggleSound(e.target.checked)}
                       className="w-4 h-4 rounded accent-[#FFE600] cursor-pointer"
                     />
                   </label>

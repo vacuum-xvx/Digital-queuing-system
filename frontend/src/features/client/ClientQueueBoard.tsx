@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Clock, ArrowRight, Users, ChevronLeft, Search, RefreshCw, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, Users, ChevronLeft, Search, Volume2, VolumeX, Sparkles, Building2 } from 'lucide-react';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
+import { useTVQueue } from '../../api/queries';
+import { announceTicketCall, playPostalChime, isSoundEnabled, setSoundEnabled } from '../../utils/postalVoice';
+import { enqueueAnnouncement } from '../../utils/announcementQueue';
 
 export interface BoardActiveCall {
   windowId: number | string;
@@ -21,6 +24,7 @@ export interface BoardWaitingTicket {
 }
 
 interface ClientQueueBoardProps {
+  branchId?: string;
   branchName?: string;
   activeCalls?: BoardActiveCall[];
   waitingQueue?: BoardWaitingTicket[];
@@ -29,7 +33,8 @@ interface ClientQueueBoardProps {
 }
 
 export function ClientQueueBoard({
-  branchName = 'ОПС 390000 • Отделение связи',
+  branchId: propBranchId,
+  branchName: propBranchName,
   activeCalls,
   waitingQueue,
   onBack,
@@ -38,13 +43,99 @@ export function ClientQueueBoard({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'serving' | 'waiting'>('all');
   const [now, setNow] = useState<Date>(() => new Date());
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    if (propBranchId) return propBranchId;
+    if (typeof window !== 'undefined') {
+      const urlBranch = new URLSearchParams(window.location.search).get('branchId');
+      if (urlBranch) return urlBranch;
+      const saved = localStorage.getItem('client_selected_branch_id') || localStorage.getItem('operator.branch');
+      if (saved) return saved;
+    }
+    return '';
+  });
+
+  const [soundOn, setSoundOn] = useState<boolean>(() => isSoundEnabled());
+
+  useEffect(() => {
+    const onSoundChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ enabled: boolean }>;
+      if (typeof customEvent.detail?.enabled === 'boolean') {
+        setSoundOn(customEvent.detail.enabled);
+      }
+    };
+    window.addEventListener('pochta:sound', onSoundChange);
+    return () => window.removeEventListener('pochta:sound', onSoundChange);
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+  };
+
+  const handleTestSound = () => {
+    setSoundEnabled(true);
+    setSoundOn(true);
+    void playPostalChime(0.30).then(() => {
+      void announceTicketCall('А001', 1);
+    });
+  };
+
+  // Загружаем список отделений для авто-выбора или переключения
+  useEffect(() => {
+    fetch('/api/v1/branches')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        const list = data?.items || [];
+        setBranches(list);
+        if (!selectedBranchId && list.length > 0) {
+          setSelectedBranchId(list[0].id);
+        }
+      })
+      .catch(() => {});
+  }, [selectedBranchId]);
+
+  // Опрос реального TV-табло отделения
+  const { data: tvData } = useTVQueue(selectedBranchId, 2500);
+
+  // Слежение за изменением вызванных талонов в окнах для воспроизведения гонга и диктора
+  const lastAnnouncedWindowTicketsRef = useRef<Map<number, string>>(new Map());
+  const isInitialLoadRef = useRef(true);
+
+  useEffect(() => {
+    if (!tvData?.windows) return;
+    const windows = tvData.windows as Array<{ number: number; currentTicketNumber?: string }>;
+
+    if (isInitialLoadRef.current) {
+      windows.forEach(w => {
+        if (w.currentTicketNumber) {
+          lastAnnouncedWindowTicketsRef.current.set(w.number, w.currentTicketNumber);
+        }
+      });
+      isInitialLoadRef.current = false;
+      return;
+    }
+
+    windows.forEach(w => {
+      if (w.currentTicketNumber) {
+        const prev = lastAnnouncedWindowTicketsRef.current.get(w.number);
+        if (prev !== w.currentTicketNumber) {
+          lastAnnouncedWindowTicketsRef.current.set(w.number, w.currentTicketNumber);
+          enqueueAnnouncement(() => announceTicketCall(w.currentTicketNumber!, w.number));
+        }
+      } else {
+        lastAnnouncedWindowTicketsRef.current.delete(w.number);
+      }
+    });
+  }, [tvData]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Примерные/дефолтные данные табло, если не переданы извне
+  // Примерные/дефолтные данные табло, если не переданы извне и нет связи с бэкендом
   const defaultCalls: BoardActiveCall[] = useMemo(() => [
     {
       windowId: 1,
@@ -80,8 +171,39 @@ export function ClientQueueBoard({
     { id: 'w5', number: 'Т008', serviceTitle: 'Товары и открытки', position: 5, estimatedWaitMinutes: 14 },
   ], []);
 
-  const effectiveCalls = activeCalls !== undefined ? activeCalls : defaultCalls;
-  const effectiveWaiting = waitingQueue !== undefined ? waitingQueue : defaultWaiting;
+  // Данные из реального бэкенда
+  const liveCalls: BoardActiveCall[] | null = useMemo(() => {
+    if (!tvData?.windows) return null;
+    return (tvData.windows as Array<{ number: number; currentTicketNumber?: string; status: string }>)
+      .filter(w => w.status !== 'CLOSED' && !!w.currentTicketNumber)
+      .map(w => ({
+        windowId: w.number,
+        windowName: `Окно ${w.number}`,
+        ticketNumber: w.currentTicketNumber!,
+        serviceTitle: 'Обслуживание клиента',
+        estimatedMinutes: 3,
+        status: w.status,
+      }));
+  }, [tvData]);
+
+  const liveWaiting: BoardWaitingTicket[] | null = useMemo(() => {
+    if (!tvData?.queue) return null;
+    return (tvData.queue as Array<{ publicNumber: string; serviceName?: string }>)
+      .map((q, idx) => ({
+        id: `${q.publicNumber}-${idx}`,
+        number: q.publicNumber,
+        serviceTitle: q.serviceName || 'Услуга почты',
+        position: idx + 1,
+        estimatedWaitMinutes: (idx + 1) * 3,
+      }));
+  }, [tvData]);
+
+  const effectiveCalls = activeCalls !== undefined ? activeCalls : (liveCalls !== null ? liveCalls : defaultCalls);
+  const effectiveWaiting = waitingQueue !== undefined ? waitingQueue : (liveWaiting !== null ? liveWaiting : defaultWaiting);
+
+  const currentBranchName = propBranchName ||
+    branches.find(b => b.id === selectedBranchId)?.name ||
+    'ОПС 390000 • Главпочтамт';
 
   // Фильтрация по поиску
   const filteredCalls = useMemo(() => {
@@ -114,7 +236,7 @@ export function ClientQueueBoard({
     <div className="max-w-4xl mx-auto space-y-5">
       {/* Шапка табло */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-[#DCE3EC] shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-3">
             {onBack && (
               <button
@@ -127,7 +249,7 @@ export function ClientQueueBoard({
                 <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <PochtaEmblem className="w-9 h-9" bg="#003B73" fg="#FFFFFF" />
+            <PochtaEmblem className="w-9 h-9 shrink-0" bg="#003B73" fg="#FFFFFF" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg sm:text-xl font-black text-[#003B73] tracking-tight">
@@ -137,14 +259,55 @@ export function ClientQueueBoard({
                   Онлайн
                 </span>
               </div>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                {branchName}
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                {branches.length > 1 ? (
+                  <select
+                    value={selectedBranchId}
+                    onChange={(e) => setSelectedBranchId(e.target.value)}
+                    className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 font-medium focus:ring-1 focus:ring-[#003B73]"
+                    aria-label="Выбрать отделение"
+                  >
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-slate-500 font-medium">
+                    {currentBranchName}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-bold">
+          <div className="flex items-center gap-2.5">
+            {/* Кнопка управления и проверки звука */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  soundOn
+                    ? 'bg-blue-50 text-[#003B73] border-blue-200 hover:bg-blue-100'
+                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                }`}
+                title={soundOn ? 'Звук и диктор включены' : 'Звук выключен'}
+              >
+                {soundOn ? <Volume2 className="w-4 h-4 text-[#003B73]" /> : <VolumeX className="w-4 h-4" />}
+                <span className="hidden sm:inline">{soundOn ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestSound}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                title="Проверить гонг и диктора"
+              >
+                Тест звука
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono font-bold text-xs">
               <Clock className="w-3.5 h-3.5 text-[#003B73]" />
               <span>{timeString} МСК</span>
             </div>

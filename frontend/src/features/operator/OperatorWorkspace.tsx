@@ -8,6 +8,7 @@ import { Service } from '../../api/client/types';
 import { getMe, User } from '../../api/authApi';
 import { ActionControls } from './ActionControls';
 import { TicketCard } from './TicketCard';
+import { announceTicketCall } from '../../utils/postalVoice';
 import {
   Clock,
   UserPlus,
@@ -50,6 +51,7 @@ export function OperatorWorkspace() {
   const epoch = useRef(0);
   const busy = useRef(false);
   const liveKey = useRef<{ selection: string; key: string } | null>(null);
+  const lastAnnouncedTicketId = useRef<string | null>(null);
 
   useEffect(() => {
     getMe().then(setCurrentUser).catch(() => {});
@@ -94,6 +96,14 @@ export function OperatorWorkspace() {
         if (epoch.current !== generation || busy.current) return;
         setCurrent(ticket); setWindows(items); setReady(true); setError('');
 
+        if (ticket && ticket.status === 'CALLED' && ticket.id !== lastAnnouncedTicketId.current) {
+          lastAnnouncedTicketId.current = ticket.id;
+          const winNum = items.find(w => w.id === windowId)?.number ?? '';
+          if (winNum) {
+            void announceTicketCall(ticket.publicNumber, winNum);
+          }
+        }
+
         // Also fetch real TV queue for side panel
         if (branchId) {
           try {
@@ -106,10 +116,15 @@ export function OperatorWorkspace() {
             }
           } catch {}
         }
-      } catch {
+      } catch (err: unknown) {
         if (epoch.current === generation) {
           setReady(false);
-          setError('Не удалось обновить окно. Проверьте соединение и сессию.');
+          const isAuth = err instanceof OperatorApiError && err.status === 401;
+          setError(
+            isAuth
+              ? 'Сессия оператора истекла. Войдите в систему повторно.'
+              : 'Не удалось обновить окно. Проверьте соединение с сервером.'
+          );
         }
       } finally {
         if (epoch.current === generation) timer = window.setTimeout(poll, 2000);
@@ -147,11 +162,23 @@ export function OperatorWorkspace() {
       await action();
     } catch (err) {
       const code = err instanceof OperatorApiError ? err.code : '';
-      setNotice(
-        code === 'NO_ELIGIBLE_TICKETS'
-          ? 'Сейчас нет доступных талонов.'
-          : 'Операция не выполнена. Состояние окна будет обновлено; проверьте сессию при повторной ошибке.'
-      );
+      if (code === 'NO_ELIGIBLE_TICKETS') {
+        setNotice('Сейчас нет доступных талонов в очереди.');
+      } else if (code === 'WINDOW_BUSY') {
+        setNotice('Окно занято. Завершите обслуживание или отметьте неявку текущего клиента перед вызовом следующего.');
+      } else if (code === 'WINDOW_CLOSED') {
+        setNotice('Окно закрыто. Откройте окно для вызова клиентов.');
+      } else if (code === 'INVALID_TICKET_STATE') {
+        setNotice('Недопустимый статус талона для этой операции.');
+      } else if (code === 'NO_OPEN_COMPATIBLE_WINDOW') {
+        setNotice('Данное окно не обслуживает услугу выбранного талона. Подключите услугу в настройках окна.');
+      } else if (code === 'NOT_FOUND') {
+        setNotice('Талон не найден в отделении или уже был обслужен/отменен.');
+      } else {
+        setNotice(
+          'Операция не выполнена. Состояние окна будет обновлено; проверьте сессию при повторной ошибке.'
+        );
+      }
     } finally {
       busy.current = false;
       setPending(false);
@@ -210,7 +237,14 @@ export function OperatorWorkspace() {
           await arriveAppointment(publicNum);
         } catch {}
       }
-      await api.callNext(windowId);
+      const ticket = await api.callNext(windowId, publicNum);
+      const targetNum = ticket?.publicNumber || publicNum;
+      if (ticket) {
+        lastAnnouncedTicketId.current = ticket.id;
+      }
+      if (selected) {
+        void announceTicketCall(targetNum, selected.number);
+      }
     });
   }
 
@@ -411,14 +445,26 @@ export function OperatorWorkspace() {
                       onCallNext={() =>
                         void act(async () => {
                           try {
-                            await api.callNext(windowId);
+                            const ticket = await api.callNext(windowId);
+                            if (ticket) {
+                              lastAnnouncedTicketId.current = ticket.id;
+                              if (selected) {
+                                void announceTicketCall(ticket.publicNumber, selected.number);
+                              }
+                            }
                           } catch (err) {
                             if (err instanceof OperatorApiError && err.code === 'NO_ELIGIBLE_TICKETS' && tvQueue.length > 0) {
                               const nextApt = tvQueue.find(t => t.publicNumber.startsWith('A-'));
                               if (nextApt) {
                                 try {
                                   await arriveAppointment(nextApt.publicNumber);
-                                  await api.callNext(windowId);
+                                  const ticket = await api.callNext(windowId);
+                                  if (ticket) {
+                                    lastAnnouncedTicketId.current = ticket.id;
+                                    if (selected) {
+                                      void announceTicketCall(ticket.publicNumber, selected.number);
+                                    }
+                                  }
                                   return;
                                 } catch {}
                               }
@@ -427,6 +473,11 @@ export function OperatorWorkspace() {
                           }
                         })
                       }
+                      onRepeatCall={() => {
+                        if (current && selected) {
+                          void announceTicketCall(current.publicNumber, selected.number);
+                        }
+                      }}
                       onStartService={() => current && void act(() => api.startService(current.id))}
                       onCompleteService={() => current && void act(() => api.completeService(current.id))}
                       onNoShow={() => current && void act(() => api.markNoShow(current.id))}
