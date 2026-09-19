@@ -82,5 +82,15 @@ export type TicketETA = {
   referenceWindow: TicketWindow | null;
   sampleSize: number;
   usedFallback: boolean;
+  weightedWaitSeconds?: number;
+  medianSeconds?: number;
+  p90WaitSeconds?: number;
+  distribution?: {
+    avg: number;
+    weightedAvg: number;
+    median: number;
+    p90: number;
+    samples?: number[];
+  };
   calculatedAt: string;
 };

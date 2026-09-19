@@ -168,10 +168,12 @@ export async function listBranches(signal?: AbortSignal): Promise<Branch[]> {
   return response.items;
 }
 
+
 export async function listServices(branchId: string, signal?: AbortSignal): Promise<Service[]> {
   const response = await request(`/branches/${encodeURIComponent(branchId)}/services`, { signal }, parseServices);
   return response.items;
 }
+
 
 export async function createQrTicket(branchId: string, serviceId: string, idempotencyKey: string, signal?: AbortSignal): Promise<Ticket> {
   return request(`/branches/${encodeURIComponent(branchId)}/tickets/qr`, {
@@ -181,6 +183,7 @@ export async function createQrTicket(branchId: string, serviceId: string, idempo
     body: JSON.stringify({ serviceId }),
   }, parseTicket);
 }
+
 
 export async function getTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
   return request(`/tickets/${encodeURIComponent(ticketId)}`, { signal }, parseTicket);

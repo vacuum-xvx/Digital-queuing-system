@@ -43,6 +43,7 @@ export interface AdminMetrics {
   servedTodayCount: number;
   activeWindowsCount: number;
   totalWindowsCount: number;
+  p90WaitMinutes?: number | null;
 }
 
 export interface AdminWindowService {
@@ -97,4 +98,10 @@ export interface AdminBranchOverview {
   queue: AdminQueueTicket[];
   priorities: PriorityRule[];
   anomalies: AnomalyTicket[];
+  windowRecommendation?: {
+    recommendedCount: number;
+    reason: string;
+    severity: 'warning' | 'critical';
+    p90WaitMinutes: number;
+  } | null;
 }

@@ -1158,6 +1158,21 @@ components:
             number: { type: integer }
         sampleSize: { type: integer, minimum: 0, maximum: 20 }
         usedFallback: { type: boolean }
+        weightedWaitSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
+        medianSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
+        p90WaitSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
+        distribution:
+          type: object
+          nullable: true
+          properties:
+            avg: { type: integer, minimum: 0 }
+            weightedAvg: { type: integer, minimum: 0 }
+            median: { type: integer, minimum: 0 }
+            p90: { type: integer, minimum: 0 }
+            samples:
+              type: array
+              maxItems: 20
+              items: { type: integer, minimum: 0 }
         calculatedAt: { type: string, format: date-time }
     UserRole:
       type: string
@@ -1581,6 +1596,14 @@ components:
           type: string
         metrics:
           type: object
+          properties:
+            waitingClientsCount: { type: integer }
+            avgWaitTimeMinutes: { type: integer }
+            maxWaitTimeMinutes: { type: integer }
+            servedTodayCount: { type: integer }
+            activeWindowsCount: { type: integer }
+            totalWindowsCount: { type: integer }
+            p90WaitMinutes: { type: number, nullable: true }
         windows:
           type: array
           items:
@@ -1597,6 +1620,14 @@ components:
           type: array
           items:
             type: object
+        windowRecommendation:
+          type: object
+          nullable: true
+          properties:
+            recommendedCount: { type: integer, minimum: 1 }
+            reason: { type: string }
+            severity: { type: string, enum: [warning, critical] }
+            p90WaitMinutes: { type: number }
     ErrorResponse:
       type: object
       required:

@@ -10,7 +10,12 @@
   --space: 1rem;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.product-shell { font-family: var(--font); color: var(--text); background: #f8fafc; min-height: 100vh; padding: 0; box-sizing: border-box; }
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-tap-highlight-color: transparent;
+}
+.product-shell { font-family: var(--font); color: var(--text); background: #f8fafc; min-height: 100vh; padding: 0; box-sizing: border-box; overflow-x: hidden; width: 100%; max-width: 100vw; }
 .product-shell * { box-sizing: border-box; }
 .product-header, .product-session { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space); margin-bottom: var(--space); }
 .product-header a { color: var(--brand-primary); font-weight: 700; }
@@ -35,6 +40,13 @@
 /* Режим доступности / Версия для слабовидящих */
 html.a11y-mode {
   font-size: 115%;
+  --a11y-text: #ffffff;
+  --a11y-background: #000000;
+  --a11y-surface: #000000;
+  --a11y-border: #ffffff;
+  --a11y-accent: #ffff00;
+  --a11y-link: #00ffff;
+  --a11y-danger: #ff8a8a;
 }
 
 html.a11y-mode body {
@@ -54,6 +66,172 @@ html.a11y-mode button {
 }
 
 html.a11y-mode :focus-visible {
-  outline: 3px solid #FFE600 !important;
-  outline-offset: 2px !important;
+  outline: 4px solid var(--a11y-accent) !important;
+  outline-offset: 3px !important;
+}
+
+/*
+ * High contrast is deliberately a complete palette, not just a darker
+ * background. Most workspaces contain legacy component CSS and utility
+ * classes with literal colors, so the overrides below keep every surface,
+ * control, status and secondary label readable when the setting is enabled.
+ */
+html.a11y-mode.a11y-contrast {
+  --background: var(--a11y-background);
+  --surface: var(--a11y-surface);
+  --text: var(--a11y-text);
+  --muted: #ffffff;
+  --border: var(--a11y-border);
+  --brand-primary: var(--a11y-accent);
+  --brand-accent: var(--a11y-link);
+  color-scheme: dark;
+  background: var(--a11y-background) !important;
+  color: var(--a11y-text) !important;
+}
+
+html.a11y-mode.a11y-contrast body,
+html.a11y-mode.a11y-contrast #root,
+html.a11y-mode.a11y-contrast .product-shell,
+html.a11y-mode.a11y-contrast .client-workspace,
+html.a11y-mode.a11y-contrast .operator-container,
+html.a11y-mode.a11y-contrast .admin-container {
+  background: var(--a11y-background) !important;
+  color: var(--a11y-text) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .product-card,
+  .operator-card,
+  .admin-card,
+  .kpi-card,
+  .cx-home-card,
+  .cx-wizard,
+  .cx-my,
+  .main-product-header,
+  [role="dialog"],
+  [role="menu"],
+  [role="alert"],
+  section,
+  article
+) {
+  background: var(--a11y-surface) !important;
+  color: var(--a11y-text) !important;
+  border-color: var(--a11y-border) !important;
+  box-shadow: none !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  p, span, div, li, td, th, label, legend, small, strong, em,
+  h1, h2, h3, h4, h5, h6
+) {
+  color: inherit;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .text-slate-400, .text-slate-500, .text-slate-600, .text-slate-700,
+  .text-slate-800, .text-slate-900, .text-gray-500, .text-gray-600,
+  .text-gray-700, .text-gray-800, .text-gray-900,
+  .text-blue-100, .text-blue-200, .text-indigo-700, .text-emerald-700,
+  .text-emerald-800, .text-amber-700, .text-amber-900, .text-purple-700
+) {
+  color: var(--a11y-text) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(a, .product-header a, .product-shell a) {
+  color: var(--a11y-link) !important;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  button, input, select, textarea, .operator-select,
+  .window-item, .admin-tab-btn
+) {
+  background: var(--a11y-background) !important;
+  color: var(--a11y-text) !important;
+  border: 2px solid var(--a11y-border) !important;
+  box-shadow: none !important;
+}
+
+html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn):hover,
+html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn)[aria-current="true"],
+html.a11y-mode.a11y-contrast :where(button, .window-item, .admin-tab-btn)[aria-selected="true"],
+html.a11y-mode.a11y-contrast button[aria-pressed="true"] {
+  background: var(--a11y-accent) !important;
+  color: #000000 !important;
+  border-color: var(--a11y-accent) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200,
+  .bg-blue-50, .bg-emerald-50, .bg-amber-50, .bg-red-50,
+  .bg-indigo-50, .bg-purple-50
+) {
+  background: var(--a11y-background) !important;
+  color: var(--a11y-text) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .border-slate-200, .border-slate-300, .border-blue-100,
+  .border-blue-200, .border-emerald-300, .border-amber-300,
+  .border-red-200, .border-red-300
+) {
+  border-color: var(--a11y-border) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .badge-open, .kpi-card.warning, .kpi-card.success, .kpi-card.purple,
+  .cx-home-card-icon
+) {
+  background: var(--a11y-background) !important;
+  color: var(--a11y-accent) !important;
+  border-color: var(--a11y-border) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(
+  .text-red-700, .text-red-800, .text-red-900, [role="alert"]
+) {
+  color: var(--a11y-danger) !important;
+}
+
+html.a11y-mode.a11y-contrast :where(img, svg) {
+  forced-color-adjust: auto;
+}
+
+html.a11y-mode.a11y-contrast :disabled,
+html.a11y-mode.a11y-contrast [aria-disabled="true"] {
+  opacity: 1 !important;
+  color: #bdbdbd !important;
+  border-color: #bdbdbd !important;
+}
+
+/* Respect an operating-system contrast preference even when the app toggle
+   is not available (for example in a kiosk or embedded view). */
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root {
+    --border: CanvasText;
+  }
+
+  :where(button, input, select, textarea, a, [role="button"]):focus-visible {
+    outline: 3px solid Highlight !important;
+    outline-offset: 3px;
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    forced-color-adjust: auto;
+  }
+
+  button, input, select, textarea, [role="button"] {
+    border: 2px solid ButtonText;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-reduced-motion] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
 }

@@ -18,6 +18,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ metrics, noShowCount = 0 }) 
         <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">
           {metrics.avgWaitTimeMinutes <= 8 ? '✓ В нормативе (< 8 мин)' : 'Мониторинг SLA'}
         </div>
+        <div className="text-xs text-slate-500 mt-2 font-sans">P90 ожидания: {metrics.p90WaitMinutes ?? '—'} мин</div>
       </div>
 
       {/* 2. Макс. ожидание */}
