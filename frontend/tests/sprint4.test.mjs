@@ -39,3 +39,25 @@ test('announcement reset cancels pending work without overlapping current speech
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(order, ['first', 'next']);
 });
+
+test('vite config preserves reverse proxy for /api, /health, /ready to backend:8080', async () => {
+  const content = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8');
+  assert.match(content, /'\/api':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
+  assert.match(content, /'\/health':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
+  assert.match(content, /'\/ready':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
+});
+
+test('auth getMe returns null on 401 unauthenticated without fatal error', async () => {
+  const auth = await loadTS('../src/api/authApi.ts');
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: 'UNAUTHENTICATED', message: 'not authenticated' } }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const me = await auth.getMe();
+    assert.equal(me, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

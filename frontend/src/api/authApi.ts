@@ -20,7 +20,7 @@ class ApiAuthError extends Error {
 }
 
 function getApiBaseUrl(): string {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  const envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
   if (envUrl && typeof envUrl === 'string') {
     return `${envUrl.replace(/\/$/, '')}/api/v1`;
   }
@@ -77,7 +77,7 @@ export async function getMe(): Promise<User | null> {
   try {
     return await request<User>('/auth/me', { method: 'GET' });
   } catch (error) {
-    if (error instanceof ApiAuthError && error.status === 401) {
+    if ((error instanceof ApiAuthError && error.status === 401) || (error as { status?: number })?.status === 401) {
       return null;
     }
     throw error;
