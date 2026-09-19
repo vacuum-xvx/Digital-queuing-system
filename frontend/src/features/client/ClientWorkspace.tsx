@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
 import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
-import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
+import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
 import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
@@ -79,11 +79,23 @@ function StepIndicator({ steps, current }: { steps: string[]; current: number })
 
 function BranchCard({ branch, selected, onSelect }: { branch: Branch; selected: boolean; onSelect: () => void }) {
   return (
-    <button type="button" className={`cx-choice${selected ? ' cx-choice-selected' : ''}`} aria-pressed={selected} onClick={onSelect}>
-      <span className="cx-choice-title">{branch.name}</span>
-      {branch.address ? <span className="cx-choice-meta"><MapPin size={14} aria-hidden /> {branch.address}</span> : null}
-      {branch.workHours ? <span className="cx-choice-meta"><Clock size={14} aria-hidden /> {branch.workHours}</span> : null}
-      <div className="pt-1">
+    <button
+      type="button"
+      className={`cx-choice active:scale-[0.99] transition-all${selected ? ' cx-choice-selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      <div className="flex items-start justify-between gap-2 w-full">
+        <div className="flex-1 min-w-0">
+          <span className="cx-choice-title text-sm sm:text-base">{branch.name}</span>
+          {branch.address ? <span className="cx-choice-meta text-xs"><MapPin size={13} aria-hidden className="shrink-0" /> <span className="truncate">{branch.address}</span></span> : null}
+          {branch.workHours ? <span className="cx-choice-meta text-xs"><Clock size={13} aria-hidden className="shrink-0" /> {branch.workHours}</span> : null}
+        </div>
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all mt-0.5 ${selected ? 'bg-[#003B73] border-[#003B73] text-white' : 'border-slate-300 bg-white'}`}>
+          {selected && <Check size={12} strokeWidth={3} />}
+        </div>
+      </div>
+      <div className="pt-1 w-full">
         <BranchWorkloadCard branch={branch} compact />
       </div>
     </button>
@@ -92,9 +104,21 @@ function BranchCard({ branch, selected, onSelect }: { branch: Branch; selected: 
 
 function ServiceCard({ service, selected, onSelect }: { service: Service; selected: boolean; onSelect: () => void }) {
   return (
-    <button type="button" className={`cx-choice${selected ? ' cx-choice-selected' : ''}`} aria-pressed={selected} onClick={onSelect}>
-      <span className="cx-choice-title">{service.name}</span>
-      <span className="cx-choice-meta">Обслуживание в порядке электронной очереди</span>
+    <button
+      type="button"
+      className={`cx-choice active:scale-[0.99] transition-all${selected ? ' cx-choice-selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      <div className="flex items-center justify-between gap-3 w-full">
+        <div className="flex-1 min-w-0">
+          <span className="cx-choice-title text-sm sm:text-base">{service.name}</span>
+          <span className="cx-choice-meta text-xs">Обслуживание в порядке электронной очереди</span>
+        </div>
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${selected ? 'bg-[#003B73] border-[#003B73] text-white' : 'border-slate-300 bg-white'}`}>
+          {selected && <Check size={12} strokeWidth={3} />}
+        </div>
+      </div>
     </button>
   );
 }
@@ -541,17 +565,17 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     : getSavedTicketIds().length;
 
   const renderHome = () => (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
       {/* Welcome Hero Banner */}
-      <div className="bg-gradient-to-br from-[#003B73] to-[#054FA6] rounded-3xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
-        <div className="relative z-10 space-y-2">
-          <div className="flex items-center gap-3">
-            <PochtaEmblem className="w-10 h-10 drop-shadow-sm shrink-0" bg="#FFFFFF" fg="#003B73" />
+      <div className="bg-gradient-to-br from-[#003B73] to-[#054FA6] rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 space-y-1.5 sm:space-y-2">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <PochtaEmblem className="w-9 h-9 sm:w-10 sm:h-10 drop-shadow-sm shrink-0" bg="#FFFFFF" fg="#003B73" />
             <div>
-              <div className="text-xs font-mono uppercase tracking-wider text-blue-200 font-bold">
+              <div className="text-[10px] sm:text-xs font-mono uppercase tracking-wider text-blue-200 font-bold">
                 Почта России · Сервис очередей
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+              <h2 className="text-xl sm:text-3xl font-black tracking-tight">
                 Добро пожаловать
               </h2>
             </div>
@@ -563,67 +587,77 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
       </div>
 
       {/* 3 Prominent Action Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {/* 1. Записаться онлайн */}
         <button
           type="button"
           onClick={() => { resetBooking(); setScreen('booking'); }}
-          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#054FA6] hover:shadow-md transition-all text-left group flex flex-col justify-between"
+          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#054FA6] hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 cursor-pointer"
         >
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#054FA6] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
-            <CalendarClock size={26} />
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#054FA6] flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
+            <CalendarClock size={24} />
           </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900 group-hover:text-[#054FA6] transition-colors mb-1">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-[#054FA6] transition-colors mb-0.5 sm:mb-1">
               Записаться онлайн
             </h3>
             <p className="text-xs text-slate-500 leading-snug">
               Выберите время визита заранее, чтобы подойти к назначенному слоту
             </p>
           </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#054FA6] shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
         </button>
 
         {/* 2. Взять талон */}
         <button
           type="button"
           onClick={() => { resetWalkin(); setScreen('walkin'); }}
-          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#003B73] hover:shadow-md transition-all text-left group flex flex-col justify-between"
+          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#003B73] hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 cursor-pointer"
         >
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#003B73] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
-            <TicketIcon size={26} />
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#003B73] flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
+            <TicketIcon size={24} />
           </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900 group-hover:text-[#003B73] transition-colors mb-1">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-[#003B73] transition-colors mb-0.5 sm:mb-1">
               Взять талон
             </h3>
             <p className="text-xs text-slate-500 leading-snug">
               Получите электронный номерок прямо сейчас, если вы уже в отделении
             </p>
           </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#003B73] shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
         </button>
 
         {/* 3. Мои талоны */}
         <button
           type="button"
           onClick={() => setScreen('my')}
-          className="p-6 rounded-3xl bg-white border border-[#D2D8E2] hover:border-emerald-600 hover:shadow-md transition-all text-left group flex flex-col justify-between relative"
+          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-emerald-600 hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 relative cursor-pointer"
         >
-          {savedCount > 0 && (
-            <span className="absolute top-4 right-4 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-              {savedCount} активных
-            </span>
-          )}
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-inner">
-            <ListChecks size={26} />
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
+            <ListChecks size={24} />
           </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors mb-1">
-              Мои талоны
-            </h3>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors mb-0.5 sm:mb-1">
+                Мои талоны
+              </h3>
+              {savedCount > 0 && (
+                <span className="sm:hidden px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  {savedCount}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 leading-snug">
               Текущие очереди, статус вызова к окну и история визита
             </p>
           </div>
+          {savedCount > 0 && (
+            <span className="hidden sm:inline absolute top-4 right-4 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              {savedCount} активных
+            </span>
+          )}
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
     </div>
@@ -637,10 +671,10 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         <header className="flex items-center justify-between border-b border-slate-200 pb-3">
           <button
             type="button"
-            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+            className="cx-back-btn"
             onClick={() => (bookingStep === 0 ? setScreen('home') : setBookingStep(b => b - 1))}
           >
-            <ChevronLeft size={20} />
+            <ChevronLeft size={18} />
             <span>Назад</span>
           </button>
           <h2 className="text-lg font-black text-slate-900">Онлайн-запись</h2>
@@ -702,7 +736,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
           {bookingStep === 2 && (
             <div className="space-y-4">
               <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
-              <div className="p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
+              <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-slate-900">Укажите время визита</h3>
               <label className="block text-xs font-bold text-slate-700 space-y-1">
                 <span>Дата и время (МСК)</span>
@@ -713,16 +747,23 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                   onChange={e => setScheduledAtInput(e.target.value)}
                   disabled={creating}
                   aria-label="Дата и время (МСК)"
-                  className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6]"
+                  className="w-full px-3.5 py-3 text-base sm:text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] min-h-[48px]"
                 />
               </label>
               <button
                 type="button"
-                className="w-full min-h-[46px] py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50"
+                className="w-full min-h-[48px] py-3 bg-[#003B73] hover:bg-[#054FA6] active:bg-[#00274D] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
                 disabled={creating || !scheduledAtInput}
                 onClick={createAppointmentData}
               >
-                {creating ? 'Оформляем...' : 'Подтвердить запись'}
+                {creating ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <span>Оформляем...</span>
+                  </>
+                ) : (
+                  <span>Подтвердить запись</span>
+                )}
               </button>
               </div>
             </div>
@@ -741,10 +782,10 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
           {!kiosk ? (
             <button
               type="button"
-              className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+              className="cx-back-btn"
               onClick={() => (walkinStep === 0 ? setScreen('home') : setWalkinStep(w => w - 1))}
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={18} />
               <span>Назад</span>
             </button>
           ) : <div className="w-12" />}
@@ -753,7 +794,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
             <button
               type="button"
               onClick={() => setScreen('my')}
-              className="px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-bold hover:bg-blue-100 transition-colors"
+              className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-bold hover:bg-blue-100 transition-colors"
             >
               Мои талоны
             </button>
@@ -821,14 +862,23 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                 </div>
               )}
 
-              <button
-                type="button"
-                className="w-full min-h-[48px] py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed mt-2"
-                disabled={creating || !services.some(s => s.id === serviceId)}
-                onClick={createQrTicket}
-              >
-                {creating ? 'Оформляем…' : 'Получить талон'}
-              </button>
+              <div className="sticky bottom-3 sm:static z-20 pt-2 pb-1 bg-[#F8FAFC]/90 backdrop-blur-xs sm:bg-transparent">
+                <button
+                  type="button"
+                  className="w-full min-h-[48px] py-3.5 bg-[#003B73] hover:bg-[#054FA6] active:bg-[#00274D] text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  disabled={creating || !services.some(s => s.id === serviceId)}
+                  onClick={createQrTicket}
+                >
+                  {creating ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <span>Оформляем…</span>
+                    </>
+                  ) : (
+                    <span>Получить талон</span>
+                  )}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -842,10 +892,10 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         <header className="flex items-center justify-between border-b border-slate-200 pb-3">
           <button
             type="button"
-            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+            className="cx-back-btn"
             onClick={() => setScreen('home')}
           >
-            <ChevronLeft size={20} />
+            <ChevronLeft size={18} />
             <span>Главная</span>
           </button>
           <h2 className="text-lg font-black text-slate-900">Мои талоны</h2>

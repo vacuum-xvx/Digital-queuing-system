@@ -10,7 +10,12 @@
   --space: 1rem;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.product-shell { font-family: var(--font); color: var(--text); background: #f8fafc; min-height: 100vh; padding: 0; box-sizing: border-box; }
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-tap-highlight-color: transparent;
+}
+.product-shell { font-family: var(--font); color: var(--text); background: #f8fafc; min-height: 100vh; padding: 0; box-sizing: border-box; overflow-x: hidden; width: 100%; max-width: 100vw; }
 .product-shell * { box-sizing: border-box; }
 .product-header, .product-session { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space); margin-bottom: var(--space); }
 .product-header a { color: var(--brand-primary); font-weight: 700; }
