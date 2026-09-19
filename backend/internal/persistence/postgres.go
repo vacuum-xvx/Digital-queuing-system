@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +72,7 @@ func dbError(err error) error {
 		return application.ErrWindowBusy
 	}
 	// Do not expose driver messages, SQL or connection details across the boundary.
+	slog.Error("persistence error", "err", err)
 	return errors.New("queue persistence operation failed")
 }
 
@@ -447,7 +449,8 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	// Update winning ticket to CALLED
 	_, err = tx.Exec(ctx, `
 		UPDATE tickets
-		SET status = 'CALLED', window_id = $1::uuid, called_at = $2::timestamptz, arrived_at = COALESCE(arrived_at, $2::timestamptz)
+		SET status = 'CALLED', window_id = $1::uuid, called_at = $2::timestamptz,
+		    arrived_at = CASE WHEN source = 'APPOINTMENT' THEN COALESCE(arrived_at, $2::timestamptz) ELSE NULL END
 		WHERE id = $3::uuid
 	`, windowID, decisionTime, winner.ID)
 	if err != nil {

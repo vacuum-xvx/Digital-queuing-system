@@ -1,0 +1,31 @@
+policy_version: 1
+
+appointment:
+  grace_minutes: 15
+  early_window_minutes: 10
+
+sources:
+  appointment:
+    rank: 0
+  qr:
+    rank: 1
+    max_wait_minutes: 30
+  live:
+    rank: 2
+    max_wait_minutes: 30
+
+services:
+  "22222222-2222-2222-2222-222222222222":
+    max_wait_minutes: 30
+  "55555555-5555-5555-5555-555555555555":
+    max_wait_minutes: 20
+
+call:
+  client_timeout_seconds: 90
+  max_recalls: 2
+
+window_close:
+  policy: "finish_current" # finish_current | return_to_queue
+
+alerts:
+  overdue_after_minutes: 5

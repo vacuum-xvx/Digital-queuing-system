@@ -147,7 +147,7 @@ export function BranchWorkloadCard({
   return (
     <section
       aria-label="Загруженность отделения"
-      className={`bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-6 shadow-sm space-y-4 text-left transition-all ${className}`}
+      className={`bg-white rounded-3xl border border-[#D2D8E2] p-4 sm:p-6 shadow-sm space-y-4 text-left transition-all max-w-full min-w-0 overflow-hidden ${className}`}
     >
       {/* Шапка карточки */}
       <div className="flex flex-wrap items-center justify-between gap-2">
