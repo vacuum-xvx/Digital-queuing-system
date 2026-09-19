@@ -559,3 +559,77 @@
 }
 
 .cx-tickets-list { display: flex; flex-direction: column; gap: 1rem; }
+
+/* Workload Widget Styles & Resets */
+.cx-workload-btn-reset {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  font: inherit !important;
+  line-height: normal !important;
+  box-shadow: none !important;
+}
+
+.cx-workload-day-pill {
+  margin: 0 !important;
+  padding: 6px 2px !important;
+  border: none !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.cx-workload-day-pill-selected {
+  background: #FFFFFF !important;
+  color: #0F172A !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+.cx-workload-day-pill-unselected {
+  background: transparent !important;
+  color: #64748B !important;
+}
+
+.cx-workload-day-pill-unselected:hover {
+  background: rgba(226, 232, 240, 0.6) !important;
+  color: #0F172A !important;
+}
+
+.cx-workload-bar-column {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  height: 100% !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.cx-workload-bar-fill {
+  width: 100%;
+  border-radius: 6px;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s ease;
+}
+
+.cx-workload-bar-green {
+  background-color: #00B050 !important;
+}
+
+.cx-workload-bar-orange {
+  background-color: #FF8533 !important;
+}
+
