@@ -56,7 +56,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ metrics, noShowCount = 0 }) 
 
       {/* 5. Неявки */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm col-span-2 lg:col-span-1">
-        <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Неявки (NO_SHOW)</div>
+        <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Неявки</div>
         <div className="text-2xl font-black text-[#D92534] mt-1">
           {noShowCount} талона
         </div>

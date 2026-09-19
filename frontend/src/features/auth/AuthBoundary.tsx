@@ -1,7 +1,7 @@
 import React, { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { getMe, login, logout, User } from '../../api/authApi';
+import { getMe, login, User } from '../../api/authApi';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
-import { ShieldAlert, UserCheck, Lock } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 export function AuthBoundary({ children, area, loginPage }: { children: ReactNode; area: 'operator' | 'admin'; loginPage: boolean }) {
   const [user, setUser] = useState<User | null>(null);
@@ -17,6 +17,14 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
     return () => { active = false; };
   }, []);
 
+  // Синхронизация с выходом через шапку (ProductHeader): сбрасываем сессию,
+  // чтобы показать форму входа без перезагрузки страницы.
+  useEffect(() => {
+    const handleLogoutEvent = () => setUser(null);
+    window.addEventListener('pochta:logout', handleLogoutEvent);
+    return () => window.removeEventListener('pochta:logout', handleLogoutEvent);
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
@@ -27,13 +35,6 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
     } catch {
       setError('Не удалось войти. Проверьте почту, пароль и соединение с сервером.');
     } finally { setPending(false); }
-  }
-
-  async function signOut() {
-    setPending(true); setError('');
-    try { await logout(); setUser(null); }
-    catch { setError('Не удалось выйти. Повторите попытку.'); }
-    finally { setPending(false); }
   }
 
   if (checking) {
@@ -113,26 +114,6 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
 
   return (
     <div className="space-y-4">
-      {/* User Session Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm text-xs">
-        <div className="flex items-center gap-2">
-          <UserCheck className="w-4 h-4 text-emerald-600" />
-          <span className="font-mono text-slate-800">
-            <strong>{user.email}</strong> ·{' '}
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#054FA6] border border-blue-200">
-              {user.role === 'opc_chief' ? 'Начальник ОПС' : user.role === 'employee' ? 'Оператор' : 'Клиент'}
-            </span>
-          </span>
-        </div>
-        <button
-          onClick={signOut}
-          disabled={pending}
-          className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold transition-colors"
-        >
-          Выйти
-        </button>
-      </div>
-
       {error && <p role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">{error}</p>}
 
       {!allowed ? (
