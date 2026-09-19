@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -233,6 +234,7 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	message := code
 	// Wrapped application errors may contain internal/driver context.
 	if status == http.StatusInternalServerError {
+		slog.ErrorContext(r.Context(), "internal server error", "error", err, "path", r.URL.Path)
 		message = "Internal server error"
 	}
 	writeJSONError(w, r, status, code, message)
