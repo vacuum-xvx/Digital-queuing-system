@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
-import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
+import { Appointment, Branch, Service, Ticket, TicketStatus, TicketSource, QueuePosition, TicketETA } from '../../api/client/types';
 import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
 import './kiosk.css';
@@ -26,21 +26,21 @@ function localDateTimeValue(date: Date): string {
   return toMoscowDatetimeLocal(date);
 }
 
-function statusMessage(status: TicketStatus): string {
+function statusMessage(status: TicketStatus, source?: TicketSource): string {
   switch (status) {
     case 'WAITING': return 'Вы в очереди';
     case 'CALLED': return 'Вас вызывают';
     case 'SERVING': return 'Идёт обслуживание';
     case 'COMPLETED': return 'Обслуживание завершено';
-    case 'CANCELLED': return 'Запись отменена';
+    case 'CANCELLED': return source === 'APPOINTMENT' ? 'Запись отменена' : 'Талон отменён';
     case 'NO_SHOW': return 'Вы не подошли к окну';
     case 'SCHEDULED': return 'Запись подтверждена';
     default: return 'Статус обновляется';
   }
 }
 
-function StatusBadge({ status }: { status: TicketStatus }) {
-  return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status)}</span>;
+function StatusBadge({ status, source }: { status: TicketStatus; source?: TicketSource }) {
+  return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status, source)}</span>;
 }
 
 function ETASparkline({ eta }: { eta: TicketETA }) {
@@ -468,18 +468,30 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   };
 
   const cancel = async (ticket: Ticket) => {
-    if (cancelling || ticket.status !== 'SCHEDULED') return;
+    if (cancelling || (ticket.status !== 'SCHEDULED' && ticket.status !== 'WAITING')) return;
+    const isAppointment = ticket.source === 'APPOINTMENT' && ticket.status === 'SCHEDULED';
+    const confirmMessage = isAppointment
+      ? 'Вы уверены, что хотите отменить предварительную запись?'
+      : 'Вы уверены, что хотите отказаться от талона и покинуть очередь?';
+    if (!window.confirm(confirmMessage)) return;
+
     setCancelling(true);
     try {
-      const cancelled = await api.cancelAppointment(ticket.id);
+      let cancelledTicket: Ticket;
+      if (isAppointment) {
+        const res = await api.cancelAppointment(ticket.id);
+        cancelledTicket = res.ticket;
+      } else {
+        cancelledTicket = await api.cancelTicket(ticket.id);
+      }
       removeSavedTicketId(ticket.id);
-      setTickets(prev => prev.map(t => t.id === ticket.id ? cancelled.ticket : t));
+      setTickets(prev => prev.map(t => t.id === ticket.id ? cancelledTicket : t));
       setPositions(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       setEtas(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       stopPolling();
       pollAll();
     } catch (reason: unknown) {
-      setError(friendlyError(reason, 'Не удалось отменить запись'));
+      setError(friendlyError(reason, isAppointment ? 'Не удалось отменить запись' : 'Не удалось отказаться от талона'));
     } finally {
       setCancelling(false);
     }
@@ -935,7 +947,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                     {/* Branded Ticket Header */}
                     <div className="cx-ticket-header">
                       <span className="cx-ticket-num font-mono">{ticket.publicNumber}</span>
-                      <StatusBadge status={ticket.status} />
+                      <StatusBadge status={ticket.status} source={ticket.source} />
                     </div>
 
                     {/* Details Body */}
@@ -1014,14 +1026,16 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                           </button>
                         )
                       )}
-                      {ticket.status === 'SCHEDULED' && (
+                      {(ticket.status === 'SCHEDULED' || ticket.status === 'WAITING') && (
                         <button
                           type="button"
                           className="cx-btn cx-btn-danger cx-btn-block"
                           onClick={() => cancel(ticket)}
                           disabled={cancelling}
                         >
-                          {cancelling ? 'Отменяем...' : 'Отменить запись'}
+                          {cancelling
+                            ? 'Отменяем...'
+                            : (ticket.status === 'SCHEDULED' ? 'Отменить запись' : 'Отказаться от талона')}
                         </button>
                       )}
                       {terminalStatuses.has(ticket.status) && (

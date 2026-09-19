@@ -42,6 +42,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/appointments/{ticketId}/cancel", a.CancelAppointment)
 		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
+		r.Post("/tickets/{ticketId}/cancel", a.CancelTicket)
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
 		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)

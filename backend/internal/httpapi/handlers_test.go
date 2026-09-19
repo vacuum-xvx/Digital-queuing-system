@@ -32,6 +32,7 @@ type FakeUseCases struct {
 	CreateLiveTicketFunc     func(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error)
 	CreateAppointmentFunc    func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
 	CancelAppointmentFunc    func(ctx context.Context, ticketID string) (application.AppointmentView, error)
+	CancelTicketFunc         func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetQueuePolicyFunc       func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
 	UpdateQueuePolicyFunc    func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
 	ListTicketEventsFunc     func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
@@ -116,6 +117,13 @@ func (f *FakeUseCases) CancelAppointment(ctx context.Context, ticketID string) (
 		return f.CancelAppointmentFunc(ctx, ticketID)
 	}
 	return application.AppointmentView{}, nil
+}
+
+func (f *FakeUseCases) CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	if f.CancelTicketFunc != nil {
+		return f.CancelTicketFunc(ctx, ticketID)
+	}
+	return domain.Ticket{}, nil
 }
 
 func (f *FakeUseCases) GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error) {

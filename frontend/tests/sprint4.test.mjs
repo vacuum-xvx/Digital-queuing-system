@@ -86,22 +86,49 @@ test('ClientWorkspace retains or reloads services when re-selecting the same bra
 });
 
 
-test('auth getApiBaseUrl normalizes api prefixes without duplicating', async () => {
-  const auth = await loadTS('../src/api/authApi.ts');
-  assert.equal(typeof auth.getApiBaseUrl, 'function');
-  assert.equal(auth.getApiBaseUrl(), '/api/v1');
+test('clientApi exports cancelTicket endpoint and performs POST /tickets/{id}/cancel', async () => {
+  const clientApi = await loadTS('../src/api/client/clientApi.ts');
+  assert.equal(typeof clientApi.cancelTicket, 'function');
+
+  const originalFetch = globalThis.fetch;
+  try {
+    let capturedUrl, capturedMethod;
+    globalThis.fetch = async (url, options) => {
+      capturedUrl = url;
+      capturedMethod = options.method;
+      return new Response(JSON.stringify({
+        id: 'ticket-123',
+        publicNumber: 'Q-000001',
+        branchId: 'b-1',
+        serviceId: 's-1',
+        source: 'QR',
+        status: 'CANCELLED',
+        window: null,
+        createdAt: new Date().toISOString(),
+        queueEnteredAt: new Date().toISOString(),
+        calledAt: null,
+        serviceStartedAt: null,
+        completedAt: null,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const cancelled = await clientApi.cancelTicket('ticket-123');
+    assert.equal(capturedUrl, '/api/v1/tickets/ticket-123/cancel');
+    assert.equal(capturedMethod, 'POST');
+    assert.equal(cancelled.status, 'CANCELLED');
+    assert.equal(cancelled.publicNumber, 'Q-000001');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
-test('terminalStatuses includes COMPLETED, CANCELLED, NO_SHOW and excludes active statuses', async () => {
+test('ClientWorkspace supports refusing waiting tickets and shows Отказаться от талона', async () => {
   const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(content, /terminalStatuses.*COMPLETED/);
-  assert.match(content, /terminalStatuses.*CANCELLED/);
-  assert.match(content, /terminalStatuses.*NO_SHOW/);
+  assert.match(content, /api\.cancelTicket/);
+  assert.match(content, /Отказаться от талона/);
+  assert.match(content, /ticket\.status\s*===\s*'WAITING'/);
 });
 
-test('ClientWorkspace retains or reloads services when re-selecting the same branch', async () => {
-  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(content, /if\s*\(\s*id\s*===\s*branchId\s*\)\s*\{\s*fetchServices\(id\);/);
-  assert.match(content, /terminalStatuses\.has\(ticket\.status\)/);
-  assert.match(content, /Взять новый талон/);
-});

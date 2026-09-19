@@ -813,6 +813,32 @@ paths:
           $ref: '#/components/responses/InvalidState'
         '500':
           $ref: '#/components/responses/InternalError'
+  /tickets/{ticketId}/cancel:
+    post:
+      summary: Cancel a ticket
+      operationId: cancelTicket
+      tags:
+        - Client
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ticket Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /admin/windows/{windowId}/status:
     put:
       security: [{ sessionCookie: [] }]

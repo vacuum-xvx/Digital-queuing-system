@@ -211,6 +211,13 @@ export async function cancelAppointment(ticketId: string, signal?: AbortSignal):
   }, parseAppointment);
 }
 
+export async function cancelTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
+  return request(`/tickets/${encodeURIComponent(ticketId)}/cancel`, {
+    method: 'POST',
+    signal,
+  }, parseTicket);
+}
+
 export async function arriveAppointment(ticketId: string, signal?: AbortSignal): Promise<Appointment> {
   return request(`/appointments/${encodeURIComponent(ticketId)}/arrive`, { method: 'POST', signal }, parseAppointment);
 }

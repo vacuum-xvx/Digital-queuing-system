@@ -203,3 +203,14 @@ func (a *API) CancelAppointment(w http.ResponseWriter, r *http.Request) {
 		ScheduledAt: appView.ScheduledAt,
 	})
 }
+
+func (a *API) CancelTicket(w http.ResponseWriter, r *http.Request) {
+	ticketID := chi.URLParam(r, "ticketId")
+	ticket, err := a.usecases.CancelTicket(r.Context(), ticketID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
+}

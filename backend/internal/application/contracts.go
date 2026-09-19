@@ -71,6 +71,7 @@ type UseCases interface {
 	CreateLiveTicket(ctx context.Context, cmd CreateLiveTicketCommand) (CreateLiveTicketResult, error)
 	CreateAppointment(ctx context.Context, cmd CreateAppointmentCommand) (CreateAppointmentResult, error)
 	CancelAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
+	CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error)
 	UpdateQueuePolicy(ctx context.Context, cmd UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
 	ListTicketEvents(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)

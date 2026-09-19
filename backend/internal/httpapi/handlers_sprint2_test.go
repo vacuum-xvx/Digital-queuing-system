@@ -170,6 +170,66 @@ func TestCancelAppointment_Sprint2(t *testing.T) {
 	})
 }
 
+func TestCancelTicket_Sprint2(t *testing.T) {
+	uc := &FakeUseCases{
+		CancelTicketFunc: func(ctx context.Context, ticketID string) (domain.Ticket, error) {
+			if ticketID == "notfound" {
+				return domain.Ticket{}, application.ErrNotFound
+			}
+			if ticketID == "invalid" {
+				return domain.Ticket{}, application.ErrInvalidState
+			}
+			return domain.Ticket{
+				ID:           ticketID,
+				PublicNumber: "Q-000001",
+				Source:       domain.TicketSourceQR,
+				Status:       domain.TicketStatusCancelled,
+			}, nil
+		},
+	}
+	r := setupTest(uc)
+
+	t.Run("cancel 200", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/t-qr-1/cancel", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		var res TicketDTO
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != "CANCELLED" {
+			t.Fatalf("expected CANCELLED, got %s", res.Status)
+		}
+		if res.PublicNumber != "Q-000001" {
+			t.Fatalf("expected Q-000001, got %s", res.PublicNumber)
+		}
+	})
+
+	t.Run("invalid cancel state", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/invalid/cancel", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusConflict {
+			t.Fatalf("expected 409, got %d", w.Code)
+		}
+	})
+
+	t.Run("cancel not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/notfound/cancel", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", w.Code)
+		}
+	})
+}
+
 func TestQueuePolicy_Sprint2(t *testing.T) {
 	now := time.Now().UTC()
 	uc := &FakeUseCases{
