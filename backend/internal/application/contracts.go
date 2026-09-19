@@ -15,6 +15,8 @@ var (
 	ErrWindowClosed        = fmt.Errorf("window closed: %w", ErrInvalidState)
 	ErrWindowBusy          = errors.New("window busy")
 	ErrNoEligibleTickets   = errors.New("no eligible tickets")
+	ErrNotEligibleYet      = errors.New("not eligible yet")
+	ErrNoOpenCompatibleWindow = errors.New("no open compatible window")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
 )
 
@@ -81,7 +83,10 @@ type UseCases interface {
 
 	ChangeWindowStatus(ctx context.Context, windowID string, status domain.WindowStatus) (domain.Window, error)
 	UpdateWindowServices(ctx context.Context, cmd UpdateWindowServicesCommand) (domain.Window, error)
+	CreateWindow(ctx context.Context, branchID string) (domain.Window, error)
+	DeleteWindow(ctx context.Context, windowID string) error
 	CallNext(ctx context.Context, windowID string) (domain.Ticket, error)
+	ReconcileStaleTickets(ctx context.Context, authoritativeTime time.Time) error
 
 	StartService(ctx context.Context, ticketID string) (domain.Ticket, error)
 	CompleteService(ctx context.Context, ticketID string) (domain.Ticket, error)

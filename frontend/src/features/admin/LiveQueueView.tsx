@@ -41,9 +41,19 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
 
+  // Distinct strictly WAITING tickets that are not currently at a window
+  const waitingQueue = useMemo(() => {
+    const activeWindowTicketNumbers = new Set(
+      windows.map((w) => w.currentTicketNumber).filter(Boolean)
+    );
+    return queue.filter(
+      (item) => item.status === 'WAITING' && !activeWindowTicketNumbers.has(item.publicNumber)
+    );
+  }, [queue, windows]);
+
   // Filtered queue for table view
   const filteredQueue = useMemo(() => {
-    return queue.filter((item) => {
+    return waitingQueue.filter((item) => {
       // Source filter
       if (sourceFilter !== 'ALL' && item.source !== sourceFilter) {
         return false;
@@ -57,17 +67,17 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
       }
       return true;
     });
-  }, [queue, sourceFilter, searchQuery]);
+  }, [waitingQueue, sourceFilter, searchQuery]);
 
   // Source counters
   const counts = useMemo(() => {
     return {
-      all: queue.length,
-      appointment: queue.filter((t) => t.source === 'APPOINTMENT').length,
-      qr: queue.filter((t) => t.source === 'QR').length,
-      live: queue.filter((t) => t.source === 'LIVE').length,
+      all: waitingQueue.length,
+      appointment: waitingQueue.filter((t) => t.source === 'APPOINTMENT').length,
+      qr: waitingQueue.filter((t) => t.source === 'QR').length,
+      live: waitingQueue.filter((t) => t.source === 'LIVE').length,
     };
-  }, [queue]);
+  }, [waitingQueue]);
 
   const activeServingWindows = windows.filter(
     (w) => w.status === 'OPEN' && w.currentTicketNumber
@@ -256,16 +266,16 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
             <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-200">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-300" />
-                <span>ОЖИДАЮТ В ОЧЕРЕДИ ({queue.length})</span>
+                <span>ОЖИДАЮТ В ОЧЕРЕДИ ({waitingQueue.length})</span>
               </div>
               <span className="text-[11px] font-mono text-blue-300">
                 Порядок вызова формируется по алгоритму СУО
               </span>
             </div>
 
-            {queue.length > 0 ? (
+            {waitingQueue.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-                {queue.map((item, idx) => {
+                {waitingQueue.map((item, idx) => {
                   const isApt = item.source === 'APPOINTMENT';
                   const isQr = item.source === 'QR';
 
@@ -274,7 +284,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                       key={item.id}
                       className={`p-3 rounded-2xl border text-center flex flex-col justify-between transition-all ${
                         idx === 0
-                          ? 'bg-blue-600/90 text-white border-blue-400 shadow-md ring-2 ring-white/40'
+                          ? 'bg-[#0055A5] text-white border-blue-400/50 shadow-md ring-2 ring-white/30'
                           : 'bg-white/10 text-white border-white/15 hover:bg-white/15'
                       }`}
                     >
@@ -331,7 +341,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по номеру талона (A-001, Q-015...) или услуге"
-                className="w-full pl-9 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
+                className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
               />
               {searchQuery && (
                 <button

@@ -80,10 +80,17 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 	if !future {
 		return empty, application.ErrInvalidState
 	}
+	policy := p.GetPolicy()
+	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+		Source:      domain.TicketSourceAppointment,
+		ScheduledAt: &scheduled,
+		ServiceID:   cmd.ServiceID,
+	}, time.Time{})
+
 	var tid string
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at,queue_entered_at,public_number,appointment_requested_at)
- VALUES($1,$2,'APPOINTMENT','SCHEDULED',$3,$4,$4,next_appointment_public_number(),$5)
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, scheduled, requestedInstant).Scan(&tid)
+	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at,queue_entered_at,public_number,appointment_requested_at,ready_at,due_at,source_rank,policy_version)
+ VALUES($1,$2,'APPOINTMENT','SCHEDULED',$3,$4,$4,next_appointment_public_number(),$5,$6,$7,$8,$9)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, scheduled, requestedInstant, readyAt, dueAt, sourceRank, policy.PolicyVersion).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
 		if err != nil {
@@ -98,7 +105,11 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 	if err != nil {
 		return empty, err
 	}
-	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil); err != nil {
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil, EventExtra{
+		Actor:  "client_online",
+		Reason: "appointment scheduled",
+		DueAt:  t.DueAt,
+	}); err != nil {
 		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -180,7 +191,24 @@ func (p *Postgres) CancelTicket(ctx context.Context, ticketID string) (domain.Ti
 	return t, nil
 }
 
-func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.TicketEventType, from *domain.TicketStatus, version *int64, priority *int64) error {
+type EventExtra struct {
+	Actor     string
+	Reason    string
+	DueAt     *time.Time
+	RequestID string
+	At        *time.Time
+}
+
+func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.TicketEventType, from *domain.TicketStatus, version *int64, priority *int64, extra ...EventExtra) error {
+	var fromStatus domain.TicketStatus
+	if from != nil {
+		fromStatus = *from
+	}
+	// FSM state transition validation
+	if err := domain.ValidateTransition(fromStatus, t.Status); err != nil {
+		return err
+	}
+
 	var window *string
 	if t.Window != nil {
 		window = &t.Window.ID
@@ -200,15 +228,40 @@ func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.Ti
 	case domain.TicketEventCompleted:
 		occurred = t.CompletedAt
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO ticket_events(ticket_id,type,from_status,to_status,window_id,policy_version,decision_priority,occurred_at)
- VALUES($1::uuid,$2,$3,$4,$5::uuid,$6,$7,COALESCE($8::timestamptz,clock_timestamp()))`, t.ID, kind, from, t.Status, window, version, priority, occurred)
+
+	var actor, reason, requestID *string
+	var dueAt, at *time.Time
+	if len(extra) > 0 {
+		if extra[0].Actor != "" {
+			actor = &extra[0].Actor
+		}
+		if extra[0].Reason != "" {
+			reason = &extra[0].Reason
+		}
+		dueAt = extra[0].DueAt
+		if extra[0].RequestID != "" {
+			requestID = &extra[0].RequestID
+		}
+		at = extra[0].At
+	}
+	if dueAt == nil {
+		dueAt = t.DueAt
+	}
+	if at == nil {
+		at = occurred
+	}
+
+	_, err := tx.Exec(ctx, `INSERT INTO ticket_events(ticket_id,type,from_status,to_status,window_id,policy_version,decision_priority,occurred_at,actor,reason,due_at,request_id,at)
+ VALUES($1::uuid,$2,$3,$4,$5::uuid,$6,$7,COALESCE($8::timestamptz,clock_timestamp()),$9,$10,$11,$12,COALESCE($13::timestamptz,clock_timestamp()))`,
+		t.ID, kind, from, t.Status, window, version, priority, occurred, actor, reason, dueAt, requestID, at)
 	return dbError(err)
 }
+
 func (p *Postgres) ListTicketEvents(ctx context.Context, ticketID string) ([]domain.TicketEvent, error) {
 	if _, err := p.GetTicket(ctx, ticketID); err != nil {
 		return nil, err
 	}
-	rows, err := p.pool.Query(ctx, `SELECT id,ticket_id::text,type,from_status,to_status,window_id::text,policy_version,decision_priority,occurred_at
+	rows, err := p.pool.Query(ctx, `SELECT id,ticket_id::text,type,from_status,to_status,window_id::text,policy_version,decision_priority,occurred_at,actor,reason,due_at,request_id,at
  FROM ticket_events WHERE ticket_id=$1::uuid ORDER BY occurred_at,id`, ticketID)
 	if err != nil {
 		return nil, dbError(err)
@@ -217,10 +270,16 @@ func (p *Postgres) ListTicketEvents(ctx context.Context, ticketID string) ([]dom
 	out := []domain.TicketEvent{}
 	for rows.Next() {
 		var e domain.TicketEvent
-		if err = rows.Scan(&e.ID, &e.TicketID, &e.Type, &e.FromStatus, &e.ToStatus, &e.WindowID, &e.PolicyVersion, &e.DecisionPriority, &e.OccurredAt); err != nil {
+		if err = rows.Scan(&e.ID, &e.TicketID, &e.Type, &e.FromStatus, &e.ToStatus, &e.WindowID, &e.PolicyVersion, &e.DecisionPriority, &e.OccurredAt, &e.Actor, &e.Reason, &e.DueAt, &e.RequestID, &e.At); err != nil {
 			return nil, dbError(err)
 		}
 		e.OccurredAt = e.OccurredAt.UTC()
+		if e.DueAt != nil {
+			*e.DueAt = e.DueAt.UTC()
+		}
+		if e.At != nil {
+			*e.At = e.At.UTC()
+		}
 		out = append(out, e)
 	}
 	return out, dbError(rows.Err())

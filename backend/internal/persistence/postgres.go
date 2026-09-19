@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,9 +17,31 @@ import (
 	"postcode/backend/internal/domain"
 )
 
-type Postgres struct{ pool *pgxpool.Pool }
+type Postgres struct {
+	pool     *pgxpool.Pool
+	policyMu sync.RWMutex
+	policy   domain.QueuePolicyConfig
+}
 
-func New(pool *pgxpool.Pool) *Postgres { return &Postgres{pool: pool} }
+func New(pool *pgxpool.Pool, policy ...domain.QueuePolicyConfig) *Postgres {
+	p := domain.DefaultQueuePolicy()
+	if len(policy) > 0 {
+		p = policy[0]
+	}
+	return &Postgres{pool: pool, policy: p}
+}
+
+func (p *Postgres) SetPolicy(cfg domain.QueuePolicyConfig) {
+	p.policyMu.Lock()
+	defer p.policyMu.Unlock()
+	p.policy = cfg
+}
+
+func (p *Postgres) GetPolicy() domain.QueuePolicyConfig {
+	p.policyMu.RLock()
+	defer p.policyMu.RUnlock()
+	return p.policy
+}
 
 var _ application.UseCases = (*Postgres)(nil)
 
@@ -53,14 +76,20 @@ func dbError(err error) error {
 
 const ticketColumns = `t.id::text, t.public_number, t.branch_id::text, t.service_id::text,
  t.source, t.status, w.id::text, w.number, t.created_at, t.queue_entered_at,
- t.called_at, t.service_started_at, t.completed_at, t.scheduled_at, t.arrived_at, t.no_show_at`
+ t.called_at, t.service_started_at, t.completed_at, t.scheduled_at, t.arrived_at, t.no_show_at,
+ t.checkin_at, t.ready_at, t.due_at, t.source_rank, t.policy_version, t.recall_count, t.client_id`
 const ticketSelect = `SELECT ` + ticketColumns + ` FROM tickets t LEFT JOIN windows w ON w.id=t.window_id `
 
 func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	var t domain.Ticket
 	var wid *string
 	var number *int
-	err := row.Scan(&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status, &wid, &number, &t.CreatedAt, &t.QueueEnteredAt, &t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledAt, &t.ArrivedAt, &t.NoShowAt)
+	err := row.Scan(
+		&t.ID, &t.PublicNumber, &t.BranchID, &t.ServiceID, &t.Source, &t.Status,
+		&wid, &number, &t.CreatedAt, &t.QueueEnteredAt,
+		&t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledAt, &t.ArrivedAt, &t.NoShowAt,
+		&t.CheckinAt, &t.ReadyAt, &t.DueAt, &t.SourceRank, &t.PolicyVersion, &t.RecallCount, &t.ClientID,
+	)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
 	}
@@ -69,7 +98,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	}
 	t.CreatedAt = t.CreatedAt.UTC()
 	t.QueueEnteredAt = t.QueueEnteredAt.UTC()
-	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt, t.ScheduledAt, t.ArrivedAt, t.NoShowAt} {
+	for _, v := range []*time.Time{t.CalledAt, t.ServiceStartedAt, t.CompletedAt, t.ScheduledAt, t.ArrivedAt, t.NoShowAt, t.CheckinAt, t.ReadyAt, t.DueAt} {
 		if v != nil {
 			*v = v.UTC()
 		}
@@ -236,8 +265,16 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 		return empty, application.ErrNotFound
 	}
 	var tid string
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key) VALUES($1,$2,'QR','WAITING',$3)
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey).Scan(&tid)
+	now := time.Now().UTC()
+	policy := p.GetPolicy()
+	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+		Source:    domain.TicketSourceQR,
+		ServiceID: cmd.ServiceID,
+	}, now)
+
+	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,created_at,queue_entered_at,checkin_at,ready_at,due_at,source_rank,policy_version)
+ VALUES($1,$2,'QR','WAITING',$3,$4,$4,$4,$5,$6,$7,$8)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, now, readyAt, dueAt, sourceRank, policy.PolicyVersion).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// READ COMMITTED gives this statement a fresh snapshot after the conflicting insert commits.
 		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
@@ -253,7 +290,12 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 	if err != nil {
 		return empty, err
 	}
-	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil); err != nil {
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil, EventExtra{
+		Actor:  "kiosk_qr",
+		Reason: "ticket created",
+		DueAt:  t.DueAt,
+		At:     &now,
+	}); err != nil {
 		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -261,17 +303,37 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 	}
 	return application.CreateQRTicketResult{Ticket: t}, nil
 }
+
 func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket, error) {
+	return p.CallNextAt(ctx, windowID, time.Now().UTC())
+}
+
+func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime time.Time) (domain.Ticket, error) {
 	var empty domain.Ticket
 	id, err := uuid(windowID)
 	if err != nil {
 		return empty, err
 	}
+	reqID := domain.RequestIDFromContext(ctx)
+
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return empty, dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+
+	// Idempotency check by request_id if provided
+	if reqID != "" {
+		var replayID string
+		err = tx.QueryRow(ctx, `SELECT ticket_id::text FROM ticket_events WHERE request_id=$1 AND type='CALLED' ORDER BY id DESC LIMIT 1`, reqID).Scan(&replayID)
+		if err == nil {
+			t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, replayID))
+			if err == nil {
+				return t, nil
+			}
+		}
+	}
+
 	var branch string
 	var status domain.WindowStatus
 	err = tx.QueryRow(ctx, `SELECT branch_id::text,status FROM windows WHERE id=$1 FOR UPDATE`, id).Scan(&branch, &status)
@@ -281,47 +343,142 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 	if status != domain.WindowStatusOpen {
 		return empty, application.ErrWindowClosed
 	}
-	var busy bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE window_id=$1 AND status IN ('CALLED','SERVING'))`, id).Scan(&busy)
-	if err != nil {
-		return empty, dbError(err)
-	}
-	if busy {
+
+	var busyID *string
+	err = tx.QueryRow(ctx, `SELECT id::text FROM tickets WHERE window_id=$1 AND status IN ('CALLED','SERVING') LIMIT 1`, id).Scan(&busyID)
+	if err == nil && busyID != nil {
+		// If same request_id as the call event that assigned this ticket, replay
+		if reqID != "" {
+			var match bool
+			_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ticket_events WHERE ticket_id=$1::uuid AND request_id=$2 AND type='CALLED')`, *busyID, reqID).Scan(&match)
+			if match {
+				t, scanErr := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, *busyID))
+				if scanErr == nil {
+					return t, nil
+				}
+			}
+		}
 		return empty, application.ErrWindowBusy
 	}
 
-	policy, err := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, branch))
-	if errors.Is(err, application.ErrNotFound) {
+	legacyPolicy, pErr := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, branch))
+	if errors.Is(pErr, application.ErrNotFound) {
 		return empty, errors.New("queue policy missing for branch")
 	}
-	if err != nil {
-		return empty, err
+	if pErr != nil {
+		return empty, dbError(pErr)
 	}
-	var decisionTime time.Time
-	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&decisionTime); err != nil {
+
+	// 1. Fetch top candidates with FOR UPDATE SKIP LOCKED ordered by due_at ASC, source_rank ASC, checkin_at ASC, id ASC
+	candidateRows, err := tx.Query(ctx, `
+		SELECT `+ticketColumns+`
+		FROM tickets t
+		LEFT JOIN windows w ON w.id = t.window_id
+		WHERE t.branch_id = $1::uuid
+		  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
+		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
+		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
+		  AND t.ready_at <= $3::timestamptz
+		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
+		LIMIT 3
+		FOR UPDATE OF t SKIP LOCKED
+	`, branch, windowID, decisionTime)
+	if err != nil {
 		return empty, dbError(err)
 	}
-	var tid string
-	var from domain.TicketStatus
-	var priority int64
-	err = tx.QueryRow(ctx, `WITH candidate AS (`+rankedCandidates+canonicalOrder+`
- FOR UPDATE OF t SKIP LOCKED LIMIT 1
- ) UPDATE tickets t SET status='CALLED',window_id=$1::uuid,called_at=$3::timestamptz,arrived_at=COALESCE(t.arrived_at,$3::timestamptz)
- FROM candidate c WHERE t.id=c.id RETURNING t.id::text,c.status,c.effective_priority`,
-		rankingArgs(windowID, branch, decisionTime, policy)...).Scan(&tid, &from, &priority)
-	if errors.Is(err, pgx.ErrNoRows) {
+
+	var candidates []domain.Ticket
+	for candidateRows.Next() {
+		cand, scanErr := scanTicket(candidateRows)
+		if scanErr != nil {
+			candidateRows.Close()
+			return empty, scanErr
+		}
+		candidates = append(candidates, cand)
+	}
+	candidateRows.Close()
+
+	if len(candidates) == 0 {
+		// Check if any tickets have ready_at <= decisionTime + 1s (could be locked by concurrent tx or just arrived)
+		var anyReadyNow bool
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM tickets t
+				WHERE t.branch_id = $1::uuid
+				  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
+				  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
+				  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
+				  AND t.ready_at <= $3::timestamptz + interval '1 second'
+			)
+		`, branch, windowID, decisionTime).Scan(&anyReadyNow)
+		if err != nil {
+			return empty, dbError(err)
+		}
+		if anyReadyNow {
+			// Ready tickets exist right now, but were skipped/locked by another concurrent worker
+			return empty, application.ErrNoEligibleTickets
+		}
+
+		// No ready tickets. Check if any future tickets exist
+		var futureExists bool
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM tickets t
+				WHERE t.branch_id = $1::uuid
+				  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
+				  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
+				  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED' AND t.arrived_at IS NOT NULL))
+				  AND t.ready_at > $3::timestamptz + interval '1 second'
+			)
+		`, branch, windowID, decisionTime).Scan(&futureExists)
+		if err != nil {
+			return empty, dbError(err)
+		}
+		if futureExists {
+			return empty, application.ErrNotEligibleYet
+		}
+
 		return empty, application.ErrNoEligibleTickets
 	}
+
+	winner := candidates[0]
+	from := winner.Status
+
+	// Update winning ticket to CALLED
+	_, err = tx.Exec(ctx, `
+		UPDATE tickets
+		SET status = 'CALLED', window_id = $1::uuid, called_at = $2::timestamptz, arrived_at = COALESCE(arrived_at, $2::timestamptz)
+		WHERE id = $3::uuid
+	`, windowID, decisionTime, winner.ID)
 	if err != nil {
 		return empty, dbError(err)
 	}
-	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, tid))
+
+	// Rescan winner to get updated window and called_at
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, winner.ID))
 	if err != nil {
 		return empty, err
 	}
-	if err = insertEvent(ctx, tx, t, domain.TicketEventCalled, &from, &policy.Version, &priority); err != nil {
+
+	// Format top-candidate explanation for ticket_events audit log
+	explanation := fmt.Sprintf("chosen due_at=%v source_rank=%d checkin_at=%v; candidates_count=%d",
+		winner.DueAt, winner.SourceRank, winner.CheckinAt, len(candidates))
+
+	policyVersion := legacyPolicy.Version
+	priority := calculateLegacyPriority(winner, decisionTime, legacyPolicy)
+
+	extra := EventExtra{
+		Actor:     "operator",
+		Reason:    explanation,
+		DueAt:     winner.DueAt,
+		RequestID: reqID,
+		At:        &decisionTime,
+	}
+
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCalled, &from, &policyVersion, &priority, extra); err != nil {
 		return empty, err
 	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)
 	}
@@ -364,6 +521,13 @@ func (p *Postgres) transition(ctx context.Context, ticketID string, from, to dom
 	eventType := domain.TicketEventServiceStarted
 	if to == domain.TicketStatusCompleted {
 		eventType = domain.TicketEventCompleted
+		if t.Window != nil {
+			var winStatus domain.WindowStatus
+			_ = tx.QueryRow(ctx, `SELECT status FROM windows WHERE id=$1::uuid`, t.Window.ID).Scan(&winStatus)
+			if winStatus == domain.WindowStatusClosing {
+				_, _ = tx.Exec(ctx, `UPDATE windows SET status='CLOSED' WHERE id=$1::uuid`, t.Window.ID)
+			}
+		}
 	}
 	if err = insertEvent(ctx, tx, t, eventType, &from, nil, nil); err != nil {
 		return empty, err
@@ -379,11 +543,60 @@ func (p *Postgres) ChangeWindowStatus(ctx context.Context, windowID string, stat
 	if err != nil {
 		return domain.Window{}, err
 	}
-	var branchID string
-	err = p.pool.QueryRow(ctx, `UPDATE windows SET status=$1 WHERE id=$2 RETURNING branch_id::text`, string(status), id).Scan(&branchID)
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return domain.Window{}, dbError(err)
 	}
+	defer tx.Rollback(context.Background())
+
+	var branchID string
+	err = tx.QueryRow(ctx, `SELECT branch_id::text FROM windows WHERE id=$1 FOR UPDATE`, id).Scan(&branchID)
+	if err != nil {
+		return domain.Window{}, dbError(err)
+	}
+
+	policy := p.GetPolicy()
+
+	if status == domain.WindowStatusClosed {
+		// Check for active ticket at this window
+		var activeID *string
+		var activeStatus *domain.TicketStatus
+		err = tx.QueryRow(ctx, `SELECT id::text, status FROM tickets WHERE window_id=$1 AND status IN ('CALLED', 'SERVING') FOR UPDATE`, id).Scan(&activeID, &activeStatus)
+		if err == nil && activeID != nil && activeStatus != nil {
+			if policy.WindowClose.Policy == domain.WindowCloseReturnToQueue {
+				// Return to WAITING queue with original due_at and clear window
+				t, scanErr := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1::uuid`, *activeID))
+				if scanErr == nil {
+					fromStatus := *activeStatus
+					if _, updateErr := tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1::uuid`, *activeID); updateErr != nil {
+						return domain.Window{}, dbError(updateErr)
+					}
+					t.Status = domain.TicketStatusWaiting
+					t.Window = nil
+					_ = insertEvent(ctx, tx, t, domain.TicketEventReturned, &fromStatus, nil, nil, EventExtra{
+						Actor:  "window_close",
+						Reason: "window closed with return_to_queue policy",
+						DueAt:  t.DueAt,
+					})
+				}
+			} else {
+				// finish_current: if SERVING, window transitions to CLOSING until completed
+				if *activeStatus == domain.TicketStatusServing {
+					status = domain.WindowStatusClosing
+				}
+			}
+		}
+	}
+
+	_, err = tx.Exec(ctx, `UPDATE windows SET status=$1 WHERE id=$2`, string(status), id)
+	if err != nil {
+		return domain.Window{}, dbError(err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return domain.Window{}, dbError(err)
+	}
+
 	windows, err := p.ListBranchWindows(ctx, branchID)
 	if err != nil {
 		return domain.Window{}, err
@@ -596,3 +809,56 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	}
 	return t, nil
 }
+
+func calculateLegacyPriority(t domain.Ticket, decisionTime time.Time, p domain.QueuePolicy) int64 {
+	basePriority := int64(p.LivePriority)
+	if t.Source == domain.TicketSourceAppointment {
+		basePriority = int64(p.AppointmentDuePriority)
+	} else if t.Source == domain.TicketSourceQR {
+		basePriority = int64(p.QRPriority)
+	}
+
+	effectiveQueueTime := t.QueueEnteredAt
+	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt != nil {
+		effectiveQueueTime = *t.ScheduledAt
+		if t.ArrivedAt != nil && t.ArrivedAt.After(*t.ScheduledAt) {
+			effectiveQueueTime = *t.ArrivedAt
+		}
+	}
+
+	latenessPenalty := int64(0)
+	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt != nil {
+		arrived := *t.ScheduledAt
+		if t.ArrivedAt != nil {
+			arrived = *t.ArrivedAt
+		}
+		rawLatenessSeconds := int64(arrived.Sub(*t.ScheduledAt).Seconds())
+		if rawLatenessSeconds > 0 {
+			penaltySeconds := rawLatenessSeconds - int64(p.AppointmentGraceMinutes)*60
+			if penaltySeconds > 0 {
+				pen := penaltySeconds * int64(p.AppointmentLatePenaltyPerMinute) / 60
+				if pen > int64(p.AppointmentLatePenaltyMaxPoints) {
+					pen = int64(p.AppointmentLatePenaltyMaxPoints)
+				}
+				latenessPenalty = pen
+			}
+		}
+	}
+
+	waitingSeconds := int64(decisionTime.Sub(effectiveQueueTime).Seconds())
+	if waitingSeconds < 0 {
+		waitingSeconds = 0
+	}
+	boost := int64(0)
+	starveThreshold := int64(p.AntiStarvationThresholdMinutes) * 60
+	if waitingSeconds > starveThreshold {
+		boost = (waitingSeconds - starveThreshold) * int64(p.AntiStarvationPointsPerMinute) / 60
+	}
+
+	effBase := basePriority - latenessPenalty
+	if effBase < 0 {
+		effBase = 0
+	}
+	return effBase + boost
+}
+

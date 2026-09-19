@@ -125,7 +125,7 @@ export function UsersManagement() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Поиск по email, роли (клиент, оператор) или терминалу..."
-              className="w-full pl-9.5 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003B73] focus:border-transparent bg-slate-50/50 hover:bg-white transition-colors"
+              className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003B73] focus:border-transparent bg-slate-50/50 hover:bg-white transition-colors"
               aria-label="Поиск по пользователям"
             />
             {searchQuery && (

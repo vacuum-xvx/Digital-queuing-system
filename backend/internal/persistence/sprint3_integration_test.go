@@ -264,7 +264,7 @@ func TestSprint3PositionAndMixedOrdering(t *testing.T) {
 	l := live(t, ctx, p, "aged-live", parcels)
 	a := book(t, ctx, p, "due", parcels).Appointment.Ticket
 	due(t, ctx, p, a.ID)
-	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at=date_trunc('minute',now())-interval '30 minutes' WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, l.ID)
+	execSQL(t, ctx, p, `UPDATE tickets SET queue_entered_at=date_trunc('minute',now())-interval '32 minutes' WHERE id IN ($1::uuid,$2::uuid)`, qr.ID, l.ID)
 	ids := []string{qr.ID, l.ID}
 	if ids[1] < ids[0] {
 		ids[0], ids[1] = ids[1], ids[0]

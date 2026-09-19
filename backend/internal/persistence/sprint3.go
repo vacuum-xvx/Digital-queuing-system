@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"postcode/backend/internal/application"
@@ -56,9 +57,16 @@ func (p *Postgres) CreateLiveTicket(ctx context.Context, c application.CreateLiv
 		return empty, application.ErrNotFound
 	}
 	var tid string
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,public_number,created_at,queue_entered_at)
- VALUES($1,$2,'LIVE','WAITING',$3,next_live_public_number(),transaction_timestamp(),transaction_timestamp())
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, c.IdempotencyKey).Scan(&tid)
+	now := time.Now().UTC()
+	policy := p.GetPolicy()
+	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+		Source:    domain.TicketSourceLive,
+		ServiceID: c.ServiceID,
+	}, now)
+
+	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,public_number,created_at,queue_entered_at,checkin_at,ready_at,due_at,source_rank,policy_version)
+ VALUES($1,$2,'LIVE','WAITING',$3,next_live_public_number(),$4,$4,$4,$5,$6,$7,$8)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, c.IdempotencyKey, now, readyAt, dueAt, sourceRank, policy.PolicyVersion).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, c.IdempotencyKey))
 		if err != nil {
@@ -73,7 +81,12 @@ func (p *Postgres) CreateLiveTicket(ctx context.Context, c application.CreateLiv
 	if err != nil {
 		return empty, err
 	}
-	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil); err != nil {
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil, EventExtra{
+		Actor:  "kiosk_live",
+		Reason: "ticket created",
+		DueAt:  t.DueAt,
+		At:     &now,
+	}); err != nil {
 		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -107,11 +120,33 @@ func (p *Postgres) ArriveAppointment(ctx context.Context, ticketID string) (appl
 	if t.ArrivedAt != nil {
 		return appointmentView(t), nil
 	}
-	if err = tx.QueryRow(ctx, `UPDATE tickets SET arrived_at=transaction_timestamp() WHERE id=$1 RETURNING arrived_at`, t.ID).Scan(&t.ArrivedAt); err != nil {
+	checkin := time.Now().UTC()
+	policy := p.GetPolicy()
+	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+		Source:      t.Source,
+		ScheduledAt: t.ScheduledAt,
+		ServiceID:   t.ServiceID,
+	}, checkin)
+
+	if err = tx.QueryRow(ctx, `UPDATE tickets
+		SET arrived_at=$2, checkin_at=$2, due_at=$3, ready_at=$4, source_rank=$5, policy_version=$6
+		WHERE id=$1 RETURNING arrived_at`, id, checkin, dueAt, readyAt, sourceRank, policy.PolicyVersion).Scan(&t.ArrivedAt); err != nil {
 		return empty, dbError(err)
 	}
 	*t.ArrivedAt = t.ArrivedAt.UTC()
-	if err = insertEvent(ctx, tx, t, domain.TicketEventArrived, &t.Status, nil, nil); err != nil {
+	t.CheckinAt = t.ArrivedAt
+	t.DueAt = &dueAt
+	t.ReadyAt = &readyAt
+	t.SourceRank = sourceRank
+	t.PolicyVersion = policy.PolicyVersion
+
+	extra := EventExtra{
+		Actor:  "client_checkin",
+		Reason: "appointment arrived",
+		DueAt:  &dueAt,
+		At:     &checkin,
+	}
+	if err = insertEvent(ctx, tx, t, domain.TicketEventArrived, &t.Status, nil, nil, extra); err != nil {
 		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -147,7 +182,12 @@ func (p *Postgres) MarkNoShow(ctx context.Context, ticketID string) (domain.Tick
 	}
 	*t.NoShowAt = t.NoShowAt.UTC()
 	t.Status = domain.TicketStatusNoShow
-	if err = insertEvent(ctx, tx, t, domain.TicketEventNoShow, &from, nil, nil); err != nil {
+	extra := EventExtra{
+		Actor:  "operator",
+		Reason: "client no show",
+		DueAt:  t.DueAt,
+	}
+	if err = insertEvent(ctx, tx, t, domain.TicketEventNoShow, &from, nil, nil, extra); err != nil {
 		return empty, err
 	}
 	if err = tx.Commit(ctx); err != nil {

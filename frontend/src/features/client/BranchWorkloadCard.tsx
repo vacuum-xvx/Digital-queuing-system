@@ -174,28 +174,24 @@ export function BranchWorkloadCard({
           </div>
         </div>
 
-        {/* Переключатель для демонстрации сценариев (наличие/отсутствие данных) */}
-        <button
-          type="button"
-          onClick={() => setHasLoadData(prev => !prev)}
-          className={`group flex items-center gap-1.5 !py-1 !px-2.5 sm:!py-1.5 sm:!px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all border shadow-2xs whitespace-nowrap shrink-0 ${
+        {/* Статус наличия данных о загрузке */}
+        <div
+          className={`inline-flex items-center gap-1.5 py-1 px-2.5 sm:py-1.5 sm:px-3 rounded-xl text-[11px] sm:text-xs font-bold border shadow-2xs whitespace-nowrap shrink-0 ${
             hasLoadData
-              ? 'bg-blue-50/70 border-blue-200 text-[#003B73] hover:bg-blue-100'
-              : 'bg-amber-50/70 border-amber-200 text-amber-900 hover:bg-amber-100'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
           }`}
-          title="Нажмите, чтобы переключить режим наличия или отсутствия данных о загрузке"
-          aria-pressed={hasLoadData}
         >
           <span
-            className={`w-2 h-2 rounded-full transition-transform group-hover:scale-125 shrink-0 ${
+            className={`w-2 h-2 rounded-full shrink-0 ${
               hasLoadData ? 'bg-emerald-500' : 'bg-amber-500'
             }`}
           />
           <span className="hidden xs:inline">{hasLoadData ? 'Загрузка:' : 'Статус:'}</span>
-          <span className="underline underline-offset-2">
-            {hasLoadData ? 'есть данные' : 'нет данных'}
+          <span>
+            {hasLoadData ? 'Есть данные' : 'Нет данных'}
           </span>
-        </button>
+        </div>
       </div>
 
       {/* Селектор дней недели (стилизован под макет) */}

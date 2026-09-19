@@ -48,6 +48,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
 		r.Get("/branches/{branchId}/workload", a.GetBranchWorkload)
+		r.With(requireRole(domain.RoleEmployee, domain.RoleOPCChief)).Post("/branches/{branchId}/windows", a.CreateWindow)
+		r.With(requireRole(domain.RoleEmployee, domain.RoleOPCChief)).Delete("/windows/{windowId}", a.DeleteWindow)
 
 		// ── Оператор (employee + opc_chief) ──────────────────────────────
 		r.Route("/operator", func(r chi.Router) {
@@ -73,8 +75,10 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/branches/{branchId}/close-shift", a.CloseShift)
 			r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
+			r.Post("/branches/{branchId}/windows", a.CreateWindow)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
+			r.Delete("/windows/{windowId}", a.DeleteWindow)
 
 			// Управление пользователями — только начальник ОПС
 			r.Group(func(r chi.Router) {
@@ -204,8 +208,8 @@ func mapTicket(t domain.Ticket) TicketDTO {
 }
 
 func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
-	var code string
 	var status int
+	var code string
 
 	switch {
 	case errors.Is(err, application.ErrNotFound):
@@ -220,6 +224,12 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, application.ErrNoEligibleTickets):
 		status = http.StatusConflict
 		code = "NO_ELIGIBLE_TICKETS"
+	case errors.Is(err, application.ErrNotEligibleYet):
+		status = http.StatusConflict
+		code = "NOT_ELIGIBLE_YET"
+	case errors.Is(err, application.ErrNoOpenCompatibleWindow):
+		status = http.StatusConflict
+		code = "NO_OPEN_COMPATIBLE_WINDOW"
 	case errors.Is(err, application.ErrInvalidState):
 		status = http.StatusConflict
 		code = "INVALID_TICKET_STATE"

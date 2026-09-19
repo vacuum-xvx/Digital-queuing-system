@@ -23,6 +23,8 @@ import {
   Calendar,
   Tv,
   ArrowRight,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 type AdminTab = 'overview' | 'queue' | 'policy' | 'schedule' | 'anomalies' | 'users' | 'qr';
@@ -100,6 +102,28 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
+  const handleCreateWindow = async () => {
+    if (!selectedBranchId) return;
+    try {
+      await api.createWindow(selectedBranchId);
+      const updated = await api.getOverview(selectedBranchId);
+      setOverview(updated);
+    } catch (err: any) {
+      alert(err.message || 'Не удалось создать окно');
+    }
+  };
+
+  const handleDeleteWindow = async (windowId: string, windowNumber: number) => {
+    if (!window.confirm(`Вы уверены, что хотите удалить окно №${windowNumber}?`)) return;
+    try {
+      await api.deleteWindow(windowId);
+      const updated = await api.getOverview(selectedBranchId);
+      setOverview(updated);
+    } catch (err: any) {
+      alert(err.message || 'Не удалось удалить окно');
+    }
+  };
+
   const anomaliesList = overview?.anomalies || [];
   const noShowCount = anomaliesList.filter(a => a.type === 'NO_SHOW').length;
 
@@ -138,7 +162,7 @@ export const AdminWorkspace: React.FC = () => {
         </div>
 
         {/* Navigation Tabs Bar */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl text-xs font-bold">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl text-xs font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
@@ -284,7 +308,7 @@ export const AdminWorkspace: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="font-bold text-sm text-slate-900">
                       Управление окнами ОПС и распределение нагрузки
@@ -293,9 +317,19 @@ export const AdminWorkspace: React.FC = () => {
                       Смена, статус окон и текущие клиенты
                     </p>
                   </div>
-                  <span className="text-xs font-mono text-slate-500 font-bold">
-                    {overview?.windows.length || 0} окон в отделении
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-slate-500 font-bold">
+                      {overview?.windows.length || 0} окон в отделении
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCreateWindow}
+                      className="px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#002D59] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Добавить окно</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -331,13 +365,23 @@ export const AdminWorkspace: React.FC = () => {
                             {win.servedCount} чел
                           </td>
                           <td className="p-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleWindow(win.id, win.status)}
-                              className="px-3 py-1 rounded-lg border text-[11px] font-bold hover:bg-slate-100 transition-colors"
-                            >
-                              {win.status === 'OPEN' ? 'Закрыть' : 'Открыть'}
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleWindow(win.id, win.status)}
+                                className="px-3 py-1 rounded-lg border text-[11px] font-bold hover:bg-slate-100 transition-colors"
+                              >
+                                {win.status === 'OPEN' ? 'Закрыть' : 'Открыть'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWindow(win.id, win.number)}
+                                title={`Удалить окно №${win.number}`}
+                                className="p-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-bold transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

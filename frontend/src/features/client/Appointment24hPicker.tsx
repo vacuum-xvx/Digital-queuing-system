@@ -139,7 +139,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(todayDateStr)}
-            className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`py-2 px-1 sm:px-2.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all border text-center truncate ${
               datePart === todayDateStr
                 ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -151,7 +151,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(tomorrowDateStr)}
-            className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`py-2 px-1 sm:px-2.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all border text-center truncate ${
               datePart === tomorrowDateStr
                 ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -163,7 +163,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(afterTomorrowDateStr)}
-            className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`py-2 px-1 sm:px-2.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all border text-center truncate ${
               datePart === afterTomorrowDateStr
                 ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -267,15 +267,15 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
       </div>
 
       {/* 3. Информационный бейдж с подтверждением 24-часового формата */}
-      <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-slate-800 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Check className="w-4 h-4 text-[#003B73] shrink-0" />
-          <div>
+          <div className="min-w-0">
             <span className="text-[11px] text-slate-500 block">Выбранное время визита:</span>
-            <strong className="text-slate-900 font-bold capitalize">{formattedPreview}</strong>
+            <strong className="text-slate-900 font-bold capitalize truncate block">{formattedPreview}</strong>
           </div>
         </div>
-        <span className="font-mono text-xs font-black text-[#003B73] px-2.5 py-1 rounded-xl bg-white border border-blue-200 shadow-2xs shrink-0">
+        <span className="font-mono text-xs font-black text-[#003B73] px-2.5 py-1 rounded-xl bg-white border border-blue-200 shadow-2xs shrink-0 self-start sm:self-auto">
           {selectedHour}:{selectedMinute}
         </span>
       </div>

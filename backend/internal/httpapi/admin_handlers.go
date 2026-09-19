@@ -52,6 +52,25 @@ func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) CreateWindow(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	wnd, err := a.usecases.CreateWindow(r.Context(), branchID)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusCreated, mapWindowDTO(wnd))
+}
+
+func (a *API) DeleteWindow(w http.ResponseWriter, r *http.Request) {
+	windowID := chi.URLParam(r, "windowId")
+	if err := a.usecases.DeleteWindow(r.Context(), windowID); err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type UpdateWindowServicesRequest struct {
 	ServiceIDs []string `json:"serviceIds"`
 }
