@@ -9,6 +9,7 @@ type AdminMetrics struct {
 	ServedTodayCount    int `json:"servedTodayCount"`
 	ActiveWindowsCount  int `json:"activeWindowsCount"`
 	TotalWindowsCount   int `json:"totalWindowsCount"`
+	P90WaitMinutes      *float64 `json:"p90WaitMinutes,omitempty"`
 }
 
 type AdminWindow struct {
@@ -67,4 +68,12 @@ type AdminBranchOverview struct {
 	Queue      []AdminQueueTicket `json:"queue"`
 	Priorities []PriorityRule     `json:"priorities"`
 	Anomalies  []AnomalyTicket    `json:"anomalies"`
+	WindowRecommendation *WindowRecommendation `json:"windowRecommendation,omitempty"`
+}
+
+type WindowRecommendation struct {
+	RecommendedCount int `json:"recommendedCount"`
+	Reason string `json:"reason"`
+	Severity string `json:"severity"`
+	P90WaitMinutes float64 `json:"p90WaitMinutes"`
 }

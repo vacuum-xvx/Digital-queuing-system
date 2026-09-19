@@ -3,6 +3,7 @@ import * as api from '../../api/client/clientApi';
 import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
 import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
+import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { BranchWorkloadCard } from './BranchWorkloadCard';
@@ -40,6 +41,23 @@ function statusMessage(status: TicketStatus): string {
 
 function StatusBadge({ status }: { status: TicketStatus }) {
   return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status)}</span>;
+}
+
+function ETASparkline({ eta }: { eta: TicketETA }) {
+  const samples = eta.distribution?.samples ?? [];
+  if (samples.length === 0) return null;
+  const min = Math.min(...samples);
+  const range = Math.max(Math.max(...samples) - min, 1);
+  const points = samples.map((value, index) => `${(index / Math.max(samples.length - 1, 1)) * 100},${28 - ((value - min) / range) * 24}`).join(' ');
+  const distribution = eta.distribution!;
+  return (
+    <span className="flex items-center justify-center gap-2 mt-1" title={`Среднее ${distribution.avg} / Взвешенное ${distribution.weightedAvg} / Медиана ${distribution.median}`}>
+      <svg viewBox="0 0 100 32" className="w-24 h-8 text-[#054FA6]" role="img" aria-label="Распределение времени обслуживания">
+        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {distribution.p90 - distribution.median > 0.5 * distribution.median && <span className="text-[10px] text-slate-600 border border-slate-300 rounded px-1.5 py-0.5">Повышенная дисперсия</span>}
+    </span>
+  );
 }
 
 function StepIndicator({ steps, current }: { steps: string[]; current: number }) {
@@ -109,7 +127,7 @@ function removeSavedTicketId(id: string) {
   }
 }
 
-export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
+export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: { qrBranchId?: string; kiosk?: boolean; resetToken?: number }) {
   const [screen, setScreen] = useState<ClientScreen>(qrBranchId ? 'walkin' : 'home');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -133,6 +151,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [kioskTicket, setKioskTicket] = useState<Ticket | null>(null);
   const [appointments, setAppointments] = useState<Record<string, Appointment>>(() => {
     try { return JSON.parse(sessionStorage.getItem('client.appointments') || '{}'); } catch { return {}; }
   });
@@ -146,6 +165,20 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [arriving, setArriving] = useState(false);
+
+  useEffect(() => {
+    if (resetToken > 0) {
+      setScreen('walkin');
+      setWalkinStep(qrBranchId ? 1 : 0);
+      setKioskTicket(null);
+      setServiceId('');
+      sessionStorage.removeItem(STORAGE_SERVICE_KEY);
+      setError(null);
+      if (qrBranchId) void fetchServices(qrBranchId);
+    }
+    // Kiosk idle reset intentionally restores the first walk-in step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetToken]);
 
   const pollTimer = useRef<number | null>(null);
   const pollGeneration = useRef(0);
@@ -183,7 +216,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, kiosk]);
 
   useEffect(() => {
     loadBranches();
@@ -211,7 +244,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
         setServicesLoading(false);
       }
     }
-  }, []);
+  }, [kiosk]);
 
   useEffect(() => {
     if (!branchId) {
@@ -230,6 +263,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   }, [screen, walkinStep, bookingStep, branchId, services.length, servicesLoading, fetchServices]);
 
   useEffect(() => {
+    if (kiosk) return;
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     if (!action) return;
@@ -361,9 +395,13 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     try {
       const created = await api.createQrTicket(branchId, serviceId, keyFor(`qr:${branchId}:${serviceId}`));
       requestKey.current = null;
-      addSavedTicketId(created.id);
-      setTickets(prev => [created, ...prev]);
-      setScreen('my');
+      if (kiosk) {
+        setKioskTicket(created);
+      } else {
+        addSavedTicketId(created.id);
+        setTickets(prev => [created, ...prev]);
+        setScreen('my');
+      }
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось получить талон'));
     } finally {
@@ -478,6 +516,25 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     sessionStorage.setItem(STORAGE_SERVICE_KEY, id);
     if (screen === 'booking') setBookingStep(2);
   };
+
+  const resetKioskScreen = () => {
+    if (!kiosk) return;
+    if (kioskTicket) removeSavedTicketId(kioskTicket.id);
+    setKioskTicket(null);
+    setTickets([]);
+    setServiceId('');
+    sessionStorage.removeItem(STORAGE_SERVICE_KEY);
+    setError(null);
+    setScreen('walkin');
+    setWalkinStep(1);
+    if (qrBranchId) void fetchServices(qrBranchId);
+  };
+
+  useEffect(() => {
+    if (!kiosk || !kioskTicket) return;
+    const timer = window.setTimeout(resetKioskScreen, 30000);
+    return () => window.clearTimeout(timer);
+  }, [kiosk, kioskTicket]);
 
   const savedCount = tickets.length > 0
     ? tickets.filter(t => !terminalStatuses.has(t.status)).length
@@ -681,16 +738,18 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <header className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
-            onClick={() => (walkinStep === 0 ? setScreen('home') : setWalkinStep(w => w - 1))}
-          >
-            <ChevronLeft size={20} />
-            <span>Назад</span>
-          </button>
+          {!kiosk ? (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 py-1"
+              onClick={() => (walkinStep === 0 ? setScreen('home') : setWalkinStep(w => w - 1))}
+            >
+              <ChevronLeft size={20} />
+              <span>Назад</span>
+            </button>
+          ) : <div className="w-12" />}
           <h2 className="text-lg font-black text-slate-900">Взять талон</h2>
-          {getSavedTicketIds().length > 0 ? (
+          {!kiosk && getSavedTicketIds().length > 0 ? (
             <button
               type="button"
               onClick={() => setScreen('my')}
@@ -736,7 +795,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                 <span>Отделение: <strong>{branches.find(b => b.id === branchId)?.name}</strong></span>
               </div>
 
-              <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
+              {!kiosk && <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />}
 
               <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
               {servicesLoading ? (
@@ -755,7 +814,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                   )}
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className={kiosk ? 'kiosk-services-grid' : 'space-y-2.5'}>
                   {services.map(s => (
                     <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
                   ))}
@@ -869,6 +928,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                         eta.estimatedWaitSeconds !== null && (
                           <p className="cx-ticket-position font-mono text-xs font-bold text-[#054FA6] text-center block">
                             Ожидание примерно {Math.ceil(eta.estimatedWaitSeconds / 60)} мин
+                            <ETASparkline eta={eta} />
                           </p>
                         )}
                       {!terminalStatuses.has(ticket.status) && (
@@ -934,12 +994,37 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     );
   };
 
+  const renderKioskTicket = () => (
+    <div className="cx-wizard kiosk-ticket-card mx-auto text-center" aria-live="polite">
+      <div className="kiosk-ticket-card__top">
+        <div className="kiosk-ticket-card__icon"><TicketIcon size={28} aria-hidden /></div>
+        <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#054FA6]">Талон получен</p>
+        <div className="cx-ticket-num kiosk-ticket-card__number font-mono">{kioskTicket?.publicNumber}</div>
+        <p className="text-lg font-black text-slate-900">
+          {services.find(service => service.id === kioskTicket?.serviceId)?.name || 'Выбранная услуга'}
+        </p>
+      </div>
+      <div className="kiosk-ticket-card__message">
+        <strong>Ожидайте вызова</strong>
+        <span>Следите за номером талона на информационном табло.</span>
+      </div>
+      <button type="button" className="kiosk-ticket-card__button" onClick={resetKioskScreen}>
+        На главный экран
+      </button>
+      <p className="mt-4 text-xs text-slate-400">Автоматический возврат к выбору услуги через 30 секунд</p>
+    </div>
+  );
+
   return (
     <div className="w-full">
-      {screen === 'booking' && renderBooking()}
-      {screen === 'walkin' && renderWalkin()}
-      {screen === 'my' && renderMy()}
-      {screen === 'home' && renderHome()}
+      {kiosk && kioskTicket ? renderKioskTicket() : (
+        <>
+          {screen === 'booking' && renderBooking()}
+          {screen === 'walkin' && renderWalkin()}
+          {!kiosk && screen === 'my' && renderMy()}
+          {!kiosk && screen === 'home' && renderHome()}
+        </>
+      )}
     </div>
   );
 }

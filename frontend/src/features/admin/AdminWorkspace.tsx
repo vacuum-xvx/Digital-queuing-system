@@ -278,6 +278,27 @@ export const AdminWorkspace: React.FC = () => {
             <div className="space-y-4">
               {/* Windows Management Table */}
               <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 space-y-4 shadow-sm">
+                {overview?.windowRecommendation && (
+                  <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 ${overview.windowRecommendation.severity === 'critical' ? 'border-red-300 bg-red-50 text-red-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`} role="alert">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold text-sm">Рекомендация по нагрузке</div>
+                        <div className="text-xs mt-1">{overview.windowRecommendation.reason}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded-xl border border-current text-xs font-bold hover:bg-white/60"
+                      onClick={async () => {
+                        const closed = overview.windows.filter((window) => window.status === 'CLOSED').slice(0, overview.windowRecommendation!.recommendedCount);
+                        for (const window of closed) await handleToggleWindow(window.id, window.status);
+                      }}
+                    >
+                      Открыть рекомендованные ({overview.windowRecommendation.recommendedCount})
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="font-bold text-sm text-slate-900">

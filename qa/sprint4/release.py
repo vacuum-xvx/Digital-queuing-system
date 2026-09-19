@@ -86,7 +86,9 @@ def drain(token):
 def check_eta(ticket):
     eta = api('GET', f'/tickets/{ticket["id"]}/eta')[0]
     position = api('GET', f'/tickets/{ticket["id"]}/position')[0]
-    assert set(eta) == {'ticketId','ticketStatus','reason','estimatedWaitSeconds','estimatedCallAt','position','referenceWindow','sampleSize','usedFallback','calculatedAt'}
+    required_eta = {'ticketId','ticketStatus','reason','estimatedWaitSeconds','estimatedCallAt','position','referenceWindow','sampleSize','usedFallback','calculatedAt'}
+    assert required_eta.issubset(set(eta))
+    assert set(eta).issubset(required_eta | {'weightedWaitSeconds','medianSeconds','p90WaitSeconds','distribution'})
     for key in ['ticketId','ticketStatus','reason','position','referenceWindow']:
         assert eta[key] == position[key], key
     if eta['reason'] == 'AVAILABLE':

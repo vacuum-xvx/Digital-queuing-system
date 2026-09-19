@@ -19,6 +19,10 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
       return false;
     }
   });
+  const [a11yOpen, setA11yOpen] = useState(false);
+  const [scale, setScale] = useState(() => Number(localStorage.getItem('pochta_a11y_scale') || (isA11y ? '115' : '100')));
+  const [contrast, setContrast] = useState(() => localStorage.getItem('pochta_a11y_contrast') === 'true');
+  const [reducedMotion, setReducedMotion] = useState(() => localStorage.getItem('pochta_a11y_motion') === 'true');
   const [timeStr, setTimeStr] = useState('');
 
   useEffect(() => {
@@ -34,6 +38,21 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
       } catch {}
     }
   }, [isA11y]);
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${scale}%`;
+    localStorage.setItem('pochta_a11y_scale', String(scale));
+  }, [scale]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('a11y-contrast', isA11y && contrast);
+    localStorage.setItem('pochta_a11y_contrast', String(contrast));
+  }, [contrast, isA11y]);
+
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-reduced-motion', reducedMotion);
+    localStorage.setItem('pochta_a11y_motion', String(reducedMotion));
+  }, [reducedMotion]);
 
   useEffect(() => {
     let active = true;
@@ -79,6 +98,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
 
   return (
     <>
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-[#FFE600] focus:text-black focus:px-4 focus:py-2">К содержимому</a>
       <header className="main-product-header bg-[#003B73] text-white shadow-lg sticky top-0 z-40">
         {/* Top Status & Brand Line */}
         <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10">
@@ -113,7 +133,10 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             {/* Accessibility Button */}
             <button
               type="button"
-              onClick={() => setIsA11y((prev) => !prev)}
+              onClick={() => { setIsA11y((prev) => !prev); setA11yOpen((prev) => !prev); }}
+              aria-pressed={isA11y}
+              aria-expanded={a11yOpen}
+              aria-controls="a11y-settings"
               className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border transition-all ${
                 isA11y
                   ? 'bg-[#FFE600] text-black border-[#FFE600] font-bold shadow-md'
@@ -124,6 +147,19 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
               <Eye className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Доступность</span>
             </button>
+
+            {a11yOpen && (
+              <div id="a11y-settings" role="region" aria-label="Настройки доступности" className="absolute right-4 top-14 z-50 w-64 rounded-2xl border border-white/20 bg-[#003B73] p-4 text-left text-xs text-white shadow-xl">
+                <label className="mb-3 block">
+                  <span className="mb-1 block font-bold">Масштаб: {scale}%</span>
+                  <select value={scale} onChange={(event) => setScale(Number(event.target.value))} className="w-full bg-white text-slate-900 rounded-lg px-2 py-1" aria-label="Масштаб интерфейса">
+                    {[100, 115, 130, 150].map((value) => <option key={value} value={value}>{value}%</option>)}
+                  </select>
+                </label>
+                <label className="mb-2 flex items-center gap-2"><input type="checkbox" checked={contrast} onChange={(event) => setContrast(event.target.checked)} aria-label="Высокая контрастность" /> Высокая контрастность</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} aria-label="Уменьшить анимацию" /> Уменьшить анимацию</label>
+              </div>
+            )}
 
             {/* Moscow Clock */}
             <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-lg border border-white/15 text-white font-bold">
