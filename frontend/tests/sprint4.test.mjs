@@ -40,11 +40,12 @@ test('announcement reset cancels pending work without overlapping current speech
   assert.deepEqual(order, ['first', 'next']);
 });
 
-test('vite config preserves reverse proxy for /api, /health, /ready to backend:8080', async () => {
+test('vite config preserves reverse proxy for /api, /health, /ready and /grafana', async () => {
   const content = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8');
   assert.match(content, /'\/api':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
   assert.match(content, /'\/health':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
   assert.match(content, /'\/ready':\s*\{\s*target:\s*'http:\/\/backend:8080'/);
+  assert.match(content, /'\/grafana':\s*\{\s*target:\s*'http:\/\/grafana:3000'/);
 });
 
 test('auth getMe returns null on 401 unauthenticated without fatal error', async () => {
