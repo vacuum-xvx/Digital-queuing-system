@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail } from 'lucide-react';
+import { X, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { login, register, getMe, User } from '../../api/authApi';
 
 interface ClientAuthModalProps {
@@ -12,6 +12,7 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,7 +66,7 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Электронная почта
             </label>
-            <div className="relative">
+            <div className="relative flex items-center">
               <input
                 name="email"
                 type="email"
@@ -74,9 +75,10 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
                 disabled={pending}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="client@example.com"
-                className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+                style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }}
+                className="w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
               />
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
@@ -84,19 +86,29 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Пароль
             </label>
-            <div className="relative">
+            <div className="relative flex items-center">
               <input
                 name="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 minLength={6}
                 value={password}
                 disabled={pending}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+                style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                className="w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
               />
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-[#054FA6] rounded-lg"
+                title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
