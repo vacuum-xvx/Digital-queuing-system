@@ -37,7 +37,7 @@ export function OperatorWorkspace() {
   const [revision, setRevision] = useState(0);
 
   // Side panel TV queue state
-  const [tvQueue, setTvQueue] = useState<Array<{ publicNumber: string }>>([]);
+  const [tvQueue, setTvQueue] = useState<Array<{ publicNumber: string; source?: string; serviceName?: string }>>([]);
 
   // Elapsed timer for active service
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -45,6 +45,7 @@ export function OperatorWorkspace() {
   // Redirect modal state
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [redirectServiceId, setRedirectServiceId] = useState('');
+  const [redirectWindowId, setRedirectWindowId] = useState('');
 
   const epoch = useRef(0);
   const busy = useRef(false);
@@ -507,7 +508,11 @@ export function OperatorWorkspace() {
                   <button
                     type="button"
                     disabled={!current || pending}
-                    onClick={() => setShowRedirectModal(true)}
+                    onClick={() => {
+                      setRedirectServiceId('');
+                      setRedirectWindowId('');
+                      setShowRedirectModal(true);
+                    }}
                     className="w-full min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 disabled:opacity-40 transition-colors"
                   >
                     <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
@@ -537,28 +542,40 @@ export function OperatorWorkspace() {
 
             {tvQueue.length > 0 ? (
               <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-                {tvQueue.map((item, idx) => (
-                  <div
-                    key={item.publicNumber + '-' + idx}
-                    className={`p-3 rounded-2xl border text-xs flex items-center justify-between transition-all ${
-                      idx === 0
-                        ? 'bg-blue-50/70 border-blue-200 ring-1 ring-blue-400'
-                        : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono font-black text-slate-900 text-sm">
-                        {item.publicNumber}
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold bg-white border border-slate-300">
-                        {item.publicNumber.startsWith('L-') ? 'LIVE' : item.publicNumber.startsWith('A-') ? 'Запись' : 'QR'}
+                {tvQueue.map((item, idx) => {
+                  const isApt = item.source === 'APPOINTMENT' || item.publicNumber.startsWith('A-');
+                  const isQr = item.source === 'QR' || item.publicNumber.startsWith('Q-');
+                  return (
+                    <div
+                      key={item.publicNumber + '-' + idx}
+                      className={`p-3 rounded-2xl border text-xs flex items-center justify-between transition-all ${
+                        idx === 0
+                          ? 'bg-blue-50/70 border-blue-200 ring-1 ring-blue-400'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono font-black text-slate-900 text-sm">
+                          {item.publicNumber}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                            isApt
+                              ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                              : isQr
+                              ? 'bg-sky-50 text-[#054FA6] border-sky-200'
+                              : 'bg-amber-50 text-amber-900 border-amber-200'
+                          }`}
+                        >
+                          {isApt ? 'Запись' : isQr ? 'QR-код' : 'Живая'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500">
+                        {idx === 0 ? 'Следующий' : `Ожидает (#${idx + 1})`}
                       </span>
                     </div>
-                    <span className="text-[11px] font-mono text-slate-500">
-                      {idx === 0 ? 'Следующий' : `Ожидает (#${idx + 1})`}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-16 space-y-2 text-slate-400 flex-1 flex flex-col items-center justify-center">
@@ -577,32 +594,81 @@ export function OperatorWorkspace() {
       {showRedirectModal && current && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="text-base font-black text-slate-900">
-              Перенаправление талона {current.publicNumber}
-            </h3>
-            <p className="text-xs text-slate-500">
-              Выберите услугу, на которую необходимо перенаправить клиента.
-            </p>
-            <label className="block text-xs font-bold text-slate-700">
-              Новая услуга
-              <select
-                value={redirectServiceId}
-                onChange={e => setRedirectServiceId(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white"
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                  Перенаправление
+                </span>
+                <h3 className="text-base font-black text-slate-900">
+                  Талон {current.publicNumber}
+                </h3>
+              </div>
+              <span
+                className={`text-[11px] px-2.5 py-1 rounded-lg font-mono font-bold border ${
+                  current.source === 'APPOINTMENT'
+                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                    : current.source === 'QR'
+                    ? 'bg-sky-50 text-[#054FA6] border-sky-200'
+                    : 'bg-amber-50 text-amber-900 border-amber-200'
+                }`}
               >
-                <option value="">Без изменения услуги</option>
-                {services.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+                {current.source === 'APPOINTMENT'
+                  ? 'Предварительная запись'
+                  : current.source === 'QR'
+                  ? 'QR-код'
+                  : 'Живая очередь'}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Выберите целевое окно или услугу для перевода клиента. Талон будет направлен на обслуживание.
+            </p>
+
+            <div className="space-y-3">
+              {/* Target Window */}
+              <label className="block text-xs font-bold text-slate-700">
+                Целевое окно
+                <select
+                  value={redirectWindowId}
+                  onChange={e => setRedirectWindowId(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 bg-white font-medium shadow-2xs"
+                >
+                  <option value="">Любое подходящее окно (общая очередь)</option>
+                  {windows
+                    .filter(w => w.id !== windowId)
+                    .map(w => (
+                      <option key={w.id} value={w.id}>
+                        Окно № {w.number} · {w.status === 'OPEN' ? 'Смена открыта' : 'Закрыто'}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              {/* Service */}
+              <label className="block text-xs font-bold text-slate-700">
+                Услуга
+                <select
+                  value={redirectServiceId}
+                  onChange={e => setRedirectServiceId(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 bg-white font-medium shadow-2xs"
+                >
+                  <option value="">
+                    Без изменения услуги ({services.find(s => s.id === current.serviceId)?.name || 'текущая'})
                   </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
+                  {services.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowRedirectModal(false)}
-                className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-300 hover:bg-slate-50"
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors"
               >
                 Отмена
               </button>
@@ -610,12 +676,18 @@ export function OperatorWorkspace() {
                 type="button"
                 onClick={() => {
                   setShowRedirectModal(false);
+                  const targetWin = windows.find(w => w.id === redirectWindowId);
                   void act(async () => {
-                    await api.redirectTicket(current.id, redirectServiceId || undefined);
-                    setNotice(`Талон ${current.publicNumber} успешно перенаправлен`);
+                    await api.redirectTicket(
+                      current.id,
+                      redirectServiceId || undefined,
+                      redirectWindowId || undefined
+                    );
+                    const targetText = targetWin ? `в Окно №${targetWin.number}` : 'в очередь';
+                    setNotice(`Талон ${current.publicNumber} успешно перенаправлен ${targetText}`);
                   });
                 }}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-[#003B73] hover:bg-[#054FA6] text-white"
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-[#003B73] hover:bg-[#054FA6] text-white shadow-sm transition-colors"
               >
                 Перенаправить
               </button>

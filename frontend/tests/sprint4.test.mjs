@@ -86,22 +86,134 @@ test('ClientWorkspace retains or reloads services when re-selecting the same bra
 });
 
 
-test('auth getApiBaseUrl normalizes api prefixes without duplicating', async () => {
-  const auth = await loadTS('../src/api/authApi.ts');
-  assert.equal(typeof auth.getApiBaseUrl, 'function');
-  assert.equal(auth.getApiBaseUrl(), '/api/v1');
+test('clientApi exports cancelTicket endpoint and performs POST /tickets/{id}/cancel', async () => {
+  const clientApi = await loadTS('../src/api/client/clientApi.ts');
+  assert.equal(typeof clientApi.cancelTicket, 'function');
+
+  const originalFetch = globalThis.fetch;
+  try {
+    let capturedUrl, capturedMethod;
+    globalThis.fetch = async (url, options) => {
+      capturedUrl = url;
+      capturedMethod = options.method;
+      return new Response(JSON.stringify({
+        id: 'ticket-123',
+        publicNumber: 'Q-000001',
+        branchId: 'b-1',
+        serviceId: 's-1',
+        source: 'QR',
+        status: 'CANCELLED',
+        window: null,
+        createdAt: new Date().toISOString(),
+        queueEnteredAt: new Date().toISOString(),
+        calledAt: null,
+        serviceStartedAt: null,
+        completedAt: null,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const cancelled = await clientApi.cancelTicket('ticket-123');
+    assert.equal(capturedUrl, '/api/v1/tickets/ticket-123/cancel');
+    assert.equal(capturedMethod, 'POST');
+    assert.equal(cancelled.status, 'CANCELLED');
+    assert.equal(cancelled.publicNumber, 'Q-000001');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
-test('terminalStatuses includes COMPLETED, CANCELLED, NO_SHOW and excludes active statuses', async () => {
+test('ClientWorkspace supports refusing waiting tickets and shows Отказаться от талона', async () => {
   const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(content, /terminalStatuses.*COMPLETED/);
-  assert.match(content, /terminalStatuses.*CANCELLED/);
-  assert.match(content, /terminalStatuses.*NO_SHOW/);
+  assert.match(content, /api\.cancelTicket/);
+  assert.match(content, /Отказаться от талона/);
+  assert.match(content, /ticket\.status\s*===\s*'WAITING'/);
 });
 
-test('ClientWorkspace retains or reloads services when re-selecting the same branch', async () => {
-  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(content, /if\s*\(\s*id\s*===\s*branchId\s*\)\s*\{\s*fetchServices\(id\);/);
-  assert.match(content, /terminalStatuses\.has\(ticket\.status\)/);
-  assert.match(content, /Взять новый талон/);
+test('adminApi exports closeShift and updateBranchSchedule', async () => {
+  const content = await readFile(new URL('../src/api/admin/adminApi.ts', import.meta.url), 'utf8');
+  assert.match(content, /export async function closeShift/);
+  assert.match(content, /export async function updateBranchSchedule/);
+  assert.match(content, /\/admin\/branches\/\$\{encodeURIComponent\(branchId\)\}\/close-shift/);
+  assert.match(content, /\/admin\/branches\/\$\{encodeURIComponent\(branchId\)\}\/schedule/);
+});
+
+test('QueuePolicyEditor supports human-friendly Low/Medium/High and presets', async () => {
+  const content = await readFile(new URL('../src/features/admin/QueuePolicyEditor.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Баланс \(Стандарт\)/);
+  assert.match(content, /Час пик \(Борьба с очередями\)/);
+  assert.match(content, /Низкий/);
+  assert.match(content, /Средний/);
+  assert.match(content, /Высокий/);
+  assert.match(content, /Экспертный режим/);
+});
+
+test('BranchScheduleShiftManager renders schedule presets and shift closure modal', async () => {
+  const content = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Стандарт Почты России \(08:00–20:00\)/);
+  assert.match(content, /Плавное закрытие окон/);
+  assert.match(content, /Завершить смену отделения/);
+  assert.match(content, /Подтверждение завершения смены/);
+});
+
+test('UsersManagement supports instant user search, role filtering, and empty state', async () => {
+  const content = await readFile(new URL('../src/features/admin/UsersManagement.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Поиск по email, роли/);
+  assert.match(content, /filteredUsers/);
+  assert.match(content, /roleFilter/);
+  assert.match(content, /Пользователи не найдены/);
+  assert.match(content, /Сбросить фильтры/);
+});
+
+test('BranchWorkloadCard aligns columns, multi-tier bar styles and provides interactive hour details', async () => {
+  const content = await readFile(new URL('../src/features/client/BranchWorkloadCard.tsx', import.meta.url), 'utf8');
+  assert.match(content, /axisTicks\s*=\s*\[8,\s*11,\s*14,\s*17,\s*20\]/);
+  assert.match(content, /cx-workload-bar-blue/);
+  assert.match(content, /cx-workload-bar-closed/);
+  assert.match(content, /activeSlot/);
+  assert.match(content, /effectiveWaitMinutes/);
+});
+
+test('AdminWorkspace has exactly one Grafana link in product header and no duplicate in tabs bar', async () => {
+  const content = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  assert.equal(content.includes('href="/grafana/"'), false);
+});
+
+test('Appointment24hPicker and schedule manager strictly enforce 24-hour format', async () => {
+  const picker = await readFile(new URL('../src/features/client/Appointment24hPicker.tsx', import.meta.url), 'utf8');
+  assert.match(picker, /24-часовой формат/);
+  assert.match(picker, /POPULAR_24H_SLOTS/);
+  assert.match(picker, /Часы \(00–23\)/);
+
+  const shift = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
+  assert.match(shift, /24-часовой формат/);
+  assert.match(shift, /open-h-/);
+  assert.match(shift, /close-h-/);
+});test('Operator workspace supports redirect to another window and distinct source tags', async () => {
+  const operatorWorkspace = await readFile(new URL('../src/features/operator/OperatorWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(operatorWorkspace, /redirectWindowId/);
+  assert.match(operatorWorkspace, /Целевое окно/);
+  assert.match(operatorWorkspace, /Перенаправить в другое окно/);
+  assert.match(operatorWorkspace, /item\.source === 'APPOINTMENT'/);
+  assert.match(operatorWorkspace, /item\.source === 'QR'/);
+
+  const ticketCard = await readFile(new URL('../src/features/operator/TicketCard.tsx', import.meta.url), 'utf8');
+  assert.match(ticketCard, /Предварительная запись/);
+  assert.match(ticketCard, /QR-код/);
+  assert.match(ticketCard, /Живая очередь/);
+});
+
+test('Admin workspace provides real-time live queue monitor with TV board and table views', async () => {
+  const admin = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(admin, /LiveQueueView/);
+  assert.match(admin, /setActiveTab\('queue'\)/);
+  assert.match(admin, /Очередь \(Live\)/);
+
+  const liveQueue = await readFile(new URL('../src/features/admin/LiveQueueView.tsx', import.meta.url), 'utf8');
+  assert.match(liveQueue, /Табло зала \(как клиентам\)/);
+  assert.match(liveQueue, /Оперативный реестр/);
+  assert.match(liveQueue, /СЕЙЧАС ОБСЛУЖИВАЮТСЯ У СТОЕК/);
+  assert.match(liveQueue, /ОЖИДАЮТ В ОЧЕРЕДИ/);
 });

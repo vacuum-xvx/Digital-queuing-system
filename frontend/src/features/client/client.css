@@ -659,8 +659,17 @@
   background-color: #00B050 !important;
 }
 
+.cx-workload-bar-blue {
+  background-color: #0284C7 !important;
+}
+
 .cx-workload-bar-orange {
   background-color: #FF8533 !important;
+}
+
+.cx-workload-bar-closed {
+  background-color: #CBD5E1 !important;
+  opacity: 0.45 !important;
 }
 
 /* Header and Back Button Mobile Resets */

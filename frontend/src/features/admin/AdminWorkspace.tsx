@@ -8,8 +8,10 @@ import { AdminSelfQR } from './AdminSelfQR';
 import { UsersManagement } from './UsersManagement';
 import { KpiCards } from './KpiCards';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
-import { formatMoscowDateTime } from '../../utils/time';
 import { getMe, User } from '../../api/authApi';
+import { BranchScheduleShiftManager } from './BranchScheduleShiftManager';
+import { LiveQueueView } from './LiveQueueView';
+import { formatMoscowDateTime } from '../../utils/time';
 import {
   Activity,
   Sliders,
@@ -17,10 +19,13 @@ import {
   Users,
   QrCode,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Calendar,
+  Tv,
+  ArrowRight,
 } from 'lucide-react';
 
-type AdminTab = 'overview' | 'policy' | 'anomalies' | 'users' | 'qr';
+type AdminTab = 'overview' | 'queue' | 'policy' | 'schedule' | 'anomalies' | 'users' | 'qr';
 
 export const AdminWorkspace: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -70,7 +75,8 @@ export const AdminWorkspace: React.FC = () => {
       } catch {
         // silent retry in background
       } finally {
-        if (active) timer = window.setTimeout(loadOverview, 5000);
+        const interval = activeTab === 'queue' ? 2500 : 5000;
+        if (active) timer = window.setTimeout(loadOverview, interval);
       }
     }
 
@@ -79,7 +85,7 @@ export const AdminWorkspace: React.FC = () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [selectedBranchId]);
+  }, [selectedBranchId, activeTab]);
 
   const handleToggleWindow = async (windowId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
@@ -148,6 +154,24 @@ export const AdminWorkspace: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setActiveTab('queue')}
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTab === 'queue'
+                ? 'bg-white text-[#003B73] shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Tv className="w-4 h-4" />
+            <span>Очередь (Live)</span>
+            {(overview?.queue?.length ?? 0) > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-[#003B73] text-[10px] font-mono font-black">
+                {overview?.queue?.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('policy')}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'policy'
@@ -157,6 +181,19 @@ export const AdminWorkspace: React.FC = () => {
           >
             <Sliders className="w-4 h-4" />
             <span>Queue Policy</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('schedule')}
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTab === 'schedule'
+                ? 'bg-white text-[#003B73] shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Режим работы и смена</span>
           </button>
 
           <button
@@ -202,17 +239,6 @@ export const AdminWorkspace: React.FC = () => {
             <QrCode className="w-4 h-4" />
             <span>QR отделения</span>
           </button>
-
-          <a
-            href="/grafana/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 bg-blue-50 text-[#003B73] hover:bg-blue-100 font-bold ml-auto border border-blue-200"
-            title="Открыть дашборд Grafana со всеми метриками и логами"
-          >
-            <Activity className="w-4 h-4 text-blue-600" />
-            <span>Grafana ↗</span>
-          </a>
         </div>
       </section>
 
@@ -320,7 +346,93 @@ export const AdminWorkspace: React.FC = () => {
                 </div>
               </div>
 
+              {/* Quick Live Queue Preview Card */}
+              <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#003B73] flex items-center justify-center">
+                      <Tv className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900">
+                        Оперативная очередь отделения
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Клиенты, ожидающие обслуживания прямо сейчас ({overview?.queue?.length ?? 0} чел.)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('queue')}
+                    className="px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#054FA6] text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                  >
+                    <span>Открыть табло очереди</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {overview?.queue && overview.queue.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                    {overview.queue.slice(0, 6).map((item, idx) => {
+                      const isApt = item.source === 'APPOINTMENT';
+                      const isQr = item.source === 'QR';
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-3 rounded-2xl border border-slate-200 bg-slate-50 text-center flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                            <span>#{idx + 1}</span>
+                            <span>{item.waitTimeMinutes}м</span>
+                          </div>
+                          <div className="text-xl font-black font-mono text-[#003B73] my-1">
+                            {item.publicNumber}
+                          </div>
+                          <div className="text-[10px] text-slate-600 truncate font-semibold">
+                            {item.serviceName}
+                          </div>
+                          <div className="mt-1">
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${
+                                isApt
+                                  ? 'bg-indigo-100 text-indigo-800'
+                                  : isQr
+                                  ? 'bg-sky-100 text-[#054FA6]'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {isApt ? 'Запись' : isQr ? 'QR' : 'Живая'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-xs text-slate-400 font-mono">
+                    Ожидающих клиентов в очереди нет
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* TAB: LIVE QUEUE (ТАБЛО ЗАЛА + ОПЕРАТИВНЫЙ РЕЕСТР) */}
+          {activeTab === 'queue' && (
+            <LiveQueueView
+              windows={overview?.windows || []}
+              queue={overview?.queue || []}
+              branchName={branches.find((b) => b.id === selectedBranchId)?.name}
+              onRefresh={async () => {
+                if (selectedBranchId) {
+                  try {
+                    const next = await api.getOverview(selectedBranchId);
+                    setOverview(next);
+                  } catch {}
+                }
+              }}
+            />
           )}
 
           {/* TAB 2: QUEUE POLICY */}
@@ -329,6 +441,35 @@ export const AdminWorkspace: React.FC = () => {
               key={selectedBranchId}
               branchId={selectedBranchId}
               branchName={branches.find((b) => b.id === selectedBranchId)?.name}
+            />
+          )}
+
+          {/* TAB 3: SCHEDULE & SHIFT */}
+          {activeTab === 'schedule' && (
+            <BranchScheduleShiftManager
+              branch={
+                branches.find((b) => b.id === selectedBranchId) || {
+                  id: selectedBranchId,
+                  name: 'Отделение',
+                  workHours: '08:00–20:00',
+                }
+              }
+              overview={overview}
+              onBranchUpdated={(updated) => {
+                setBranches((prev) =>
+                  prev.map((b) => (b.id === updated.id ? { ...b, workHours: updated.workHours } : b))
+                );
+              }}
+              onRefreshOverview={async () => {
+                if (selectedBranchId) {
+                  try {
+                    const next = await api.getOverview(selectedBranchId);
+                    setOverview(next);
+                  } catch {
+                    // silent
+                  }
+                }
+              }}
             />
           )}
 
@@ -390,7 +531,12 @@ export const AdminWorkspace: React.FC = () => {
           {activeTab === 'users' && <UsersManagement />}
 
           {/* TAB 5: QR CODE */}
-          {activeTab === 'qr' && <BranchQR branchId={selectedBranchId} />}
+          {activeTab === 'qr' && (
+            <BranchQR
+              branchId={selectedBranchId}
+              branchName={branches.find((b) => b.id === selectedBranchId)?.name || overview?.branchName}
+            />
+          )}
         </main>
       ) : (
         <p className="text-center text-slate-500 py-12">Нет доступных отделений</p>

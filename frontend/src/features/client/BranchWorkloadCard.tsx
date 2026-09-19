@@ -1,14 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Branch } from '../../api/client/types';
+import { getBranchWorkload, BranchWorkload } from '../../api/client/clientApi';
 import {
   DAYS_OF_WEEK,
   DayOfWeekRu,
   getBranchHourlyWorkload,
   getMoscowTimeComponents,
   evaluateServiceFeasibility,
+  parseWorkHours,
   HourlyLoad,
 } from '../../utils/workload';
-import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info, DoorOpen, BarChart3, Users } from 'lucide-react';
 
 export interface BranchWorkloadCardProps {
   branch?: Branch | null;
@@ -31,6 +33,7 @@ export function BranchWorkloadCard({
   const moscowNow = useMemo(() => getMoscowTimeComponents(), []);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(moscowNow.dayIndex);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const [backendWorkload, setBackendWorkload] = useState<BranchWorkload | null>(null);
   const [hasLoadData, setHasLoadData] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
@@ -40,26 +43,69 @@ export function BranchWorkloadCard({
     return initialHasLoadData;
   });
 
+  // Загрузка реальных данных загрузки из PostgreSQL бэкенда
+  useEffect(() => {
+    if (!branch?.id) {
+      setBackendWorkload(null);
+      return;
+    }
+    let active = true;
+    getBranchWorkload(branch.id)
+      .then((data) => {
+        if (active) {
+          setBackendWorkload(data);
+        }
+      })
+      .catch((err) => {
+        // Fallback to local baseline without throwing
+        console.warn('Backend workload fetch fallback:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [branch?.id]);
+
   const workHours = branch?.workHours || '08:00–20:00';
 
-  // Почасовые данные для выбранного дня
-  const hourlyData = useMemo(() => {
+  // Почасовые данные для выбранного дня (из БД или базовая модель)
+  const hourlyData = useMemo<HourlyLoad[]>(() => {
+    if (
+      backendWorkload?.hourly &&
+      backendWorkload.hourly.length > 0 &&
+      selectedDayIndex === moscowNow.dayIndex
+    ) {
+      return backendWorkload.hourly.map((h) => ({
+        hour: h.hour,
+        label: `${String(h.hour).padStart(2, '0')}:00`,
+        loadPercent: h.loadPercent,
+        isPeak: h.isPeak,
+        estimatedWaitMinutes: h.waitMinutes,
+      }));
+    }
     return getBranchHourlyWorkload(branch?.id || '', selectedDayIndex);
-  }, [branch?.id, selectedDayIndex]);
+  }, [branch?.id, selectedDayIndex, backendWorkload, moscowNow.dayIndex]);
+
+  const parsedHours = useMemo(() => parseWorkHours(workHours), [workHours]);
 
   // Оценка успеваемости обслуживания
   const activeHour = selectedHour ?? (selectedDayIndex === moscowNow.dayIndex ? moscowNow.hour : 14);
+  const activeSlot = useMemo(() => {
+    return hourlyData.find(d => d.hour === activeHour) || hourlyData[0];
+  }, [hourlyData, activeHour]);
+
+  const effectiveWaitMinutes = overrideWaitMinutes ?? activeSlot?.estimatedWaitMinutes;
+
   const feasibility = useMemo(() => {
     return evaluateServiceFeasibility({
       workHours,
       hasLoadData,
       selectedHour: selectedDayIndex === moscowNow.dayIndex ? (selectedHour ?? undefined) : activeHour,
-      overrideWaitMinutes,
+      overrideWaitMinutes: effectiveWaitMinutes,
     });
-  }, [workHours, hasLoadData, selectedDayIndex, moscowNow.dayIndex, selectedHour, activeHour, overrideWaitMinutes]);
+  }, [workHours, hasLoadData, selectedDayIndex, moscowNow.dayIndex, selectedHour, activeHour, effectiveWaitMinutes]);
 
-  // Метки часов для оси X (08:00, 11:00, 14:00, 17:00, 20:00, 22:00)
-  const axisTicks = [8, 11, 14, 17, 20, 22];
+  // Метки часов для оси X (08:00, 11:00, 14:00, 17:00, 20:00)
+  const axisTicks = [8, 11, 14, 17, 20];
 
   if (compact) {
     return (
@@ -104,14 +150,28 @@ export function BranchWorkloadCard({
       className={`bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-6 shadow-sm space-y-4 text-left transition-all ${className}`}
     >
       {/* Шапка карточки */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             Загруженность
           </h3>
-          <p className="text-xs text-slate-500 font-medium pt-0.5">
-            Режим работы: <strong className="text-slate-700">{workHours}</strong>
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <p className="text-xs text-slate-500 font-medium">
+              Режим работы: <strong className="text-slate-700">{workHours}</strong>
+            </p>
+            {backendWorkload && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#003B73] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                <Users className="w-3 h-3 text-[#003B73]" />
+                <span>В очереди сейчас: {backendWorkload.currentWaiting} чел.</span>
+              </span>
+            )}
+            {backendWorkload?.isHistorical && backendWorkload.sampleCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                <BarChart3 className="w-3 h-3 text-slate-400" />
+                <span>По статистике {backendWorkload.sampleCount} талонов</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Переключатель для демонстрации сценариев (наличие/отсутствие данных) */}
@@ -164,29 +224,47 @@ export function BranchWorkloadCard({
 
       {/* График загруженности или состояние отсутствия данных */}
       {hasLoadData ? (
-        <div className="space-y-2 pt-1">
+        <div className="space-y-3 pt-1">
           {/* Столбцы графика (14 часов: с 08:00 до 21:00) */}
-          <div className="flex items-end justify-between gap-1 sm:gap-1.5 h-20 sm:h-24 px-1 pb-1 pt-2">
+          <div className="flex items-end justify-between gap-1 sm:gap-1.5 h-24 sm:h-28 px-1 pb-1 pt-4">
             {hourlyData.map((item) => {
               const isHourSelected = selectedHour === item.hour;
+              const isCurrentMoscowHour =
+                selectedDayIndex === moscowNow.dayIndex && moscowNow.hour === item.hour;
+              const isHourOpen =
+                item.hour >= parsedHours.openHour && item.hour < parsedHours.closeHour;
 
               // Высота бара в процентах
               const barHeightPct = Math.max(14, Math.min(100, item.loadPercent));
+
+              const barColorClass = !isHourOpen
+                ? 'cx-workload-bar-closed'
+                : item.isPeak
+                ? 'cx-workload-bar-orange'
+                : item.loadPercent >= 40
+                ? 'cx-workload-bar-blue'
+                : 'cx-workload-bar-green';
 
               return (
                 <button
                   key={item.hour}
                   type="button"
                   onClick={() => setSelectedHour(isHourSelected ? null : item.hour)}
-                  className="flex-1 cx-workload-bar-column focus:outline-none"
-                  title={`${item.label} • Загрузка: ${item.loadPercent}% (~${item.estimatedWaitMinutes} мин ожидания)`}
+                  className="flex-1 cx-workload-bar-column focus:outline-none group relative"
+                  title={`${item.label} • Загрузка: ${item.loadPercent}% (~${item.estimatedWaitMinutes} мин ожидания)${!isHourOpen ? ' (Отделение закрыто)' : ''}`}
                   aria-label={`${item.label}, загрузка ${item.loadPercent}%`}
                 >
+                  {isCurrentMoscowHour && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+                      <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping absolute opacity-75" />
+                      <span className="w-2 h-2 rounded-full bg-purple-600" />
+                    </div>
+                  )}
                   <div
                     style={{ height: `${barHeightPct}%` }}
-                    className={`cx-workload-bar-fill ${
-                      item.isPeak ? 'cx-workload-bar-orange' : 'cx-workload-bar-green'
-                    } ${isHourSelected ? 'ring-2 ring-purple-600 ring-offset-1 scale-105' : ''}`}
+                    className={`cx-workload-bar-fill ${barColorClass} ${
+                      isHourSelected ? 'ring-2 ring-purple-600 ring-offset-1 scale-105' : 'group-hover:opacity-85'
+                    }`}
                   />
                 </button>
               );
@@ -204,8 +282,8 @@ export function BranchWorkloadCard({
                 <div key={`tick-${item.hour}`} className="flex-1 flex justify-center">
                   {hasTick ? (
                     <div
-                      className={`w-0.5 h-2 rounded-full ${
-                        isCurrent ? 'bg-[#A855F7] h-2.5' : 'bg-slate-300'
+                      className={`w-0.5 rounded-full transition-all ${
+                        isCurrent ? 'bg-[#003B73] h-2.5 w-1' : 'bg-slate-300 h-2'
                       }`}
                     />
                   ) : (
@@ -216,31 +294,88 @@ export function BranchWorkloadCard({
             })}
           </div>
 
-          {/* Подписи часов по оси X */}
-          <div className="flex justify-between items-center text-[11px] sm:text-xs font-mono font-medium text-slate-800 px-0.5">
-            {axisTicks.map((hourVal) => {
-              const label = `${String(hourVal).padStart(2, '0')}:00`;
-              const isCurrentMoscowHour =
-                selectedDayIndex === moscowNow.dayIndex && moscowNow.hour === hourVal;
-
-              if (isCurrentMoscowHour) {
-                return (
-                  <span
-                    key={hourVal}
-                    className="bg-[#A855F7] text-white font-bold px-2 sm:px-2.5 py-0.5 rounded-full text-[11px] shadow-sm tracking-tight"
-                  >
-                    {label}
-                  </span>
-                );
-              }
+          {/* Подписи часов по оси X - идеально выровнены под столбцами */}
+          <div className="flex justify-between px-1 text-[11px] font-mono">
+            {hourlyData.map((item) => {
+              const isTickHour = axisTicks.includes(item.hour);
+              const isCurrent =
+                selectedDayIndex === moscowNow.dayIndex && moscowNow.hour === item.hour;
+              const isSelected = selectedHour === item.hour;
 
               return (
-                <span key={hourVal} className="text-slate-900 font-semibold">
-                  {label}
-                </span>
+                <div key={`label-${item.hour}`} className="flex-1 flex justify-center text-center">
+                  {isTickHour ? (
+                    <span
+                      className={`transition-all whitespace-nowrap ${
+                        isCurrent
+                          ? 'bg-[#003B73] text-white font-bold px-1.5 py-0.5 rounded-md text-[10px] shadow-2xs'
+                          : isSelected
+                          ? 'bg-purple-100 text-purple-900 font-bold px-1.5 py-0.5 rounded-md text-[10px]'
+                          : 'text-slate-600 font-semibold text-[10px] sm:text-[11px]'
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  ) : (
+                    <span className="invisible text-[10px]">00:00</span>
+                  )}
+                </div>
               );
             })}
           </div>
+
+          {/* Информационная плашка выбранного часа */}
+          {activeSlot && (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-slate-900 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs text-xs">
+                  {activeSlot.label}
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    activeSlot.hour < parsedHours.openHour || activeSlot.hour >= parsedHours.closeHour
+                      ? 'bg-slate-200 text-slate-700 border border-slate-300'
+                      : activeSlot.isPeak
+                      ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                      : activeSlot.loadPercent >= 40
+                      ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                      : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }`}
+                >
+                  {activeSlot.hour < parsedHours.openHour || activeSlot.hour >= parsedHours.closeHour
+                    ? 'Отделение закрыто'
+                    : activeSlot.isPeak
+                    ? 'Час пик (высокая нагрузка)'
+                    : activeSlot.loadPercent >= 40
+                    ? 'Умеренная нагрузка'
+                    : 'Свободно (мало людей)'}
+                </span>
+                {selectedDayIndex === moscowNow.dayIndex && moscowNow.hour === activeSlot.hour && (
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                    Сейчас
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 text-slate-600 font-mono text-[11px]">
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Ожидание: <strong className="text-slate-900">~{activeSlot.estimatedWaitMinutes} мин</strong></span>
+                </span>
+                <span>•</span>
+                <span>Загрузка: <strong className="text-slate-900">{activeSlot.loadPercent}%</strong></span>
+                {selectedHour !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedHour(null)}
+                    className="text-xs text-[#003B73] hover:underline font-sans font-bold"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* Состояние: «нет информации о загрузке почты» */
@@ -324,9 +459,15 @@ export function BranchWorkloadCard({
             {/* Дополнительная контекстная подсказка для клиента */}
             {hasLoadData && feasibility.estimatedWaitMinutes !== null && (
               <div className="pt-1 flex items-center gap-3 text-[11px] font-medium opacity-85">
-                <span>⏱ Ожидание: ~{feasibility.estimatedWaitMinutes} мин</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                  <span>Ожидание: ~{feasibility.estimatedWaitMinutes} мин</span>
+                </span>
                 <span>•</span>
-                <span>🚪 До закрытия: {feasibility.closingTimeText}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <DoorOpen className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                  <span>До закрытия: {feasibility.closingTimeText}</span>
+                </span>
               </div>
             )}
           </div>

@@ -32,6 +32,7 @@ type FakeUseCases struct {
 	CreateLiveTicketFunc     func(ctx context.Context, cmd application.CreateLiveTicketCommand) (application.CreateLiveTicketResult, error)
 	CreateAppointmentFunc    func(ctx context.Context, cmd application.CreateAppointmentCommand) (application.CreateAppointmentResult, error)
 	CancelAppointmentFunc    func(ctx context.Context, ticketID string) (application.AppointmentView, error)
+	CancelTicketFunc         func(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetQueuePolicyFunc       func(ctx context.Context, branchID string) (domain.QueuePolicy, error)
 	UpdateQueuePolicyFunc    func(ctx context.Context, cmd application.UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
 	ListTicketEventsFunc     func(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
@@ -41,6 +42,9 @@ type FakeUseCases struct {
 	RedirectTicketFunc       func(ctx context.Context, cmd application.RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverviewFunc     func(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRulesFunc    func(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+	GetBranchWorkloadFunc    func(ctx context.Context, branchID string) (domain.BranchWorkload, error)
+	CloseShiftFunc           func(ctx context.Context, branchID string) (domain.ShiftClosureResult, error)
+	UpdateBranchScheduleFunc func(ctx context.Context, branchID string, workHours string) (domain.Branch, error)
 
 	RegisterFunc       func(ctx context.Context, email, password string) (domain.User, error)
 	ConfirmEmailFunc   func(ctx context.Context, token string) error
@@ -118,6 +122,13 @@ func (f *FakeUseCases) CancelAppointment(ctx context.Context, ticketID string) (
 	return application.AppointmentView{}, nil
 }
 
+func (f *FakeUseCases) CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	if f.CancelTicketFunc != nil {
+		return f.CancelTicketFunc(ctx, ticketID)
+	}
+	return domain.Ticket{}, nil
+}
+
 func (f *FakeUseCases) GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error) {
 	if f.GetQueuePolicyFunc != nil {
 		return f.GetQueuePolicyFunc(ctx, branchID)
@@ -167,6 +178,27 @@ func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, r
 		return f.SavePriorityRulesFunc(ctx, branchID, rules)
 	}
 	return nil
+}
+
+func (f *FakeUseCases) GetBranchWorkload(ctx context.Context, branchID string) (domain.BranchWorkload, error) {
+	if f.GetBranchWorkloadFunc != nil {
+		return f.GetBranchWorkloadFunc(ctx, branchID)
+	}
+	return domain.BranchWorkload{}, nil
+}
+
+func (f *FakeUseCases) CloseShift(ctx context.Context, branchID string) (domain.ShiftClosureResult, error) {
+	if f.CloseShiftFunc != nil {
+		return f.CloseShiftFunc(ctx, branchID)
+	}
+	return domain.ShiftClosureResult{}, nil
+}
+
+func (f *FakeUseCases) UpdateBranchSchedule(ctx context.Context, branchID string, workHours string) (domain.Branch, error) {
+	if f.UpdateBranchScheduleFunc != nil {
+		return f.UpdateBranchScheduleFunc(ctx, branchID, workHours)
+	}
+	return domain.Branch{}, nil
 }
 
 func (f *FakeUseCases) Register(ctx context.Context, email, password string) (domain.User, error) {

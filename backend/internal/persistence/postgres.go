@@ -537,10 +537,6 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	if err != nil {
 		return domain.Ticket{}, err
 	}
-	ns, err := uuid(cmd.NewServiceID)
-	if err != nil {
-		return domain.Ticket{}, err
-	}
 
 	var nw *pgtype.UUID
 	if cmd.NewWindowID != "" {
@@ -560,6 +556,19 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	if errors.Is(err, application.ErrNotFound) { return domain.Ticket{}, application.ErrInvalidState }
 	if err != nil {
 		return domain.Ticket{}, err
+	}
+
+	var ns pgtype.UUID
+	if cmd.NewServiceID != "" {
+		ns, err = uuid(cmd.NewServiceID)
+		if err != nil {
+			return domain.Ticket{}, err
+		}
+	} else {
+		ns, err = uuid(before.ServiceID)
+		if err != nil {
+			return domain.Ticket{}, err
+		}
 	}
 
 	var tag pgconn.CommandTag

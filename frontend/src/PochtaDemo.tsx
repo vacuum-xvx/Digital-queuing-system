@@ -1973,7 +1973,10 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                         }}
                         className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all ${operatorWindowId === w.id ? 'bg-[#003B73] text-white shadow-sm' : 'text-slate-700 hover:bg-white'}`}
                       >
-                        № {w.id} {w.status === 'ACTIVE' ? '🟢' : '⚪'}
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>№ {w.id}</span>
+                          <span className={`inline-block w-2 h-2 rounded-full ${w.status === 'ACTIVE' ? 'bg-emerald-500 shadow-sm' : 'bg-slate-300'}`} />
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -2332,8 +2335,15 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                 <div className="text-2xl font-black text-slate-900 mt-1">
                   {overview?.metrics ? `${overview.metrics.avgWaitTimeMinutes} мин` : '0 мин'}
                 </div>
-                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">
-                  {overview?.metrics && overview.metrics.avgWaitTimeMinutes <= 8 ? '✓ В нормативе (< 8 мин)' : 'Мониторинг SLA'}
+                <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans flex items-center gap-1">
+                  {overview?.metrics && overview.metrics.avgWaitTimeMinutes <= 8 ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+                      <span>В нормативе (&lt; 8 мин)</span>
+                    </>
+                  ) : (
+                    <span>Мониторинг SLA</span>
+                  )}
                 </div>
               </div>
 
@@ -2342,8 +2352,15 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                 <div className="text-2xl font-black text-amber-700 mt-1">
                   {overview?.metrics ? `${overview.metrics.maxWaitTimeMinutes} мин` : '0 мин'}
                 </div>
-                <div className="text-xs text-slate-500 mt-1 font-sans">
-                  {overview?.metrics && overview.metrics.maxWaitTimeMinutes > 15 ? '⚠ Защита от голодания' : 'В норме'}
+                <div className="text-xs text-slate-500 mt-1 font-sans flex items-center gap-1">
+                  {overview?.metrics && overview.metrics.maxWaitTimeMinutes > 15 ? (
+                    <>
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 inline" />
+                      <span className="text-amber-700 font-semibold">Защита от голодания</span>
+                    </>
+                  ) : (
+                    <span>В норме</span>
+                  )}
                 </div>
               </div>
 
@@ -2773,9 +2790,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                     </div>
 
                     <div className="flex flex-col items-center gap-2 px-2">
-                      <div className="text-4xl sm:text-5xl text-[#054FA6] font-black">
-                        ➔
-                      </div>
+                      <ArrowRight className="w-10 h-10 sm:w-12 sm:h-12 text-[#054FA6]" />
                     </div>
 
                     <div className="text-right">
@@ -2804,7 +2819,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="text-xl text-slate-400 font-bold">➔</div>
+                            <ArrowRight className="w-5 h-5 text-slate-400" />
                           </div>
                           <div className="text-right">
                             <div className="text-xs font-mono uppercase text-slate-500 font-semibold">Окно</div>
@@ -3059,7 +3074,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
                   >
                     {availableVoices.map((v, idx) => (
                       <option key={v.name} value={v.name}>
-                        {idx === 0 ? '⭐ [Естественный голос] ' : ''}{v.name} ({v.lang})
+                        {idx === 0 ? '[Естественный голос] ' : ''}{v.name} ({v.lang})
                       </option>
                     ))}
                   </select>

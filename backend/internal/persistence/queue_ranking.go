@@ -32,7 +32,8 @@ const rankedCandidates = `SELECT t.id,t.status,q.effective_queue_time,
  ELSE 0::bigint END AS lateness_penalty) l
  WHERE t.branch_id=$2::uuid
  AND ((t.source IN ('QR','LIVE') AND t.status='WAITING') OR
- (t.source='APPOINTMENT' AND t.status='SCHEDULED' AND t.scheduled_at<=$3::timestamptz))
+ (t.source='APPOINTMENT' AND t.status='SCHEDULED' AND (t.scheduled_at<=$3::timestamptz OR t.arrived_at IS NOT NULL)))
+ AND (t.window_id IS NULL OR t.window_id=$1::uuid)
  AND EXISTS(SELECT 1 FROM window_services ws WHERE ws.window_id=$1::uuid AND ws.service_id=t.service_id)`
 const rankingOrder = `effective_priority DESC,effective_queue_time ASC,id ASC`
 const canonicalOrder = ` ORDER BY ` + rankingOrder
@@ -76,15 +77,20 @@ func queuePosition(ctx context.Context, tx pgx.Tx, ticketID string) (domain.Queu
 	if t.Status != domain.TicketStatusWaiting && t.Status != domain.TicketStatusScheduled {
 		return out, nil
 	}
-	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt.After(out.CalculatedAt) {
+	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt.After(out.CalculatedAt) && t.ArrivedAt == nil {
 		out.Reason = domain.QueuePositionNotEligibleYet
 		return out, nil
+	}
+	var targetWindowID *string
+	if t.Window != nil {
+		targetWindowID = &t.Window.ID
 	}
 	var w domain.WindowRef
 	err = tx.QueryRow(ctx, `SELECT w.id::text,w.number FROM windows w
  WHERE w.branch_id=$1::uuid AND w.status='OPEN'
  AND EXISTS(SELECT 1 FROM window_services ws WHERE ws.window_id=w.id AND ws.service_id=$2::uuid)
- ORDER BY w.number,w.id LIMIT 1`, t.BranchID, t.ServiceID).Scan(&w.ID, &w.Number)
+ AND ($3::uuid IS NULL OR w.id=$3::uuid)
+ ORDER BY w.number,w.id LIMIT 1`, t.BranchID, t.ServiceID, targetWindowID).Scan(&w.ID, &w.Number)
 	if errors.Is(err, pgx.ErrNoRows) {
 		out.Reason = domain.QueuePositionNoOpenCompatibleWindow
 		return out, nil

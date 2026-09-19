@@ -1,0 +1,298 @@
+package persistence
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"postcode/backend/internal/application"
+	"postcode/backend/internal/domain"
+)
+
+// GetBranchWorkload returns hourly workload statistics and current waiting load for a branch.
+func (p *Postgres) GetBranchWorkload(ctx context.Context, branchID string) (domain.BranchWorkload, error) {
+	id, err := p.branch(ctx, branchID)
+	if err != nil {
+		return domain.BranchWorkload{}, err
+	}
+
+	// 1. Current Moscow hour and day of week
+	nowMoscow := time.Now().In(time.FixedZone("MSK", 3*3600))
+	currentHour := nowMoscow.Hour()
+
+	type baseline struct {
+		hour int
+		load int
+		wait int
+	}
+	baseMap := map[int]baseline{
+		8:  {8, 20, 6},
+		9:  {9, 40, 10},
+		10: {10, 45, 11},
+		11: {11, 55, 13},
+		12: {12, 75, 20},
+		13: {13, 85, 24},
+		14: {14, 80, 22},
+		15: {15, 65, 16},
+		16: {16, 60, 15},
+		17: {17, 85, 25},
+		18: {18, 90, 28},
+		19: {19, 70, 18},
+		20: {20, 50, 12},
+		21: {21, 20, 5},
+	}
+	if nowMoscow.Weekday() == time.Saturday {
+		baseMap = map[int]baseline{
+			8:  {8, 18, 5},
+			9:  {9, 35, 8},
+			10: {10, 35, 8},
+			11: {11, 60, 14},
+			12: {12, 65, 16},
+			13: {13, 84, 24},
+			14: {14, 88, 26},
+			15: {15, 90, 28},
+			16: {16, 50, 12},
+			17: {17, 55, 14},
+			18: {18, 60, 15},
+			19: {19, 88, 25},
+			20: {20, 65, 16},
+			21: {21, 25, 6},
+		}
+	} else if nowMoscow.Weekday() == time.Sunday {
+		baseMap = map[int]baseline{
+			8:  {8, 12, 4},
+			9:  {9, 25, 6},
+			10: {10, 35, 8},
+			11: {11, 48, 12},
+			12: {12, 55, 14},
+			13: {13, 65, 16},
+			14: {14, 68, 17},
+			15: {15, 60, 15},
+			16: {16, 52, 13},
+			17: {17, 45, 11},
+			18: {18, 40, 10},
+			19: {19, 35, 8},
+			20: {20, 25, 6},
+			21: {21, 15, 4},
+		}
+	}
+
+	// 2. Query historical tickets created per hour over last 30 days for this branch
+	rows, err := p.pool.Query(ctx, `
+		SELECT EXTRACT(HOUR FROM (created_at AT TIME ZONE 'Europe/Moscow'))::int AS h, COUNT(*)
+		FROM tickets
+		WHERE branch_id = $1
+		  AND created_at >= NOW() - interval '30 days'
+		GROUP BY h
+	`, id)
+	if err != nil {
+		return domain.BranchWorkload{}, dbError(err)
+	}
+	defer rows.Close()
+
+	historicalCounts := make(map[int]int)
+	totalHistory := 0
+	maxCount := 0
+	for rows.Next() {
+		var h, count int
+		if err := rows.Scan(&h, &count); err == nil {
+			historicalCounts[h] = count
+			totalHistory += count
+			if count > maxCount {
+				maxCount = count
+			}
+		}
+	}
+
+	// 3. Current waiting count
+	var currentWaiting int
+	_ = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE branch_id = $1 AND status = 'WAITING'`, id).Scan(&currentWaiting)
+
+	// 4. Construct hourly distribution 8..21 (14 hours)
+	hourly := make([]domain.HourlyWorkload, 0, 14)
+	for h := 8; h <= 21; h++ {
+		base := baseMap[h]
+		loadPct := base.load
+		waitMin := base.wait
+
+		if totalHistory > 0 && maxCount > 0 {
+			histRatio := float64(historicalCounts[h]) / float64(maxCount)
+			histPct := int(histRatio * 100)
+			weight := float64(totalHistory) / 20.0
+			if weight > 1.0 {
+				weight = 1.0
+			}
+			loadPct = int(float64(histPct)*0.7*weight + float64(base.load)*(1.0-0.7*weight))
+			if loadPct < 5 {
+				loadPct = 5
+			}
+			waitMin = int(float64(loadPct) * 0.3)
+		}
+
+		// Calibrate current hour if live waiting count is high
+		if h == currentHour {
+			if currentWaiting > 0 {
+				liveWaitEstimate := currentWaiting * 4
+				if liveWaitEstimate > waitMin {
+					waitMin = liveWaitEstimate
+				}
+				liveLoad := currentWaiting * 15
+				if liveLoad > loadPct {
+					loadPct = liveLoad
+				}
+				if loadPct > 100 {
+					loadPct = 100
+				}
+			}
+		}
+
+		hourly = append(hourly, domain.HourlyWorkload{
+			Hour:        h,
+			LoadPercent: loadPct,
+			WaitMinutes: waitMin,
+			IsPeak:      loadPct >= 70,
+		})
+	}
+
+	return domain.BranchWorkload{
+		BranchID:       branchID,
+		CurrentHour:    currentHour,
+		CurrentWaiting: currentWaiting,
+		SampleCount:    totalHistory,
+		IsHistorical:   totalHistory >= 10,
+		Hourly:         hourly,
+	}, nil
+}
+
+// CloseShift implements end-of-shift lifecycle:
+// - Windows serving clients transition to CLOSING so operators finish their customer
+// - Idle open windows transition to CLOSED
+// - All uncalled WAITING and SCHEDULED tickets are marked CANCELLED with audit events
+func (p *Postgres) CloseShift(ctx context.Context, branchID string) (domain.ShiftClosureResult, error) {
+	var result domain.ShiftClosureResult
+	result.BranchID = branchID
+
+	id, err := p.branch(ctx, branchID)
+	if err != nil {
+		return result, err
+	}
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return result, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+
+	// 1. Process open windows
+	rows, err := tx.Query(ctx, `
+		SELECT w.id::text,
+		       EXISTS(SELECT 1 FROM tickets t WHERE t.window_id = w.id AND t.status IN ('CALLED','SERVING')) AS is_busy
+		FROM windows w
+		WHERE w.branch_id = $1 AND w.status = 'OPEN'
+		FOR UPDATE
+	`, id)
+	if err != nil {
+		return result, dbError(err)
+	}
+	defer rows.Close()
+
+	type wndState struct {
+		id     string
+		isBusy bool
+	}
+	var toUpdate []wndState
+	for rows.Next() {
+		var ws wndState
+		if err := rows.Scan(&ws.id, &ws.isBusy); err == nil {
+			toUpdate = append(toUpdate, ws)
+		}
+	}
+	rows.Close()
+
+	for _, ws := range toUpdate {
+		if ws.isBusy {
+			if _, err := tx.Exec(ctx, `UPDATE windows SET status='CLOSING' WHERE id=$1::uuid`, ws.id); err != nil {
+				return result, dbError(err)
+			}
+			result.WindowsClosingCount++
+		} else {
+			if _, err := tx.Exec(ctx, `UPDATE windows SET status='CLOSED' WHERE id=$1::uuid`, ws.id); err != nil {
+				return result, dbError(err)
+			}
+			result.WindowsClosedCount++
+		}
+	}
+
+	// 2. Select all remaining uncalled tickets (WAITING or SCHEDULED) in this branch
+	ticketRows, err := tx.Query(ctx, `
+		SELECT id::text, status
+		FROM tickets
+		WHERE branch_id = $1 AND status IN ('WAITING', 'SCHEDULED')
+		FOR UPDATE
+	`, id)
+	if err != nil {
+		return result, dbError(err)
+	}
+	defer ticketRows.Close()
+
+	type uncalledTicket struct {
+		id     string
+		status domain.TicketStatus
+	}
+	var uncalled []uncalledTicket
+	for ticketRows.Next() {
+		var ut uncalledTicket
+		if err := ticketRows.Scan(&ut.id, &ut.status); err == nil {
+			uncalled = append(uncalled, ut)
+		}
+	}
+	ticketRows.Close()
+
+	// 3. Cancel each uncalled ticket and insert audit event TicketEventCancelled
+	for _, ut := range uncalled {
+		if _, err := tx.Exec(ctx, `UPDATE tickets SET status='CANCELLED' WHERE id=$1::uuid`, ut.id); err != nil {
+			return result, dbError(err)
+		}
+		from := ut.status
+		dummyTicket := domain.Ticket{
+			ID:     ut.id,
+			Status: domain.TicketStatusCancelled,
+		}
+		if err := insertEvent(ctx, tx, dummyTicket, domain.TicketEventCancelled, &from, nil, nil); err != nil {
+			return result, err
+		}
+		result.CancelledTicketsCount++
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return result, dbError(err)
+	}
+
+	return result, nil
+}
+
+// UpdateBranchSchedule sets the working hours for a branch.
+func (p *Postgres) UpdateBranchSchedule(ctx context.Context, branchID string, workHours string) (domain.Branch, error) {
+	id, err := p.branch(ctx, branchID)
+	if err != nil {
+		return domain.Branch{}, err
+	}
+
+	cleanHours := strings.TrimSpace(workHours)
+	if cleanHours == "" {
+		return domain.Branch{}, fmt.Errorf("%w: workHours cannot be empty", application.ErrInvalidState)
+	}
+
+	var b domain.Branch
+	err = p.pool.QueryRow(ctx, `
+		UPDATE branches
+		SET work_hours = $2
+		WHERE id = $1
+		RETURNING id::text, name, address, work_hours, timezone_offset
+	`, id, cleanHours).Scan(&b.ID, &b.Name, &b.Address, &b.WorkHours, &b.TimezoneOffset)
+	if err != nil {
+		return domain.Branch{}, dbError(err)
+	}
+	return b, nil
+}
