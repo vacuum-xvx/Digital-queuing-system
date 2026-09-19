@@ -191,8 +191,29 @@ test('Appointment24hPicker and schedule manager strictly enforce 24-hour format'
   assert.match(shift, /24-часовой формат/);
   assert.match(shift, /open-h-/);
   assert.match(shift, /close-h-/);
+});test('Operator workspace supports redirect to another window and distinct source tags', async () => {
+  const operatorWorkspace = await readFile(new URL('../src/features/operator/OperatorWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(operatorWorkspace, /redirectWindowId/);
+  assert.match(operatorWorkspace, /Целевое окно/);
+  assert.match(operatorWorkspace, /Перенаправить в другое окно/);
+  assert.match(operatorWorkspace, /item\.source === 'APPOINTMENT'/);
+  assert.match(operatorWorkspace, /item\.source === 'QR'/);
+
+  const ticketCard = await readFile(new URL('../src/features/operator/TicketCard.tsx', import.meta.url), 'utf8');
+  assert.match(ticketCard, /Предварительная запись/);
+  assert.match(ticketCard, /QR-код/);
+  assert.match(ticketCard, /Живая очередь/);
 });
 
+test('Admin workspace provides real-time live queue monitor with TV board and table views', async () => {
+  const admin = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(admin, /LiveQueueView/);
+  assert.match(admin, /setActiveTab\('queue'\)/);
+  assert.match(admin, /Очередь \(Live\)/);
 
-
-
+  const liveQueue = await readFile(new URL('../src/features/admin/LiveQueueView.tsx', import.meta.url), 'utf8');
+  assert.match(liveQueue, /Табло зала \(как клиентам\)/);
+  assert.match(liveQueue, /Оперативный реестр/);
+  assert.match(liveQueue, /СЕЙЧАС ОБСЛУЖИВАЮТСЯ У СТОЕК/);
+  assert.match(liveQueue, /ОЖИДАЮТ В ОЧЕРЕДИ/);
+});

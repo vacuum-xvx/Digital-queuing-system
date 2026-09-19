@@ -2,7 +2,7 @@ import React from 'react';
 import { formatMoscowTime } from '../../utils/time';
 import { Ticket, OperatorWindow } from '../../api/operator/types';
 import { Service } from '../../api/client/types';
-import { UserX, Clock, Tag } from 'lucide-react';
+import { UserX, Clock, Calendar, QrCode, Users, Tag } from 'lucide-react';
 
 interface TicketCardProps {
   ticket: Ticket | null;
@@ -10,16 +10,32 @@ interface TicketCardProps {
   services?: Service[];
 }
 
-function getTicketSourceLabel(source: Ticket['source']): string {
+function getTicketSourceConfig(source: Ticket['source']): { label: string; icon: React.ReactNode; badgeClass: string } {
   switch (source) {
-    case 'QR':
-      return 'QR-код';
     case 'APPOINTMENT':
-      return 'Предварительная запись';
+      return {
+        label: 'Предварительная запись',
+        icon: <Calendar className="w-3.5 h-3.5 shrink-0 text-indigo-600" />,
+        badgeClass: 'bg-indigo-50 text-indigo-800 border-indigo-200 shadow-2xs',
+      };
+    case 'QR':
+      return {
+        label: 'QR-код (смартфон)',
+        icon: <QrCode className="w-3.5 h-3.5 shrink-0 text-[#054FA6]" />,
+        badgeClass: 'bg-sky-50 text-[#054FA6] border-sky-200 shadow-2xs',
+      };
     case 'LIVE':
-      return 'Живая очередь';
+      return {
+        label: 'Живая очередь (терминал)',
+        icon: <Users className="w-3.5 h-3.5 shrink-0 text-amber-700" />,
+        badgeClass: 'bg-amber-50 text-amber-900 border-amber-200 shadow-2xs',
+      };
     default:
-      return source;
+      return {
+        label: source || 'Очередь',
+        icon: <Tag className="w-3.5 h-3.5 shrink-0" />,
+        badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
+      };
   }
 }
 
@@ -54,7 +70,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, 
 
   const isCalled = ticket.status === 'CALLED';
   const isServing = ticket.status === 'SERVING';
-  const sourceLabel = getTicketSourceLabel(ticket.source);
+  const sourceConfig = getTicketSourceConfig(ticket.source);
 
   // Тип услуги: сначала каталог услуг отделения, затем услуги выбранного окна
   const serviceName =
@@ -66,9 +82,10 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, 
     <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm space-y-4">
       {/* Meta Top Line */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono bg-blue-50 text-[#054FA6] border border-blue-200 flex items-center gap-1">
-            <Tag className="w-3 h-3" /> {sourceLabel}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono border flex items-center gap-1.5 ${sourceConfig.badgeClass}`}>
+            {sourceConfig.icon}
+            <span>{sourceConfig.label}</span>
           </span>
           <span
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono border ${
