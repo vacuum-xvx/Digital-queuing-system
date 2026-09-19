@@ -170,13 +170,17 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
               >
                 Окно оператора
               </a>
-              <span className="text-white/30">·</span>
-              <a
-                href="/admin"
-                className={`hover:text-white transition-colors pb-0.5 ${currentPath.startsWith('/admin') ? 'text-white font-bold border-b-2 border-white' : 'text-blue-200'}`}
-              >
-                Панель начальника ОПС
-              </a>
+              {currentUser?.role === 'opc_chief' && (
+                <>
+                  <span className="text-white/30">·</span>
+                  <a
+                    href="/admin"
+                    className={`hover:text-white transition-colors pb-0.5 ${currentPath.startsWith('/admin') ? 'text-white font-bold border-b-2 border-white' : 'text-blue-200'}`}
+                  >
+                    Панель начальника ОПС
+                  </a>
+                </>
+              )}
             </nav>
 
             <a
