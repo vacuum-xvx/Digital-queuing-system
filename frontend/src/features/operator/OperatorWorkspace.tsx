@@ -106,10 +106,15 @@ export function OperatorWorkspace() {
             }
           } catch {}
         }
-      } catch {
+      } catch (err: unknown) {
         if (epoch.current === generation) {
           setReady(false);
-          setError('Не удалось обновить окно. Проверьте соединение и сессию.');
+          const isAuth = err instanceof OperatorApiError && err.status === 401;
+          setError(
+            isAuth
+              ? 'Сессия оператора истекла. Войдите в систему повторно.'
+              : 'Не удалось обновить окно. Проверьте соединение с сервером.'
+          );
         }
       } finally {
         if (epoch.current === generation) timer = window.setTimeout(poll, 2000);
@@ -147,11 +152,19 @@ export function OperatorWorkspace() {
       await action();
     } catch (err) {
       const code = err instanceof OperatorApiError ? err.code : '';
-      setNotice(
-        code === 'NO_ELIGIBLE_TICKETS'
-          ? 'Сейчас нет доступных талонов.'
-          : 'Операция не выполнена. Состояние окна будет обновлено; проверьте сессию при повторной ошибке.'
-      );
+      if (code === 'NO_ELIGIBLE_TICKETS') {
+        setNotice('Сейчас нет доступных талонов в очереди.');
+      } else if (code === 'WINDOW_BUSY') {
+        setNotice('Окно занято. Завершите обслуживание или отметьте неявку текущего клиента перед вызовом следующего.');
+      } else if (code === 'WINDOW_CLOSED') {
+        setNotice('Окно закрыто. Откройте окно для вызова клиентов.');
+      } else if (code === 'INVALID_TICKET_STATE') {
+        setNotice('Недопустимый статус талона для этой операции.');
+      } else {
+        setNotice(
+          'Операция не выполнена. Состояние окна будет обновлено; проверьте сессию при повторной ошибке.'
+        );
+      }
     } finally {
       busy.current = false;
       setPending(false);
