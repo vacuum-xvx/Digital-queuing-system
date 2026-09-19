@@ -5,6 +5,7 @@ import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, C
 import './client.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
+import { BranchWorkloadCard } from './BranchWorkloadCard';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
@@ -64,6 +65,9 @@ function BranchCard({ branch, selected, onSelect }: { branch: Branch; selected: 
       <span className="cx-choice-title">{branch.name}</span>
       {branch.address ? <span className="cx-choice-meta"><MapPin size={14} aria-hidden /> {branch.address}</span> : null}
       {branch.workHours ? <span className="cx-choice-meta"><Clock size={14} aria-hidden /> {branch.workHours}</span> : null}
+      <div className="pt-1">
+        <BranchWorkloadCard branch={branch} compact />
+      </div>
     </button>
   );
 }
@@ -639,7 +643,9 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
           )}
 
           {bookingStep === 2 && (
-            <div className="p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
+            <div className="space-y-4">
+              <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
+              <div className="p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-slate-900">Укажите время визита</h3>
               <label className="block text-xs font-bold text-slate-700 space-y-1">
                 <span>Дата и время (МСК)</span>
@@ -661,6 +667,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
               >
                 {creating ? 'Оформляем...' : 'Подтвердить запись'}
               </button>
+              </div>
             </div>
           )}
         </div>
@@ -728,6 +735,8 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                 <Building2 className="w-4 h-4 text-[#003B73]" />
                 <span>Отделение: <strong>{branches.find(b => b.id === branchId)?.name}</strong></span>
               </div>
+
+              <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
 
               <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
               {servicesLoading ? (
@@ -862,6 +871,19 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                             Ожидание примерно {Math.ceil(eta.estimatedWaitSeconds / 60)} мин
                           </p>
                         )}
+                      {!terminalStatuses.has(ticket.status) && (
+                        <div className="pt-2 flex justify-center">
+                          <BranchWorkloadCard
+                            branch={branches.find(b => b.id === ticket.branchId)}
+                            compact
+                            overrideWaitMinutes={
+                              eta?.ticketId === ticket.id && eta.estimatedWaitSeconds !== null
+                                ? Math.ceil(eta.estimatedWaitSeconds / 60)
+                                : undefined
+                            }
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions Footer */}
