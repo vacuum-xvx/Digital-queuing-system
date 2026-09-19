@@ -1,4 +1,5 @@
 .env*
+api
 bin/
 coverage*
 *.test
