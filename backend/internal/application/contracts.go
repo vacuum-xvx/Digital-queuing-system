@@ -86,6 +86,7 @@ type UseCases interface {
 	CreateWindow(ctx context.Context, branchID string) (domain.Window, error)
 	DeleteWindow(ctx context.Context, windowID string) error
 	CallNext(ctx context.Context, windowID string) (domain.Ticket, error)
+	CallSpecificTicket(ctx context.Context, windowID string, ticketIDOrNumber string) (domain.Ticket, error)
 	ReconcileStaleTickets(ctx context.Context, authoritativeTime time.Time) error
 
 	StartService(ctx context.Context, ticketID string) (domain.Ticket, error)

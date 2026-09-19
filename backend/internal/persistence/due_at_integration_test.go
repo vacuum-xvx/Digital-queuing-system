@@ -421,3 +421,45 @@ func TestQueuePolicyDynamicUpdate(t *testing.T) {
 		t.Fatalf("failed to update policy dynamically: %+v", got)
 	}
 }
+
+// Test 11: Call specific ticket explicitly by public_number or id
+func TestCallSpecificTicket(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	first := create(t, ctx, p, parcels, "specific-qr-1")
+	second := create(t, ctx, p, parcels, "specific-qr-2")
+	third := create(t, ctx, p, parcels, "specific-qr-3")
+	_ = first
+
+	// Normal callNext would pick 'first'. Operator explicitly calls 'third' by public number:
+	calledThird, err := p.CallSpecificTicket(ctx, window1, third.PublicNumber)
+	if err != nil {
+		t.Fatalf("failed to call specific ticket %s: %v", third.PublicNumber, err)
+	}
+	if calledThird.ID != third.ID {
+		t.Fatalf("expected called ticket to be third (%s), got: %s", third.ID, calledThird.ID)
+	}
+	if calledThird.Status != domain.TicketStatusCalled {
+		t.Fatalf("expected status CALLED, got: %s", calledThird.Status)
+	}
+
+	// Complete third ticket so window is free
+	_, err = p.StartService(ctx, calledThird.ID)
+	if err != nil {
+		t.Fatalf("start service: %v", err)
+	}
+	_, err = p.CompleteService(ctx, calledThird.ID)
+	if err != nil {
+		t.Fatalf("complete service: %v", err)
+	}
+
+	// Now call second ticket by its UUID:
+	calledSecond, err := p.CallSpecificTicket(ctx, window1, second.ID)
+	if err != nil {
+		t.Fatalf("failed to call specific ticket by id: %v", err)
+	}
+	if calledSecond.ID != second.ID {
+		t.Fatalf("expected called ticket to be second (%s), got: %s", second.ID, calledSecond.ID)
+	}
+}
+

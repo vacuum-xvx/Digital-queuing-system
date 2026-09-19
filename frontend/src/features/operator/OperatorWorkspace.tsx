@@ -160,6 +160,10 @@ export function OperatorWorkspace() {
         setNotice('Окно закрыто. Откройте окно для вызова клиентов.');
       } else if (code === 'INVALID_TICKET_STATE') {
         setNotice('Недопустимый статус талона для этой операции.');
+      } else if (code === 'NO_OPEN_COMPATIBLE_WINDOW') {
+        setNotice('Данное окно не обслуживает услугу выбранного талона. Подключите услугу в настройках окна.');
+      } else if (code === 'NOT_FOUND') {
+        setNotice('Талон не найден в отделении или уже был обслужен/отменен.');
       } else {
         setNotice(
           'Операция не выполнена. Состояние окна будет обновлено; проверьте сессию при повторной ошибке.'
@@ -223,7 +227,7 @@ export function OperatorWorkspace() {
           await arriveAppointment(publicNum);
         } catch {}
       }
-      await api.callNext(windowId);
+      await api.callNext(windowId, publicNum);
     });
   }
 

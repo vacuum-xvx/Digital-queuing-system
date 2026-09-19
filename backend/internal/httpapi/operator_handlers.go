@@ -3,9 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"postcode/backend/internal/application"
+	"postcode/backend/internal/domain"
 )
 
 func (a *API) ListBranchWindows(w http.ResponseWriter, r *http.Request) {
@@ -36,9 +38,41 @@ func (a *API) GetCurrentTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, mapTicket(*ticket))
 }
 
+type callNextRequest struct {
+	TicketID     string `json:"ticketId"`
+	PublicNumber string `json:"publicNumber"`
+}
+
 func (a *API) CallNext(w http.ResponseWriter, r *http.Request) {
 	windowID := chi.URLParam(r, "windowId")
-	ticket, err := a.usecases.CallNext(r.Context(), windowID)
+
+	var target string
+	if r.Body != nil {
+		var req callNextRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			target = strings.TrimSpace(req.TicketID)
+			if target == "" {
+				target = strings.TrimSpace(req.PublicNumber)
+			}
+		}
+	}
+	if target == "" {
+		target = strings.TrimSpace(r.URL.Query().Get("ticketId"))
+	}
+	if target == "" {
+		target = strings.TrimSpace(r.URL.Query().Get("publicNumber"))
+	}
+	if target == "" {
+		target = strings.TrimSpace(r.URL.Query().Get("ticket"))
+	}
+
+	var ticket domain.Ticket
+	var err error
+	if target != "" {
+		ticket, err = a.usecases.CallSpecificTicket(r.Context(), windowID, target)
+	} else {
+		ticket, err = a.usecases.CallNext(r.Context(), windowID)
+	}
 	if err != nil {
 		a.respondError(w, r, err)
 		return
