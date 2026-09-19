@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
 import { getMe } from '../../api/authApi';
-import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
+import { Appointment, Branch, Service, Ticket, TicketStatus, TicketSource, QueuePosition, TicketETA } from '../../api/client/types';
 import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
 import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { BranchWorkloadCard } from './BranchWorkloadCard';
+import { Appointment24hPicker } from './Appointment24hPicker';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
@@ -29,21 +30,21 @@ function localDateTimeValue(date: Date): string {
   return toMoscowDatetimeLocal(date);
 }
 
-function statusMessage(status: TicketStatus): string {
+function statusMessage(status: TicketStatus, source?: TicketSource): string {
   switch (status) {
     case 'WAITING': return 'Вы в очереди';
     case 'CALLED': return 'Вас вызывают';
     case 'SERVING': return 'Идёт обслуживание';
     case 'COMPLETED': return 'Обслуживание завершено';
-    case 'CANCELLED': return 'Запись отменена';
+    case 'CANCELLED': return source === 'APPOINTMENT' ? 'Запись отменена' : 'Талон отменён';
     case 'NO_SHOW': return 'Вы не подошли к окну';
     case 'SCHEDULED': return 'Запись подтверждена';
     default: return 'Статус обновляется';
   }
 }
 
-function StatusBadge({ status }: { status: TicketStatus }) {
-  return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status)}</span>;
+function StatusBadge({ status, source }: { status: TicketStatus; source?: TicketSource }) {
+  return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status, source)}</span>;
 }
 
 function ETASparkline({ eta }: { eta: TicketETA }) {
@@ -60,6 +61,28 @@ function ETASparkline({ eta }: { eta: TicketETA }) {
       </svg>
       {distribution.p90 - distribution.median > 0.5 * distribution.median && <span className="text-[10px] text-slate-600 border border-slate-300 rounded px-1.5 py-0.5">Повышенная дисперсия</span>}
     </span>
+  );
+}
+
+function ErrorBanner({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center justify-between gap-2 shadow-sm animate-fade-in"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+        <span className="truncate">{message}</span>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="text-red-400 hover:text-red-700 p-1 rounded-lg hover:bg-red-100 transition-colors shrink-0 leading-none font-bold"
+        aria-label="Закрыть ошибку"
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 
@@ -185,15 +208,24 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     return v && v !== 'undefined' && v !== 'null' ? v : '';
   });
   const [serviceId, setServiceId] = useState(() => {
+    const urlServiceId = new URLSearchParams(window.location.search).get('serviceId');
+    if (urlServiceId) return urlServiceId;
     const v = sessionStorage.getItem(STORAGE_SERVICE_KEY);
     return v && v !== 'undefined' && v !== 'null' ? v : '';
   });
   const [scheduledAtInput, setScheduledAtInput] = useState('');
+  const [autoArriveOnBooking, setAutoArriveOnBooking] = useState(true);
   const [bookingStep, setBookingStep] = useState(0);
   const [walkinStep, setWalkinStep] = useState(qrBranchId ? 1 : 0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [kioskTicket, setKioskTicket] = useState<Ticket | null>(null);
@@ -314,6 +346,15 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
       const slist = await api.listServices(targetBranchId);
       if (servicesLoadingBranchRef.current === targetBranchId) {
         setServices(slist);
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlServiceId = urlParams.get('serviceId');
+        const urlServiceCode = urlParams.get('service');
+        if (urlServiceId && slist.some(s => s.id === urlServiceId)) {
+          setServiceId(urlServiceId);
+        } else if (urlServiceCode) {
+          const found = slist.find(s => s.code?.toUpperCase() === urlServiceCode.toUpperCase());
+          if (found) setServiceId(found.id);
+        }
       }
     } catch (err: any) {
       if (servicesLoadingBranchRef.current === targetBranchId) {
@@ -465,6 +506,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     setServiceId('');
     sessionStorage.removeItem(STORAGE_SERVICE_KEY);
     setScheduledAtInput('');
+    setAutoArriveOnBooking(true);
     setError(null);
   };
 
@@ -522,9 +564,21 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         keyFor(`appointment:${branchId}:${serviceId}:${scheduledAt.toISOString()}`)
       );
       requestKey.current = null;
-      addSavedTicketId(created.ticket.id, ownerScope);
-      setTickets(prev => [created.ticket, ...prev]);
-      setAppointments(prev => ({ ...prev, [created.ticket.id]: created }));
+
+      let finalTicket = created.ticket;
+      if (autoArriveOnBooking) {
+        try {
+          const arrived = await api.arriveAppointment(created.ticket.id);
+          finalTicket = arrived.ticket;
+          setArrivalAcknowledgedTicketIds(prev => new Set([...prev, created.ticket.id]));
+        } catch (arriveErr) {
+          console.warn('Auto-arrive failed:', arriveErr);
+        }
+      }
+
+      addSavedTicketId(finalTicket.id, ownerScope);
+      setTickets(prev => [finalTicket, ...prev]);
+      setAppointments(prev => ({ ...prev, [finalTicket.id]: created }));
       setScreen('my');
     } catch (reason: unknown) {
       setError(friendlyError(reason, 'Не удалось создать запись'));
@@ -535,18 +589,30 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   };
 
   const cancel = async (ticket: Ticket) => {
-    if (cancelling || ticket.status !== 'SCHEDULED') return;
+    if (cancelling || (ticket.status !== 'SCHEDULED' && ticket.status !== 'WAITING')) return;
+    const isAppointment = ticket.source === 'APPOINTMENT' && ticket.status === 'SCHEDULED';
+    const confirmMessage = isAppointment
+      ? 'Вы уверены, что хотите отменить предварительную запись?'
+      : 'Вы уверены, что хотите отказаться от талона и покинуть очередь?';
+    if (!window.confirm(confirmMessage)) return;
+
     setCancelling(true);
     try {
-      const cancelled = await api.cancelAppointment(ticket.id);
+      let cancelledTicket: Ticket;
+      if (isAppointment) {
+        const res = await api.cancelAppointment(ticket.id);
+        cancelledTicket = res.ticket;
+      } else {
+        cancelledTicket = await api.cancelTicket(ticket.id);
+      }
       removeSavedTicketId(ticket.id, ownerScope);
-      setTickets(prev => prev.map(t => t.id === ticket.id ? cancelled.ticket : t));
+      setTickets(prev => prev.map(t => t.id === ticket.id ? cancelledTicket : t));
       setPositions(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       setEtas(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       stopPolling();
       pollAll();
     } catch (reason: unknown) {
-      setError(friendlyError(reason, 'Не удалось отменить запись'));
+      setError(friendlyError(reason, isAppointment ? 'Не удалось отменить запись' : 'Не удалось отказаться от талона'));
     } finally {
       setCancelling(false);
     }
@@ -750,11 +816,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
         <div className="space-y-4">
           <StepIndicator steps={steps} current={bookingStep} />
-          {error && (
-            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
           {bookingStep === 0 && (
             <div className="space-y-3">
@@ -804,18 +866,25 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
             <div className="space-y-4">
               <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
               <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Укажите время визита</h3>
-              <label className="block text-xs font-bold text-slate-700 space-y-1">
-                <span>Дата и время (МСК)</span>
+              <Appointment24hPicker
+                value={scheduledAtInput}
+                onChange={setScheduledAtInput}
+                disabled={creating}
+                workHours={branches.find(b => b.id === branchId)?.workHours}
+              />
+              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-blue-50/60 border border-blue-200 cursor-pointer select-none">
                 <input
-                  type="datetime-local"
-                  value={scheduledAtInput}
-                  min={localDateTimeValue(new Date(Date.now() + 60_000))}
-                  onChange={e => setScheduledAtInput(e.target.value)}
-                  disabled={creating}
-                  aria-label="Дата и время (МСК)"
-                  className="w-full px-3.5 py-3 text-base sm:text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] min-h-[48px]"
+                  type="checkbox"
+                  checked={autoArriveOnBooking}
+                  onChange={e => setAutoArriveOnBooking(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded text-[#003B73] focus:ring-[#003B73]"
                 />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-800 block">Я уже в отделении (сразу встать в очередь)</span>
+                  <span className="text-slate-500 block text-[11px] leading-relaxed">
+                    Талон станет доступен для вызова оператором без дополнительного подтверждения
+                  </span>
+                </div>
               </label>
               <button
                 type="button"
@@ -872,11 +941,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
         <div className="space-y-4">
           <StepIndicator steps={steps} current={walkinStep} />
-          {error && (
-            <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
 
           {walkinStep === 0 && (
             <div className="space-y-3">
@@ -970,7 +1035,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         </header>
 
         <div className="space-y-4">
-          {error && <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">{error}</div>}
+          {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
           {pollError && <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
 
           {tickets.length === 0 ? (
@@ -1002,7 +1067,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                     {/* Branded Ticket Header */}
                     <div className="cx-ticket-header">
                       <span className="cx-ticket-num font-mono">{ticket.publicNumber}</span>
-                      <StatusBadge status={ticket.status} />
+                      <StatusBadge status={ticket.status} source={ticket.source} />
                     </div>
 
                     {/* Details Body */}
@@ -1066,7 +1131,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                     {/* Actions Footer */}
                     <div className="cx-ticket-actions">
                       {ticket.status === 'SCHEDULED' && ticket.source === 'APPOINTMENT' && (
-                        arrivalAcknowledgedTicketIds.has(ticket.id) ? (
+                        (ticket.arrivedAt || arrivalAcknowledgedTicketIds.has(ticket.id)) ? (
                           <div className="cx-ticket-alert cx-ticket-alert-success">
                             Ожидайте вызова, ваше прибытие отмечено
                           </div>
@@ -1081,14 +1146,16 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                           </button>
                         )
                       )}
-                      {ticket.status === 'SCHEDULED' && (
+                      {(ticket.status === 'SCHEDULED' || ticket.status === 'WAITING') && (
                         <button
                           type="button"
                           className="cx-btn cx-btn-danger cx-btn-block"
                           onClick={() => cancel(ticket)}
                           disabled={cancelling}
                         >
-                          {cancelling ? 'Отменяем...' : 'Отменить запись'}
+                          {cancelling
+                            ? 'Отменяем...'
+                            : (ticket.status === 'SCHEDULED' ? 'Отменить запись' : 'Отказаться от талона')}
                         </button>
                       )}
                       {terminalStatuses.has(ticket.status) && (

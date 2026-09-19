@@ -251,7 +251,11 @@ export async function redirectTicket(ticketId: string, newServiceId?: string, ta
     method: 'POST',
     credentials: 'include',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ newServiceId, targetWindowId }),
+    body: JSON.stringify({
+      newServiceId: newServiceId || undefined,
+      newWindowId: targetWindowId || undefined,
+      targetWindowId: targetWindowId || undefined,
+    }),
   });
   return await handleResponse<Ticket>(res);
 }

@@ -15,6 +15,9 @@ type TVWindowDTO struct {
 
 type TVQueueTicketDTO struct {
 	PublicNumber string `json:"publicNumber"`
+	Source       string `json:"source"`
+	ServiceName  string `json:"serviceName"`
+	Status       string `json:"status"`
 }
 
 type TVQueueResponse struct {
@@ -43,14 +46,17 @@ func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// For the TV, we only need a few top waiting tickets
+	// For the TV, we only need top waiting tickets
 	queue := make([]TVQueueTicketDTO, 0, len(overview.Queue))
 	for i, t := range overview.Queue {
-		if i >= 10 { // Limit to 10 for TV display
+		if i >= 15 {
 			break
 		}
 		queue = append(queue, TVQueueTicketDTO{
 			PublicNumber: t.PublicNumber,
+			Source:       string(t.Source),
+			ServiceName:  t.ServiceName,
+			Status:       string(t.Status),
 		})
 	}
 

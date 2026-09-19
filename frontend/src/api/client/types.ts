@@ -48,6 +48,7 @@ export type Ticket = {
   calledAt: string | null;
   serviceStartedAt: string | null;
   completedAt: string | null;
+  arrivedAt?: string | null;
 };
 
 export type Appointment = {

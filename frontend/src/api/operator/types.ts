@@ -1,6 +1,7 @@
 export type Branch = {
   id: string;
   name: string;
+  workHours?: string;
 };
 
 export type BranchListResponse = {
@@ -55,6 +56,7 @@ export type Ticket = {
   calledAt: string | null;
   serviceStartedAt: string | null;
   completedAt: string | null;
+  arrivedAt?: string | null;
 };
 
 export type ApiErrorDetail = {

@@ -145,6 +145,41 @@ func (p *Postgres) CancelAppointment(ctx context.Context, ticketID string) (appl
 	return appointmentView(t), nil
 }
 
+func (p *Postgres) CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
+	var empty domain.Ticket
+	id, err := uuid(ticketID)
+	if err != nil {
+		return empty, err
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return empty, dbError(err)
+	}
+	defer tx.Rollback(context.Background())
+	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id))
+	if err != nil {
+		return empty, err
+	}
+	if t.Status == domain.TicketStatusCancelled {
+		return t, nil
+	}
+	if t.Status != domain.TicketStatusWaiting && t.Status != domain.TicketStatusScheduled {
+		return empty, application.ErrInvalidState
+	}
+	from := t.Status
+	if _, err = tx.Exec(ctx, `UPDATE tickets SET status='CANCELLED' WHERE id=$1`, id); err != nil {
+		return empty, dbError(err)
+	}
+	t.Status = domain.TicketStatusCancelled
+	if err = insertEvent(ctx, tx, t, domain.TicketEventCancelled, &from, nil, nil); err != nil {
+		return empty, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return empty, dbError(err)
+	}
+	return t, nil
+}
+
 func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.TicketEventType, from *domain.TicketStatus, version *int64, priority *int64) error {
 	var window *string
 	if t.Window != nil {

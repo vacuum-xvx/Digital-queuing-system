@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -42,9 +43,11 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Post("/appointments/{ticketId}/cancel", a.CancelAppointment)
 		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
+		r.Post("/tickets/{ticketId}/cancel", a.CancelTicket)
 		r.Get("/tickets/{ticketId}/position", a.GetQueuePosition)
 		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
+		r.Get("/branches/{branchId}/workload", a.GetBranchWorkload)
 
 		// ── Оператор (employee + opc_chief) ──────────────────────────────
 		r.Route("/operator", func(r chi.Router) {
@@ -67,6 +70,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
+			r.Post("/branches/{branchId}/close-shift", a.CloseShift)
+			r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
@@ -232,6 +237,7 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	message := code
 	// Wrapped application errors may contain internal/driver context.
 	if status == http.StatusInternalServerError {
+		slog.ErrorContext(r.Context(), "internal server error", "error", err, "path", r.URL.Path)
 		message = "Internal server error"
 	}
 	writeJSONError(w, r, status, code, message)

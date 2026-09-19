@@ -71,6 +71,7 @@ type UseCases interface {
 	CreateLiveTicket(ctx context.Context, cmd CreateLiveTicketCommand) (CreateLiveTicketResult, error)
 	CreateAppointment(ctx context.Context, cmd CreateAppointmentCommand) (CreateAppointmentResult, error)
 	CancelAppointment(ctx context.Context, ticketID string) (AppointmentView, error)
+	CancelTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	GetQueuePolicy(ctx context.Context, branchID string) (domain.QueuePolicy, error)
 	UpdateQueuePolicy(ctx context.Context, cmd UpdateQueuePolicyCommand) (domain.QueuePolicy, error)
 	ListTicketEvents(ctx context.Context, ticketID string) ([]domain.TicketEvent, error)
@@ -88,6 +89,10 @@ type UseCases interface {
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
+
+	GetBranchWorkload(ctx context.Context, branchID string) (domain.BranchWorkload, error)
+	CloseShift(ctx context.Context, branchID string) (domain.ShiftClosureResult, error)
+	UpdateBranchSchedule(ctx context.Context, branchID string, workHours string) (domain.Branch, error)
 
 	// Auth & Roles
 	Register(ctx context.Context, email, password string) (domain.User, error)

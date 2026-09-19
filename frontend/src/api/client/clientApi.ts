@@ -211,6 +211,13 @@ export async function cancelAppointment(ticketId: string, signal?: AbortSignal):
   }, parseAppointment);
 }
 
+export async function cancelTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
+  return request(`/tickets/${encodeURIComponent(ticketId)}/cancel`, {
+    method: 'POST',
+    signal,
+  }, parseTicket);
+}
+
 export async function arriveAppointment(ticketId: string, signal?: AbortSignal): Promise<Appointment> {
   return request(`/appointments/${encodeURIComponent(ticketId)}/arrive`, { method: 'POST', signal }, parseAppointment);
 }
@@ -240,3 +247,24 @@ export async function getTicketETA(ticketId: string, signal?: AbortSignal): Prom
     return value as unknown as import('./types').TicketETA;
   });
 }
+
+export type HourlyWorkload = {
+  hour: number;
+  loadPercent: number;
+  waitMinutes: number;
+  isPeak: boolean;
+};
+
+export type BranchWorkload = {
+  branchId: string;
+  currentHour: number;
+  currentWaiting: number;
+  sampleCount: number;
+  isHistorical: boolean;
+  hourly: HourlyWorkload[];
+};
+
+export async function getBranchWorkload(branchId: string, signal?: AbortSignal): Promise<BranchWorkload> {
+  return request(`/branches/${encodeURIComponent(branchId)}/workload`, { signal });
+}
+

@@ -77,16 +77,24 @@ func (a *API) ReturnTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 type RedirectTicketRequest struct {
-	NewServiceID string `json:"newServiceId"`
-	NewWindowID  string `json:"newWindowId"`
+	NewServiceID   string `json:"newServiceId"`
+	NewWindowID    string `json:"newWindowId"`
+	TargetWindowID string `json:"targetWindowId"`
 }
 
 func (a *API) RedirectTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID := chi.URLParam(r, "ticketId")
 
 	var req RedirectTicketRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewServiceID == "" {
-		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body, newServiceId is required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if req.NewWindowID == "" && req.TargetWindowID != "" {
+		req.NewWindowID = req.TargetWindowID
+	}
+	if req.NewServiceID == "" && req.NewWindowID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Either newServiceId or newWindowId is required")
 		return
 	}
 
