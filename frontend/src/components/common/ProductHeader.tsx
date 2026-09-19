@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { BarChart3, Clock, Eye, UserPlus, UserX, Volume2, VolumeX } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { BarChart3, Clock, Eye, RotateCcw, UserPlus, UserX, Volume2, VolumeX, X } from 'lucide-react';
 import { PochtaEmblem, PochtaWordmark } from './PochtaBrand';
 import { getMe, logout, User } from '../../api/authApi';
 import { ClientAuthModal } from '../../features/auth/ClientAuthModal';
@@ -20,38 +20,87 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
     }
   });
   const [a11yOpen, setA11yOpen] = useState(false);
-  const [scale, setScale] = useState(() => Number(localStorage.getItem('pochta_a11y_scale') || (isA11y ? '115' : '100')));
+  const [scale, setScale] = useState(() => Number(localStorage.getItem('pochta_a11y_scale') || (isA11y ? '125' : '100')));
   const [contrast, setContrast] = useState(() => localStorage.getItem('pochta_a11y_contrast') === 'true');
   const [reducedMotion, setReducedMotion] = useState(() => localStorage.getItem('pochta_a11y_motion') === 'true');
   const [timeStr, setTimeStr] = useState('');
 
+  const a11yRef = useRef<HTMLDivElement>(null);
+  const a11yButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!a11yOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setA11yOpen(false);
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        a11yRef.current &&
+        !a11yRef.current.contains(e.target as Node) &&
+        a11yButtonRef.current &&
+        !a11yButtonRef.current.contains(e.target as Node)
+      ) {
+        setA11yOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [a11yOpen]);
+
+  const toggleA11yMode = (enable: boolean) => {
+    setIsA11y(enable);
+    if (enable && scale === 100) {
+      setScale(125);
+    }
+  };
+
+  const handleResetA11y = () => {
+    setIsA11y(false);
+    setScale(100);
+    setContrast(false);
+    setReducedMotion(false);
+    try {
+      localStorage.removeItem('pochta_a11y');
+      localStorage.removeItem('pochta_a11y_scale');
+      localStorage.removeItem('pochta_a11y_contrast');
+      localStorage.removeItem('pochta_a11y_motion');
+    } catch {}
+  };
+
   useEffect(() => {
     if (isA11y) {
       document.documentElement.classList.add('a11y-mode');
+      document.documentElement.style.fontSize = `${scale}%`;
       try {
         localStorage.setItem('pochta_a11y', 'true');
+        localStorage.setItem('pochta_a11y_scale', String(scale));
       } catch {}
     } else {
       document.documentElement.classList.remove('a11y-mode');
+      document.documentElement.classList.remove('a11y-contrast');
+      document.documentElement.style.fontSize = '';
       try {
         localStorage.removeItem('pochta_a11y');
       } catch {}
     }
-  }, [isA11y]);
-
-  useEffect(() => {
-    document.documentElement.style.fontSize = `${scale}%`;
-    localStorage.setItem('pochta_a11y_scale', String(scale));
-  }, [scale]);
+  }, [isA11y, scale]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('a11y-contrast', isA11y && contrast);
-    localStorage.setItem('pochta_a11y_contrast', String(contrast));
+    try {
+      localStorage.setItem('pochta_a11y_contrast', String(contrast));
+    } catch {}
   }, [contrast, isA11y]);
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-reduced-motion', reducedMotion);
-    localStorage.setItem('pochta_a11y_motion', String(reducedMotion));
+    try {
+      localStorage.setItem('pochta_a11y_motion', String(reducedMotion));
+    } catch {}
   }, [reducedMotion]);
 
   useEffect(() => {
@@ -131,30 +180,169 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
 
             {/* Accessibility Button */}
             <button
+              ref={a11yButtonRef}
               type="button"
-              onClick={() => { setIsA11y((prev) => !prev); setA11yOpen((prev) => !prev); }}
+              onClick={() => setA11yOpen((prev) => !prev)}
               aria-pressed={isA11y}
               aria-expanded={a11yOpen}
               aria-controls="a11y-settings"
               className={`cx-header-btn h-8 w-8 sm:w-auto sm:min-w-[104px] sm:px-2.5 sm:gap-1.5 ${
                 isA11y ? '!bg-[#FFE600] !text-black !border-[#FFE600] font-bold shadow-md' : ''
               }`}
-              title={isA11y ? 'Версия для слабовидящих: включена (нажмите для выключения)' : 'Включить версию для слабовидящих'}
+              title="Настройки доступности (версия для слабовидящих)"
             >
               <Eye className="w-3.5 h-3.5" />
-              <span className="font-bold hidden sm:inline whitespace-nowrap">Доступность</span>
+              <span className="font-bold hidden sm:inline whitespace-nowrap">
+                {isA11y ? 'Доступность: ВКЛ' : 'Доступность'}
+              </span>
             </button>
 
             {a11yOpen && (
-              <div id="a11y-settings" role="region" aria-label="Настройки доступности" className="absolute right-4 top-14 z-50 w-64 rounded-2xl border border-white/20 bg-[#003B73] p-4 text-left text-xs text-white shadow-xl">
-                <label className="mb-3 block">
-                  <span className="mb-1 block font-bold">Масштаб: {scale}%</span>
-                  <select value={scale} onChange={(event) => setScale(Number(event.target.value))} className="w-full bg-white text-slate-900 rounded-lg px-2 py-1" aria-label="Масштаб интерфейса">
-                    {[100, 115, 130, 150].map((value) => <option key={value} value={value}>{value}%</option>)}
-                  </select>
-                </label>
-                <label className="mb-2 flex items-center gap-2"><input type="checkbox" checked={contrast} onChange={(event) => setContrast(event.target.checked)} aria-label="Высокая контрастность" /> Высокая контрастность</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} aria-label="Уменьшить анимацию" /> Уменьшить анимацию</label>
+              <div
+                ref={a11yRef}
+                id="a11y-settings"
+                role="region"
+                aria-label="Настройки доступности"
+                className="absolute right-2 sm:right-4 top-12 sm:top-14 z-50 w-[calc(100vw-1rem)] sm:w-80 max-w-[340px] rounded-2xl border border-white/20 bg-[#002B55] p-4 text-left text-xs text-white shadow-2xl backdrop-blur-md"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-white/15 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-[#FFE600]" />
+                    <span className="font-bold text-sm text-white">Панель доступности</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setA11yOpen(false)}
+                    className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    aria-label="Закрыть настройки доступности"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Master Toggle */}
+                <div className="mb-3.5 bg-white/10 p-2.5 rounded-xl flex items-center justify-between">
+                  <div className="pr-2">
+                    <div className="font-bold text-xs text-white">Режим для слабовидящих</div>
+                    <div className="text-[10px] text-blue-200">Увеличенные шрифты и контраст</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleA11yMode(!isA11y)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      isA11y
+                        ? 'bg-[#FFE600] text-black shadow-sm'
+                        : 'bg-white/20 text-white hover:bg-white/30'
+                    }`}
+                  >
+                    {isA11y ? 'ВКЛЮЧЕН' : 'ВЫКЛ'}
+                  </button>
+                </div>
+
+                {/* Font Scale */}
+                <div className="mb-3">
+                  <div className="text-[11px] font-bold text-blue-200 mb-1.5 flex items-center justify-between">
+                    <span>Размер шрифта:</span>
+                    <span className="font-mono text-white font-bold">{scale}%</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { val: 100, label: 'А 100%' },
+                      { val: 125, label: 'А+ 125%' },
+                      { val: 150, label: 'А++ 150%' },
+                    ].map(({ val, label }) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => {
+                          setScale(val);
+                          if (!isA11y) toggleA11yMode(true);
+                        }}
+                        className={`py-1.5 px-1 text-center rounded-lg text-xs font-bold border transition-all ${
+                          scale === val && isA11y
+                            ? 'bg-[#FFE600] text-black border-[#FFE600] shadow'
+                            : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Color Theme / Contrast */}
+                <div className="mb-3">
+                  <div className="text-[11px] font-bold text-blue-200 mb-1.5">Цветовая схема:</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setContrast(false)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
+                        !contrast
+                          ? 'bg-blue-600 text-white border-blue-400 shadow'
+                          : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      Стандартная
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContrast(true);
+                        if (!isA11y) toggleA11yMode(true);
+                      }}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
+                        contrast && isA11y
+                          ? 'bg-black text-[#FFE600] border-[#FFE600] shadow'
+                          : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      Контрастная (ч/б)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Toggles */}
+                <div className="space-y-1.5 pt-2 border-t border-white/15">
+                  <label className="flex items-center justify-between cursor-pointer select-none py-1">
+                    <span className="text-xs text-blue-100">Уменьшить анимации</span>
+                    <input
+                      type="checkbox"
+                      checked={reducedMotion}
+                      onChange={(e) => setReducedMotion(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#FFE600] cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer select-none py-1">
+                    <span className="text-xs text-blue-100">Звуковое оповещение</span>
+                    <input
+                      type="checkbox"
+                      checked={soundEnabled}
+                      onChange={(e) => setSoundEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#FFE600] cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                {/* Footer Controls */}
+                <div className="mt-3.5 pt-2.5 border-t border-white/15 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={handleResetA11y}
+                    className="text-[11px] text-blue-200 hover:text-white flex items-center gap-1 transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Сбросить</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setA11yOpen(false)}
+                    className="px-3 py-1 bg-white/15 hover:bg-white/25 rounded-lg text-xs font-bold text-white transition-colors"
+                  >
+                    Готово
+                  </button>
+                </div>
               </div>
             )}
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 import { AdminMetrics } from '../../api/admin/types';
 
 interface KpiCardsProps {
@@ -15,8 +16,15 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ metrics, noShowCount = 0 }) 
         <div className="text-2xl font-black text-slate-900 mt-1">
           {metrics.avgWaitTimeMinutes} мин
         </div>
-        <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans">
-          {metrics.avgWaitTimeMinutes <= 8 ? '✓ В нормативе (< 8 мин)' : 'Мониторинг SLA'}
+        <div className="text-xs text-emerald-700 font-semibold mt-1 font-sans flex items-center gap-1">
+          {metrics.avgWaitTimeMinutes <= 8 ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 inline" />
+              <span>В нормативе (&lt; 8 мин)</span>
+            </>
+          ) : (
+            <span>Мониторинг SLA</span>
+          )}
         </div>
         <div className="text-xs text-slate-500 mt-2 font-sans">P90 ожидания: {metrics.p90WaitMinutes ?? '—'} мин</div>
       </div>
@@ -27,8 +35,15 @@ export const KpiCards: React.FC<KpiCardsProps> = ({ metrics, noShowCount = 0 }) 
         <div className="text-2xl font-black text-amber-700 mt-1">
           {metrics.maxWaitTimeMinutes} мин
         </div>
-        <div className="text-xs text-slate-500 mt-1 font-sans">
-          {metrics.maxWaitTimeMinutes > 15 ? '⚠ Защита от голодания' : 'В норме'}
+        <div className="text-xs text-slate-500 mt-1 font-sans flex items-center gap-1">
+          {metrics.maxWaitTimeMinutes > 15 ? (
+            <>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 inline" />
+              <span className="text-amber-700 font-semibold">Защита от голодания</span>
+            </>
+          ) : (
+            <span>В норме</span>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Check } from 'lucide-react';
 import { PriorityRule } from '../../api/admin/types';
 
 interface PrioritySettingsViewProps {
@@ -70,7 +71,16 @@ export const PrioritySettingsView: React.FC<PrioritySettingsViewProps> = ({
         disabled={isSaving}
         onClick={handleSave}
       >
-        {isSaving ? 'Сохранение...' : isSaved ? '✓ Сохранено в конфигурацию' : 'Сохранить правила приоритетов'}
+        {isSaving ? (
+          'Сохранение...'
+        ) : isSaved ? (
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <Check className="w-4 h-4 text-emerald-600 inline" />
+            <span>Сохранено в конфигурацию</span>
+          </span>
+        ) : (
+          'Сохранить правила приоритетов'
+        )}
       </button>
     </div>
   );

@@ -8,7 +8,7 @@ import {
   evaluateServiceFeasibility,
   HourlyLoad,
 } from '../../utils/workload';
-import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, HelpCircle, Sparkles, ChevronRight, Info, DoorOpen } from 'lucide-react';
 
 export interface BranchWorkloadCardProps {
   branch?: Branch | null;
@@ -324,9 +324,15 @@ export function BranchWorkloadCard({
             {/* Дополнительная контекстная подсказка для клиента */}
             {hasLoadData && feasibility.estimatedWaitMinutes !== null && (
               <div className="pt-1 flex items-center gap-3 text-[11px] font-medium opacity-85">
-                <span>⏱ Ожидание: ~{feasibility.estimatedWaitMinutes} мин</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                  <span>Ожидание: ~{feasibility.estimatedWaitMinutes} мин</span>
+                </span>
                 <span>•</span>
-                <span>🚪 До закрытия: {feasibility.closingTimeText}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <DoorOpen className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                  <span>До закрытия: {feasibility.closingTimeText}</span>
+                </span>
               </div>
             )}
           </div>
