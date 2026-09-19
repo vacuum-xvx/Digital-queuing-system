@@ -928,7 +928,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
           {bookingStep === 2 && (
             <div className="space-y-4">
               <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
-              <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4">
+              <div className="p-4 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4 max-w-full min-w-0 overflow-hidden">
               <Appointment24hPicker
                 value={scheduledAtInput}
                 onChange={setScheduledAtInput}

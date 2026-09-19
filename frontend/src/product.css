@@ -23,7 +23,9 @@ html, body {
 .product-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: var(--space) auto; max-width: 1000px; }
 .auth-card { max-width: 460px; }
 .product-shell label { display: grid; gap: .4rem; margin-bottom: var(--space); }
-.product-shell input:not([style*="padding-left"]), .product-shell select { padding: .7rem; border: 1px solid var(--border); border-radius: 8px; max-width: 100%; min-width: 0; font: inherit; }
+.product-shell input:not([style*="padding-left"]), .product-shell select { padding: .7rem; border: 1px solid var(--border); border-radius: 8px; max-width: 100%; min-width: 0; box-sizing: border-box; font: inherit; }
+.product-shell input[type="date"] { max-width: 100% !important; box-sizing: border-box !important; -webkit-appearance: none; appearance: none; }
+.product-shell input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.25em; }
 .product-shell input[style*="padding-left"] { border: 1px solid var(--border); border-radius: 12px; font: inherit; }
 .product-shell button { cursor: pointer; font: inherit; padding: .65rem 1rem; border: 1px solid var(--border); border-radius: 10px; }
 .product-shell button:disabled { opacity: .55; cursor: not-allowed; }

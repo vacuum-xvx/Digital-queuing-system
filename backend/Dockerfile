@@ -11,5 +11,6 @@ WORKDIR /app
 RUN adduser -D app
 COPY --from=build /out/api /app/api
 COPY migrations /app/migrations
+COPY queue_policy.yaml /app/queue_policy.yaml
 USER app
 ENTRYPOINT ["/app/api"]
