@@ -57,6 +57,37 @@ try {
   await operator.getByRole('button',{name:'Начать обслуживание',exact:true}).click();
   await operator.getByRole('button',{name:'Завершить обслуживание',exact:true}).click();
   await client.getByText('Обслуживание завершено',{exact:true}).waitFor();
+
+  // Repeat ticket in same branch verification (Sprint 4 post-completion regression fix)
+  await client.getByRole('button',{name:'Взять новый талон'}).click();
+  await client.getByRole('button',{name:/Посылки/}).click();
+  const repeatResponse = client.waitForResponse(res => /tickets\/qr$/.test(res.url()) && res.request().method()==='POST');
+  await client.getByRole('button',{name:'Получить талон',exact:true}).click();
+  const ticket2 = await (await repeatResponse).json();
+  assert.match(ticket2.publicNumber,/^Q-/);
+  assert.notEqual(ticket2.id, ticket.id);
+  await operator.getByRole('button',{name:'Вызвать следующего',exact:true}).click();
+  await operator.getByText(ticket2.publicNumber,{exact:true}).first().waitFor();
+  await client.getByText('Вас вызывают',{exact:true}).waitFor();
+  await operator.getByRole('button',{name:'Начать обслуживание',exact:true}).click();
+  await operator.getByRole('button',{name:'Завершить обслуживание',exact:true}).click();
+  await client.getByText('Обслуживание завершено',{exact:true}).waitFor();
+
+  // Verify navigation through Home -> Take Ticket -> Same branch provides services
+  await client.getByRole('button',{name:'Главная'}).click();
+  await client.getByRole('button',{name:/Взять талон/}).click();
+  assert.equal(await client.getByText(/нет доступных услуг/).count(), 0);
+  await client.getByRole('button',{name:/Посылки/}).waitFor();
+
+  // Also verify taking repeat ticket on root URL (without preselected QR branch)
+  const homeClient = await clientContext.newPage();
+  await homeClient.goto(baseURL);
+  await homeClient.getByRole('button',{name:/Взять талон/}).click();
+  await homeClient.getByRole('button',{name:/Демо-отделение/}).click();
+  assert.equal(await homeClient.getByText(/нет доступных услуг/).count(), 0);
+  await homeClient.getByRole('button',{name:/Посылки/}).waitFor();
+  await homeClient.close();
+
   await overflow(operator);
   await operator.reload();
   await operator.getByRole('heading',{name:'Нет активного талона'}).waitFor();
