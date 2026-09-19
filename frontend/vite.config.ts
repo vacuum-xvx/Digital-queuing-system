@@ -14,7 +14,14 @@ import { defineConfig, loadEnv } from 'vite';
  * браузер блокирует cookie, из-за чего после логина сессия не подхватывалась.
  */
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: {
+    'import.meta.env.PUBLIC_APP_BASE_URL': JSON.stringify(
+      loadEnv(mode, process.cwd(), '').PUBLIC_APP_BASE_URL ||
+        process.env.PUBLIC_APP_BASE_URL ||
+        ''
+    ),
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
@@ -22,7 +29,20 @@ export default defineConfig({
     allowedHosts: [
       'post-queue.duckdns.org',
       'localhost',
-      '127.0.0.1'
-    ]
-  }
-});
+      '127.0.0.1',
+    ],
+    watch: {
+      usePolling: true,
+      interval: 300,
+      ignored: ['**/node_modules/**', '**/.git/**'],
+    },
+    proxy: {
+      '/health': { target: 'http://backend:8080', changeOrigin: true },
+      '/ready': { target: 'http://backend:8080', changeOrigin: true },
+      '/api': {
+        target: 'http://backend:8080',
+        changeOrigin: true,
+      },
+    },
+  },
+}));
