@@ -4,10 +4,12 @@ import { Branch } from '../../api/operator/types';
 import * as api from '../../api/admin/adminApi';
 import { AdminBranchOverview, AdminWindow } from '../../api/admin/types';
 import { BranchQR } from './BranchQR';
+import { AdminSelfQR } from './AdminSelfQR';
 import { UsersManagement } from './UsersManagement';
 import { KpiCards } from './KpiCards';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { formatMoscowDateTime } from '../../utils/time';
+import { getMe, User } from '../../api/authApi';
 import {
   Activity,
   Sliders,
@@ -26,6 +28,7 @@ export const AdminWorkspace: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Real backend overview data
   const [overview, setOverview] = useState<AdminBranchOverview | null>(null);

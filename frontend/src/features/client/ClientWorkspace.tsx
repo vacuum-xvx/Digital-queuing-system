@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
+import { getMe } from '../../api/authApi';
 import { Appointment, Branch, Service, Ticket, TicketStatus, QueuePosition, TicketETA } from '../../api/client/types';
 import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
 import './client.css';
@@ -13,6 +14,8 @@ const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SH
 const STORAGE_BRANCH_KEY = 'client_selected_branch_id';
 const STORAGE_SERVICE_KEY = 'client_selected_service_id';
 const STORAGE_TICKETS_KEY = 'client_active_ticket_ids';
+const STORAGE_APPOINTMENTS_KEY = 'client.appointments';
+const ANON_SCOPE = 'anon';
 
 type ClientScreen = 'home' | 'booking' | 'walkin' | 'my';
 
@@ -81,32 +84,50 @@ function ServiceCard({ service, selected, onSelect }: { service: Service; select
   );
 }
 
-function getSavedTicketIds(): string[] {
+function ticketsKeyFor(scope: string): string {
+  return `${STORAGE_TICKETS_KEY}:${scope}`;
+}
+
+function appointmentsKeyFor(scope: string): string {
+  return `${STORAGE_APPOINTMENTS_KEY}:${scope}`;
+}
+
+// Талоны храним строго по владельцу: ключ `client_active_ticket_ids:<userId|anon>`.
+// Общий (legacy) ключ больше не читаем, чтобы чужие талоны не подхватывались.
+function getSavedTicketIds(scope: string): string[] {
   try {
-    const val = sessionStorage.getItem(STORAGE_TICKETS_KEY);
+    const val = sessionStorage.getItem(ticketsKeyFor(scope));
     if (!val) return [];
     const parsed = JSON.parse(val);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === 'string');
   } catch {
     return [];
   }
 }
 
-function addSavedTicketId(id: string) {
-  const ids = getSavedTicketIds();
+function addSavedTicketId(id: string, scope: string) {
+  const ids = getSavedTicketIds(scope);
   if (!ids.includes(id)) {
-    sessionStorage.setItem(STORAGE_TICKETS_KEY, JSON.stringify([...ids, id]));
+    sessionStorage.setItem(ticketsKeyFor(scope), JSON.stringify([...ids, id]));
   }
 }
 
-function removeSavedTicketId(id: string) {
-  const ids = getSavedTicketIds();
+function removeSavedTicketId(id: string, scope: string) {
+  const ids = getSavedTicketIds(scope);
   const newIds = ids.filter(i => i !== id);
   if (newIds.length === 0) {
-    sessionStorage.removeItem(STORAGE_TICKETS_KEY);
+    sessionStorage.removeItem(ticketsKeyFor(scope));
   } else {
-    sessionStorage.setItem(STORAGE_TICKETS_KEY, JSON.stringify(newIds));
+    sessionStorage.setItem(ticketsKeyFor(scope), JSON.stringify(newIds));
   }
+}
+
+try {
+  sessionStorage.removeItem(STORAGE_TICKETS_KEY);
+  sessionStorage.removeItem(STORAGE_APPOINTMENTS_KEY);
+} catch {
+  /* ignore legacy shared keys */
 }
 
 export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
@@ -133,10 +154,28 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [appointments, setAppointments] = useState<Record<string, Appointment>>(() => {
-    try { return JSON.parse(sessionStorage.getItem('client.appointments') || '{}'); } catch { return {}; }
-  });
-  useEffect(() => { sessionStorage.setItem('client.appointments', JSON.stringify(appointments)); }, [appointments]);
+
+  // Владелец талонов. Талоны храним и показываем строго по текущему пользователю,
+  // чтобы новый пользователь не видел талоны, созданные другим.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const ownerScope = currentUserId ?? ANON_SCOPE;
+  // Держим актуальный scope доступным внутри колбэков без пересоздания pollAll.
+  const ownerScopeRef = useRef(ownerScope);
+  ownerScopeRef.current = ownerScope;
+  const [appointments, setAppointments] = useState<Record<string, Appointment>>({});
+  // Записи (appointments) тоже храним по владельцу, чтобы они не «переезжали» к другому пользователю.
+  const appointmentsScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    appointmentsScopeRef.current = null;
+    let loaded: Record<string, Appointment> = {};
+    try { loaded = JSON.parse(sessionStorage.getItem(appointmentsKeyFor(ownerScope)) || '{}'); } catch { loaded = {}; }
+    appointmentsScopeRef.current = ownerScope;
+    setAppointments(loaded);
+  }, [ownerScope]);
+  useEffect(() => {
+    if (appointmentsScopeRef.current !== ownerScope) return;
+    try { sessionStorage.setItem(appointmentsKeyFor(ownerScope), JSON.stringify(appointments)); } catch { /* ignore */ }
+  }, [appointments, ownerScope]);
 
   const [positions, setPositions] = useState<Record<string, QueuePosition>>({});
   const [etas, setEtas] = useState<Record<string, TicketETA>>({});
@@ -155,6 +194,23 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     if (requestKey.current?.identity !== identity) requestKey.current = { identity, key: makeIdempotencyKey() };
     return requestKey.current.key;
   };
+
+  useEffect(() => {
+    let active = true;
+    const refreshOwner = () => {
+      getMe()
+        .then((me) => { if (active) setCurrentUserId(me?.id ?? null); })
+        .catch(() => { if (active) setCurrentUserId(null); });
+    };
+    refreshOwner();
+    // Реагируем на вход/выход через шапку: «мои талоны» пересчитываются для нового владельца.
+    const handleAuthChanged = () => refreshOwner();
+    window.addEventListener('pochta:auth', handleAuthChanged);
+    return () => {
+      active = false;
+      window.removeEventListener('pochta:auth', handleAuthChanged);
+    };
+  }, []);
 
   const friendlyError = (err: any, fallback: string) => {
     if (err?.name === 'AbortError') return null;
@@ -255,7 +311,8 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
 
   const pollAll = useCallback(() => {
     const generation = pollGeneration.current;
-    const ids = getSavedTicketIds();
+    const scope = ownerScopeRef.current;
+    const ids = getSavedTicketIds(scope);
 
     if (ids.length === 0) {
       setTickets([]);
@@ -301,12 +358,12 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
           } catch {}
           await etaRequest;
         } else {
-          removeSavedTicketId(id);
+          removeSavedTicketId(id, scope);
         }
       } catch (err: any) {
         if (generation !== pollGeneration.current) return;
         if (err.status === 404 || err.message === 'NOT_FOUND') {
-          removeSavedTicketId(id);
+          removeSavedTicketId(id, scope);
         } else failedIds.add(id);
       }
     })).then(() => {
@@ -319,7 +376,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
       if (generation !== pollGeneration.current) return;
       setPollError(friendlyError(reason, 'Не удалось обновить талоны'));
     }).finally(() => {
-      if (generation === pollGeneration.current && getSavedTicketIds().length > 0) {
+      if (generation === pollGeneration.current && getSavedTicketIds(scope).length > 0) {
         pollTimer.current = window.setTimeout(pollAll, POLL_INTERVAL_MS);
       }
     });
@@ -334,6 +391,16 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
       stopPolling();
     };
   }, [screen, pollAll, stopPolling]);
+
+  // При смене пользователя (вход/выход/регистрация) перезагружаем талоны
+  // строго для нового владельца, чтобы чужие талоны не оставались на экране.
+  useEffect(() => {
+    setTickets([]);
+    setPositions({});
+    setEtas({});
+    stopPolling();
+    pollAll();
+  }, [ownerScope, pollAll, stopPolling]);
 
   const resetBooking = () => {
     setBookingStep(0);
@@ -361,7 +428,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     try {
       const created = await api.createQrTicket(branchId, serviceId, keyFor(`qr:${branchId}:${serviceId}`));
       requestKey.current = null;
-      addSavedTicketId(created.id);
+      addSavedTicketId(created.id, ownerScope);
       setTickets(prev => [created, ...prev]);
       setScreen('my');
     } catch (reason: unknown) {
@@ -393,7 +460,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
         keyFor(`appointment:${branchId}:${serviceId}:${scheduledAt.toISOString()}`)
       );
       requestKey.current = null;
-      addSavedTicketId(created.ticket.id);
+      addSavedTicketId(created.ticket.id, ownerScope);
       setTickets(prev => [created.ticket, ...prev]);
       setAppointments(prev => ({ ...prev, [created.ticket.id]: created }));
       setScreen('my');
@@ -410,7 +477,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     setCancelling(true);
     try {
       const cancelled = await api.cancelAppointment(ticket.id);
-      removeSavedTicketId(ticket.id);
+      removeSavedTicketId(ticket.id, ownerScope);
       setTickets(prev => prev.map(t => t.id === ticket.id ? cancelled.ticket : t));
       setPositions(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       setEtas(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
@@ -481,7 +548,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
 
   const savedCount = tickets.length > 0
     ? tickets.filter(t => !terminalStatuses.has(t.status)).length
-    : getSavedTicketIds().length;
+    : getSavedTicketIds(ownerScope).length;
 
   const renderHome = () => (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -690,7 +757,7 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
             <span>Назад</span>
           </button>
           <h2 className="text-lg font-black text-slate-900">Взять талон</h2>
-          {getSavedTicketIds().length > 0 ? (
+          {getSavedTicketIds(ownerScope).length > 0 ? (
             <button
               type="button"
               onClick={() => setScreen('my')}
