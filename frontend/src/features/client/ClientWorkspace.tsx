@@ -109,6 +109,8 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   const [screen, setScreen] = useState<ClientScreen>(qrBranchId ? 'walkin' : 'home');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const servicesLoadingBranchRef = useRef<string | null>(null);
 
   const [branchId, setBranchId] = useState(() => {
     if (qrBranchId) return qrBranchId;
@@ -183,25 +185,45 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     loadBranches();
   }, [loadBranches]);
 
+  const fetchServices = useCallback(async (targetBranchId: string) => {
+    if (!targetBranchId) {
+      setServices([]);
+      setServicesLoading(false);
+      return;
+    }
+    servicesLoadingBranchRef.current = targetBranchId;
+    setServicesLoading(true);
+    try {
+      const slist = await api.listServices(targetBranchId);
+      if (servicesLoadingBranchRef.current === targetBranchId) {
+        setServices(slist);
+      }
+    } catch (err: any) {
+      if (servicesLoadingBranchRef.current === targetBranchId) {
+        setError(friendlyError(err, 'Не удалось загрузить услуги'));
+      }
+    } finally {
+      if (servicesLoadingBranchRef.current === targetBranchId) {
+        setServicesLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!branchId) {
       setServices([]);
       return;
     }
-    let unmounted = false;
-    async function loadServices() {
-      try {
-        const slist = await api.listServices(branchId);
-        if (!unmounted) {
-          setServices(slist);
-        }
-      } catch (err: any) {
-        if (!unmounted) setError(friendlyError(err, 'Не удалось загрузить услуги'));
+    fetchServices(branchId);
+  }, [branchId, fetchServices]);
+
+  useEffect(() => {
+    if (branchId && ((screen === 'walkin' && walkinStep === 1) || (screen === 'booking' && bookingStep === 1))) {
+      if (services.length === 0 && !servicesLoading && servicesLoadingBranchRef.current !== branchId) {
+        fetchServices(branchId);
       }
     }
-    loadServices();
-    return () => { unmounted = true; };
-  }, [branchId]);
+  }, [screen, walkinStep, bookingStep, branchId, services.length, servicesLoading, fetchServices]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -311,13 +333,20 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
 
   const resetBooking = () => {
     setBookingStep(0);
+    setServiceId('');
+    sessionStorage.removeItem(STORAGE_SERVICE_KEY);
     setScheduledAtInput('');
     setError(null);
   };
 
   const resetWalkin = () => {
     setWalkinStep(qrBranchId ? 1 : 0);
+    setServiceId('');
+    sessionStorage.removeItem(STORAGE_SERVICE_KEY);
     setError(null);
+    if (qrBranchId) {
+      fetchServices(qrBranchId);
+    }
   };
 
   const createQrTicket = async () => {
@@ -411,11 +440,33 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
   };
 
   const handleBranchSelect = (id: string) => {
-    setServices([]); setServiceId('');
-    setBranchId(id);
+    setServiceId('');
+    sessionStorage.removeItem(STORAGE_SERVICE_KEY);
     sessionStorage.setItem(STORAGE_BRANCH_KEY, id);
     if (screen === 'booking') setBookingStep(1);
     if (screen === 'walkin') setWalkinStep(1);
+
+    if (id === branchId) {
+      fetchServices(id);
+    } else {
+      setServices([]);
+      setBranchId(id);
+    }
+  };
+
+  const handleRepeatTicket = (targetBranchId: string) => {
+    setServiceId('');
+    sessionStorage.removeItem(STORAGE_SERVICE_KEY);
+    sessionStorage.setItem(STORAGE_BRANCH_KEY, targetBranchId);
+    setWalkinStep(1);
+    setScreen('walkin');
+
+    if (targetBranchId === branchId) {
+      fetchServices(targetBranchId);
+    } else {
+      setServices([]);
+      setBranchId(targetBranchId);
+    }
   };
 
   const handleServiceSelect = (id: string) => {
@@ -424,7 +475,9 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
     if (screen === 'booking') setBookingStep(2);
   };
 
-  const savedCount = getSavedTicketIds().length;
+  const savedCount = tickets.length > 0
+    ? tickets.filter(t => !terminalStatuses.has(t.status)).length
+    : getSavedTicketIds().length;
 
   const renderHome = () => (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -562,8 +615,21 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
           {bookingStep === 1 && (
             <div className="space-y-3">
               <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
-              {services.length === 0 ? (
-                <p className="text-xs text-slate-500 py-8 text-center">В этом отделении пока нет доступных услуг</p>
+              {servicesLoading ? (
+                <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка услуг...</p>
+              ) : services.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <p className="text-xs text-slate-500">В этом отделении пока нет доступных услуг</p>
+                  {branchId && (
+                    <button
+                      type="button"
+                      onClick={() => fetchServices(branchId)}
+                      className="text-xs text-[#054FA6] hover:underline font-medium"
+                    >
+                      Повторить загрузку
+                    </button>
+                  )}
+                </div>
               ) : (
                 services.map(s => (
                   <ServiceCard key={s.id} service={s} selected={serviceId === s.id} onSelect={() => handleServiceSelect(s.id)} />
@@ -664,8 +730,21 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
               </div>
 
               <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
-              {services.length === 0 ? (
-                <p className="text-xs text-slate-500 py-8 text-center">В этом отделении пока нет доступных услуг</p>
+              {servicesLoading ? (
+                <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка услуг...</p>
+              ) : services.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <p className="text-xs text-slate-500">В этом отделении пока нет доступных услуг</p>
+                  {branchId && (
+                    <button
+                      type="button"
+                      onClick={() => fetchServices(branchId)}
+                      className="text-xs text-[#054FA6] hover:underline font-medium"
+                    >
+                      Повторить загрузку
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2.5">
                   {services.map(s => (
@@ -811,6 +890,15 @@ export function ClientWorkspace({ qrBranchId }: { qrBranchId?: string }) {
                           disabled={cancelling}
                         >
                           {cancelling ? 'Отменяем...' : 'Отменить запись'}
+                        </button>
+                      )}
+                      {terminalStatuses.has(ticket.status) && (
+                        <button
+                          type="button"
+                          className="cx-btn cx-btn-primary cx-btn-block"
+                          onClick={() => handleRepeatTicket(ticket.branchId)}
+                        >
+                          Взять новый талон
                         </button>
                       )}
                     </div>

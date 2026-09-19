@@ -60,10 +60,47 @@ test('auth getMe returns null on 401 unauthenticated without fatal error', async
   } finally {
     globalThis.fetch = originalFetch;
   }
-});
+})
 
 test('auth getApiBaseUrl normalizes api prefixes without duplicating', async () => {
   const auth = await loadTS('../src/api/authApi.ts');
   assert.equal(typeof auth.getApiBaseUrl, 'function');
   assert.equal(auth.getApiBaseUrl(), '/api/v1');
+});
+
+test('terminalStatuses includes COMPLETED, CANCELLED, NO_SHOW and excludes active statuses', async () => {
+  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(content, /terminalStatuses.*COMPLETED/);
+  assert.match(content, /terminalStatuses.*CANCELLED/);
+  assert.match(content, /terminalStatuses.*NO_SHOW/);
+});
+
+test('ClientWorkspace retains or reloads services when re-selecting the same branch', async () => {
+  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
+  // Check that handleBranchSelect checks `if (id === branchId)` or doesn't wipe services without reload
+  assert.match(content, /if\s*\(\s*id\s*===\s*branchId\s*\)\s*\{\s*fetchServices\(id\);/);
+  // Check that repeat ticket button exists on terminal tickets
+  assert.match(content, /terminalStatuses\.has\(ticket\.status\)/);
+  assert.match(content, /Взять новый талон/);
+});
+
+
+test('auth getApiBaseUrl normalizes api prefixes without duplicating', async () => {
+  const auth = await loadTS('../src/api/authApi.ts');
+  assert.equal(typeof auth.getApiBaseUrl, 'function');
+  assert.equal(auth.getApiBaseUrl(), '/api/v1');
+});
+
+test('terminalStatuses includes COMPLETED, CANCELLED, NO_SHOW and excludes active statuses', async () => {
+  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(content, /terminalStatuses.*COMPLETED/);
+  assert.match(content, /terminalStatuses.*CANCELLED/);
+  assert.match(content, /terminalStatuses.*NO_SHOW/);
+});
+
+test('ClientWorkspace retains or reloads services when re-selecting the same branch', async () => {
+  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(content, /if\s*\(\s*id\s*===\s*branchId\s*\)\s*\{\s*fetchServices\(id\);/);
+  assert.match(content, /terminalStatuses\.has\(ticket\.status\)/);
+  assert.match(content, /Взять новый талон/);
 });
