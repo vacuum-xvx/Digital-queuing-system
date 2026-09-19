@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as api from '../../api/operator/operatorApi';
 import { changeWindowStatus, updateWindowServices } from '../../api/admin/adminApi';
 import { AdminApiError } from '../../api/admin/types';
-import { listServices } from '../../api/client/clientApi';
+import { listServices, arriveAppointment } from '../../api/client/clientApi';
 import { Branch, OperatorWindow, Ticket, OperatorApiError } from '../../api/operator/types';
 import { Service } from '../../api/client/types';
 import { getMe, User } from '../../api/authApi';
@@ -201,6 +201,18 @@ export function OperatorWorkspace() {
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  async function callSpecificTicket(publicNum: string) {
+    if (busy.current || !windowId) return;
+    void act(async () => {
+      if (publicNum.startsWith('A-')) {
+        try {
+          await arriveAppointment(publicNum);
+        } catch {}
+      }
+      await api.callNext(windowId);
+    });
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -420,7 +432,25 @@ export function OperatorWorkspace() {
                     <ActionControls
                       currentTicket={current}
                       isPending={pending || !ready}
-                      onCallNext={() => void act(() => api.callNext(windowId))}
+                      onCallNext={() =>
+                        void act(async () => {
+                          try {
+                            await api.callNext(windowId);
+                          } catch (err) {
+                            if (err instanceof OperatorApiError && err.code === 'NO_ELIGIBLE_TICKETS' && tvQueue.length > 0) {
+                              const nextApt = tvQueue.find(t => t.publicNumber.startsWith('A-'));
+                              if (nextApt) {
+                                try {
+                                  await arriveAppointment(nextApt.publicNumber);
+                                  await api.callNext(windowId);
+                                  return;
+                                } catch {}
+                              }
+                            }
+                            throw err;
+                          }
+                        })
+                      }
                       onStartService={() => current && void act(() => api.startService(current.id))}
                       onCompleteService={() => current && void act(() => api.completeService(current.id))}
                       onNoShow={() => current && void act(() => api.markNoShow(current.id))}
@@ -570,9 +600,21 @@ export function OperatorWorkspace() {
                           {isApt ? 'Запись' : isQr ? 'QR-код' : 'Живая'}
                         </span>
                       </div>
-                      <span className="text-[11px] font-mono text-slate-500">
-                        {idx === 0 ? 'Следующий' : `Ожидает (#${idx + 1})`}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono text-slate-500">
+                          {idx === 0 ? 'Следующий' : `Ожидает (#${idx + 1})`}
+                        </span>
+                        {selected?.status === 'OPEN' && !current && (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => void callSpecificTicket(item.publicNumber)}
+                            className="px-2 py-1 bg-[#003B73] hover:bg-[#054FA6] text-white text-[10px] font-bold rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                          >
+                            Вызвать
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

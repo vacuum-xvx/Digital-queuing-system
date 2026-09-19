@@ -32,7 +32,7 @@ const rankedCandidates = `SELECT t.id,t.status,q.effective_queue_time,
  ELSE 0::bigint END AS lateness_penalty) l
  WHERE t.branch_id=$2::uuid
  AND ((t.source IN ('QR','LIVE') AND t.status='WAITING') OR
- (t.source='APPOINTMENT' AND t.status='SCHEDULED' AND (t.scheduled_at<=$3::timestamptz OR t.arrived_at IS NOT NULL)))
+ (t.source='APPOINTMENT' AND t.status='SCHEDULED' AND (t.scheduled_at<=$3::timestamptz + INTERVAL '15 minutes' OR t.arrived_at IS NOT NULL)))
  AND (t.window_id IS NULL OR t.window_id=$1::uuid)
  AND EXISTS(SELECT 1 FROM window_services ws WHERE ws.window_id=$1::uuid AND ws.service_id=t.service_id)`
 const rankingOrder = `effective_priority DESC,effective_queue_time ASC,id ASC`
@@ -77,7 +77,7 @@ func queuePosition(ctx context.Context, tx pgx.Tx, ticketID string) (domain.Queu
 	if t.Status != domain.TicketStatusWaiting && t.Status != domain.TicketStatusScheduled {
 		return out, nil
 	}
-	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt.After(out.CalculatedAt) && t.ArrivedAt == nil {
+	if t.Source == domain.TicketSourceAppointment && t.ScheduledAt.After(out.CalculatedAt.Add(15*time.Minute)) && t.ArrivedAt == nil {
 		out.Reason = domain.QueuePositionNotEligibleYet
 		return out, nil
 	}

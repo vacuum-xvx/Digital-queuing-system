@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
 import { getMe } from '../../api/authApi';
 import { Appointment, Branch, Service, Ticket, TicketStatus, TicketSource, QueuePosition, TicketETA } from '../../api/client/types';
-import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle } from 'lucide-react';
+import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import './client.css';
 import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
@@ -43,6 +43,18 @@ function statusMessage(status: TicketStatus, source?: TicketSource): string {
   }
 }
 
+function friendlyError(error: unknown, fallback: string): string {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) {
+    if (error.message.includes('NO_OPEN_WINDOW')) return 'Нет свободных или открытых окон для выбранной услуги';
+    if (error.message.includes('INVALID_TIME')) return 'Выбранное время уже недоступно. Выберите другое время.';
+    if (error.message.includes('PAST_TIME')) return 'Нельзя записаться на прошедшее время';
+    return error.message;
+  }
+  return fallback;
+}
+
 function StatusBadge({ status, source }: { status: TicketStatus; source?: TicketSource }) {
   return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status, source)}</span>;
 }
@@ -79,6 +91,28 @@ function ErrorBanner({ message, onClose }: { message: string; onClose: () => voi
         onClick={onClose}
         className="text-red-400 hover:text-red-700 p-1 rounded-lg hover:bg-red-100 transition-colors shrink-0 leading-none font-bold"
         aria-label="Закрыть ошибку"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function NoticeBanner({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div
+      role="status"
+      className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-sm animate-fade-in"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span>{message}</span>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="text-emerald-500 hover:text-emerald-800 p-1 rounded-lg hover:bg-emerald-100 transition-colors shrink-0 leading-none font-bold"
+        aria-label="Закрыть уведомление"
       >
         ✕
       </button>
@@ -214,7 +248,6 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     return v && v !== 'undefined' && v !== 'null' ? v : '';
   });
   const [scheduledAtInput, setScheduledAtInput] = useState('');
-  const [autoArriveOnBooking, setAutoArriveOnBooking] = useState(true);
   const [bookingStep, setBookingStep] = useState(0);
   const [walkinStep, setWalkinStep] = useState(qrBranchId ? 1 : 0);
 
@@ -226,6 +259,14 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     const timer = window.setTimeout(() => setError(null), 6000);
     return () => window.clearTimeout(timer);
   }, [error]);
+
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [kioskTicket, setKioskTicket] = useState<Ticket | null>(null);
@@ -506,7 +547,6 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     setServiceId('');
     sessionStorage.removeItem(STORAGE_SERVICE_KEY);
     setScheduledAtInput('');
-    setAutoArriveOnBooking(true);
     setError(null);
   };
 
@@ -565,16 +605,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
       );
       requestKey.current = null;
 
-      let finalTicket = created.ticket;
-      if (autoArriveOnBooking) {
-        try {
-          const arrived = await api.arriveAppointment(created.ticket.id);
-          finalTicket = arrived.ticket;
-          setArrivalAcknowledgedTicketIds(prev => new Set([...prev, created.ticket.id]));
-        } catch (arriveErr) {
-          console.warn('Auto-arrive failed:', arriveErr);
-        }
-      }
+      const finalTicket = created.ticket;
 
       addSavedTicketId(finalTicket.id, ownerScope);
       setTickets(prev => [finalTicket, ...prev]);
@@ -719,6 +750,9 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         </div>
       </div>
 
+      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+      {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
+
       {/* 3 Prominent Action Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {/* 1. Записаться онлайн */}
@@ -801,7 +835,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
     return (
       <div className="max-w-2xl mx-auto space-y-4">
-        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+        <header className="flex items-center justify-between pb-1">
           <button
             type="button"
             className="cx-back-btn"
@@ -872,20 +906,6 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                 disabled={creating}
                 workHours={branches.find(b => b.id === branchId)?.workHours}
               />
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-blue-50/60 border border-blue-200 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoArriveOnBooking}
-                  onChange={e => setAutoArriveOnBooking(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 rounded text-[#003B73] focus:ring-[#003B73]"
-                />
-                <div className="text-xs">
-                  <span className="font-bold text-slate-800 block">Я уже в отделении (сразу встать в очередь)</span>
-                  <span className="text-slate-500 block text-[11px] leading-relaxed">
-                    Талон станет доступен для вызова оператором без дополнительного подтверждения
-                  </span>
-                </div>
-              </label>
               <button
                 type="button"
                 className="w-full min-h-[48px] py-3 bg-[#003B73] hover:bg-[#054FA6] active:bg-[#00274D] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
@@ -914,7 +934,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
     return (
       <div className="max-w-2xl mx-auto space-y-4">
-        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+        <header className="flex items-center justify-between pb-1">
           {!kiosk ? (
             <button
               type="button"
@@ -942,6 +962,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         <div className="space-y-4">
           <StepIndicator steps={steps} current={walkinStep} />
           {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+          {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
 
           {walkinStep === 0 && (
             <div className="space-y-3">
@@ -1021,7 +1042,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const renderMy = () => {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
-        <header className="flex items-center justify-between border-b border-slate-200 pb-3">
+        <header className="flex items-center justify-between pb-1">
           <button
             type="button"
             className="cx-back-btn"
@@ -1036,6 +1057,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
         <div className="space-y-4">
           {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+          {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
           {pollError && <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
 
           {tickets.length === 0 ? (

@@ -160,7 +160,8 @@ func (p *Postgres) ListBranchWindows(ctx context.Context, branchID string) ([]do
 func (p *Postgres) GetTicket(ctx context.Context, ticketID string) (domain.Ticket, error) {
 	id, err := uuid(ticketID)
 	if err != nil {
-		return domain.Ticket{}, err
+		clean := strings.TrimSpace(ticketID)
+		return scanTicket(p.pool.QueryRow(ctx, ticketSelect+`WHERE (UPPER(t.public_number)=UPPER($1) OR UPPER(t.public_number)=UPPER('A-' || $1) OR UPPER(t.public_number)=UPPER('A-' || LPAD($1, 6, '0')))`, clean))
 	}
 	return scanTicket(p.pool.QueryRow(ctx, ticketSelect+`WHERE t.id=$1`, id))
 }
@@ -305,7 +306,7 @@ func (p *Postgres) CallNext(ctx context.Context, windowID string) (domain.Ticket
 	var priority int64
 	err = tx.QueryRow(ctx, `WITH candidate AS (`+rankedCandidates+canonicalOrder+`
  FOR UPDATE OF t SKIP LOCKED LIMIT 1
- ) UPDATE tickets t SET status='CALLED',window_id=$1::uuid,called_at=$3::timestamptz
+ ) UPDATE tickets t SET status='CALLED',window_id=$1::uuid,called_at=$3::timestamptz,arrived_at=COALESCE(t.arrived_at,$3::timestamptz)
  FROM candidate c WHERE t.id=c.id RETURNING t.id::text,c.status,c.effective_priority`,
 		rankingArgs(windowID, branch, decisionTime, policy)...).Scan(&tid, &from, &priority)
 	if errors.Is(err, pgx.ErrNoRows) {

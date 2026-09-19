@@ -62,7 +62,10 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
     return hours.length > 0 ? hours : ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
   }, [parsedWorkHours]);
 
-  const allowedMinutes = ['00', '10', '15', '20', '30', '40', '45', '50'];
+  const allowedMinutes = [
+    '00', '05', '10', '15', '20', '25',
+    '30', '35', '40', '45', '50', '55'
+  ];
 
   // Быстрые дни
   const todayDateStr = useMemo(() => {
@@ -106,18 +109,17 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
     onChange(`${datePart}T${h.padStart(2, '0')}:${m.padStart(2, '0')}`);
   };
 
-  // Человекочитаемое представление выбранной даты и времени
+  // Человекочитаемое представление выбранной даты (без дублирования времени после запятой)
   const formattedPreview = useMemo(() => {
     if (!datePart) return '';
     try {
       const [y, m, d] = datePart.split('-').map(Number);
       const dt = new Date(y, m - 1, d);
-      const dayRu = dt.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-      return `${dayRu}, в ${selectedHour}:${selectedMinute}`;
+      return dt.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
     } catch {
-      return `${datePart} в ${selectedHour}:${selectedMinute}`;
+      return datePart;
     }
-  }, [datePart, selectedHour, selectedMinute]);
+  }, [datePart]);
 
   return (
     <div className="space-y-4 text-left">
@@ -239,7 +241,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
         {/* Быстрые слоты времени (24-часовые чипы) */}
         <div className="pt-1">
           <span className="text-[11px] font-semibold text-slate-500 block mb-1.5">
-            Быстрый выбор времени (24ч):
+            Быстрый выбор времени:
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {POPULAR_24H_SLOTS.map((slot) => {
@@ -274,7 +276,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
           </div>
         </div>
         <span className="font-mono text-xs font-black text-[#003B73] px-2.5 py-1 rounded-xl bg-white border border-blue-200 shadow-2xs shrink-0">
-          {selectedHour}:{selectedMinute} (24ч)
+          {selectedHour}:{selectedMinute}
         </span>
       </div>
     </div>

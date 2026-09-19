@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -28,9 +29,14 @@ func validUUID(value string) bool {
 	return id.Scan(value) == nil && id.Valid
 }
 
+func validPublicNumber(value string) bool {
+	v := strings.TrimSpace(value)
+	return strings.HasPrefix(v, "A-") || strings.HasPrefix(v, "Q-") || strings.HasPrefix(v, "L-") || (len(v) >= 3 && len(v) <= 16)
+}
+
 func ticketPath(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := chi.URLParam(r, "ticketId")
-	if !validUUID(id) {
+	if !validUUID(id) && !validPublicNumber(id) {
 		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid ticketId")
 		return "", false
 	}
