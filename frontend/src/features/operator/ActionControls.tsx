@@ -9,6 +9,7 @@ interface ActionControlsProps {
   onStartService: () => void;
   onCompleteService: () => void;
   onNoShow: () => void;
+  onRepeatCall?: () => void;
   onReturnToQueue?: () => void;
 }
 
@@ -19,6 +20,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   onStartService,
   onCompleteService,
   onNoShow,
+  onRepeatCall,
   onReturnToQueue,
 }) => {
   const isNoTicket = currentTicket === null;
@@ -58,8 +60,8 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
         </button>
       </div>
 
-      {/* Secondary Actions (Start service, No-Show, Return) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
+      {/* Secondary Actions (Start service, Repeat Call, No-Show) */}
+      <div className={`grid grid-cols-1 ${isCalled && onRepeatCall ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2 text-xs font-semibold`}>
         {/* Start Service Button */}
         <button
           type="button"
@@ -71,6 +73,21 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           <Play className="w-4 h-4 text-amber-700" />
           <span>Начать обслуживание</span>
         </button>
+
+        {/* Repeat Call Button (Voice & Chime) */}
+        {isCalled && onRepeatCall && (
+          <button
+            type="button"
+            id="btn-repeat-call"
+            disabled={isPending}
+            onClick={onRepeatCall}
+            className="min-h-[42px] px-3 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#003B73] flex items-center justify-center gap-1.5 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Повторить звуковой гонг и голосовой вызов в зале"
+          >
+            <Volume2 className="w-4 h-4 text-[#003B73]" />
+            <span>Повторить вызов</span>
+          </button>
+        )}
 
         {/* No Show Button */}
         <button

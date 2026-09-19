@@ -9,6 +9,7 @@ import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal }
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { BranchWorkloadCard } from './BranchWorkloadCard';
 import { Appointment24hPicker } from './Appointment24hPicker';
+import { announceTicketCall } from '../../utils/postalVoice';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);

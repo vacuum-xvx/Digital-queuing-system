@@ -7,8 +7,9 @@
  *     с гармоническим наслоением обертонов и мягким фильтром (lowpass 2600 Гц)
  *  2. Высококачественную русскую вежливую озвучку вызова клиентов:
  *     «Внимание. Клиент с талоном [буква] [число словами]. Пожалуйста, пройдите к окну номер [номер].»
- *  3. Интеллектуальный конвертер чисел в слова (42 -> «сорок два») и фонетику букв
+ *  3. Интеллектуальный конвертер чисел в слова (42 -> «сорок два») и фонетику букв (Cyrillic + Latin)
  *  4. Умный ранжировщик естественных нейронных голосов (Google, Apple, Microsoft Natural)
+ *  5. Единое управление состоянием звука (localStorage + события для интерфейса)
  * =============================================================================
  */
 
@@ -31,15 +32,96 @@ export interface AnnouncementData {
   windowId: number | string;
 }
 
+const SOUND_STORAGE_KEY = 'pochta_sound_enabled';
+
 /**
- * Преобразование целого числа (0..999) в естественную русскую словесную форму
+ * Проверка включен ли звук в системе (по умолчанию включен)
+ */
+export function isSoundEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const val = localStorage.getItem(SOUND_STORAGE_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Переключение звука в системе с сохранением в localStorage и оповещением слушателей
+ */
+export function setSoundEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
+    window.dispatchEvent(new CustomEvent('pochta:sound', { detail: { enabled } }));
+    if (enabled) {
+      // Воспроизводим мягкий подтверждающий гонг для проверки и разблокировки AudioContext
+      void playPostalChime(0.20);
+    }
+  } catch {}
+}
+
+/**
+ * Глобальный синглтон AudioContext для предотвращения превышения лимита контекстов браузера
+ */
+let sharedAudioContext: AudioContext | null = null;
+
+export function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioContextClass) return null;
+
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    try {
+      sharedAudioContext = new AudioContextClass();
+    } catch (e) {
+      console.warn('Failed to create AudioContext:', e);
+    }
+  }
+
+  if (sharedAudioContext && sharedAudioContext.state === 'suspended') {
+    sharedAudioContext.resume().catch(() => {});
+  }
+
+  return sharedAudioContext;
+}
+
+// Автоматическая разблокировка звука при первом пользовательском взаимодействии (Autoplay Policy)
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      const ctx = getSharedAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if ('speechSynthesis' in window) {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      }
+    } catch {}
+  };
+
+  ['click', 'touchstart', 'keydown'].forEach((evt) => {
+    window.addEventListener(evt, unlockAudio, { passive: true });
+  });
+}
+
+/**
+ * Преобразование целого числа (0..999 999) в естественную русскую словесную форму
  * Предотвращает роботизированное «четыре два» или «ноль сорок два»
  */
 export function numberToRussianWords(n: number): string {
   if (isNaN(n)) return '';
   if (n === 0) return 'ноль';
+  if (n < 0) return 'минус ' + numberToRussianWords(-n);
 
-  const units = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'];
+  const unitsM = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'];
+  const unitsF = ['', 'одна', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'];
   const teens = [
     'десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать',
     'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать'
@@ -53,29 +135,48 @@ export function numberToRussianWords(n: number): string {
     'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот'
   ];
 
-  const words: string[] = [];
+  function convertHundreds(num: number, isFemale: boolean): string[] {
+    const res: string[] = [];
+    const h = Math.floor(num / 100);
+    const rem = num % 100;
+    const t = Math.floor(rem / 10);
+    const u = rem % 10;
 
-  const h = Math.floor(n / 100);
-  const remainder = n % 100;
-  const t = Math.floor(remainder / 10);
-  const u = remainder % 10;
-
-  if (h > 0 && h < 10) {
-    words.push(hundreds[h]);
+    if (h > 0 && h <= 9) res.push(hundreds[h]);
+    if (rem >= 10 && rem <= 19) {
+      res.push(teens[rem - 10]);
+    } else {
+      if (t >= 2) res.push(tens[t]);
+      const unitWords = isFemale ? unitsF : unitsM;
+      if (u > 0) res.push(unitWords[u]);
+    }
+    return res;
   }
 
-  if (remainder >= 10 && remainder <= 19) {
-    words.push(teens[remainder - 10]);
-  } else {
-    if (t >= 2) {
-      words.push(tens[t]);
-    }
-    if (u > 0) {
-      words.push(units[u]);
+  const parts: string[] = [];
+  const thousands = Math.floor(n / 1000);
+  const remainder = n % 1000;
+
+  if (thousands > 0) {
+    parts.push(...convertHundreds(thousands, true));
+    const tRem = thousands % 100;
+    const tLast = thousands % 10;
+    if (tRem >= 11 && tRem <= 19) {
+      parts.push('тысяч');
+    } else if (tLast === 1) {
+      parts.push('тысяча');
+    } else if (tLast >= 2 && tLast <= 4) {
+      parts.push('тысячи');
+    } else {
+      parts.push('тысяч');
     }
   }
 
-  return words.join(' ');
+  if (remainder > 0 || thousands === 0) {
+    parts.push(...convertHundreds(remainder, false));
+  }
+
+  return parts.join(' ');
 }
 
 /**
@@ -91,18 +192,14 @@ export function playPostalChime(volume: number = 0.28): Promise<void> {
     }
 
     try {
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-
-      if (!AudioContextClass) {
+      const ctx = getSharedAudioContext();
+      if (!ctx) {
         resolve();
         return;
       }
 
-      const ctx = new AudioContextClass();
       if (ctx.state === 'suspended') {
-        ctx.resume();
+        ctx.resume().catch(() => {});
       }
 
       const now = ctx.currentTime;
@@ -167,7 +264,7 @@ export function playPostalChime(volume: number = 0.28): Promise<void> {
       }
 
       // Разрешаем промис чуть раньше затухания, чтобы речь диктора плавно следовала за гонгом
-      setTimeout(resolve, 700);
+      setTimeout(resolve, 650);
     } catch (err) {
       console.warn('Audio chime failed:', err);
       resolve();
@@ -183,10 +280,10 @@ export function formatAnnouncementPhrase(
   windowId: number | string
 ): AnnouncementData {
   const cleanTicket = (ticketNumber || '').trim();
-  const parts = cleanTicket.split('-');
   let phoneticTicket = cleanTicket;
 
   const letterPronunciations: Record<string, string> = {
+    // Кириллические буквы
     'А': 'А',
     'Б': 'Бэ',
     'В': 'Вэ',
@@ -207,21 +304,62 @@ export function formatAnnouncementPhrase(
     'Т': 'Тэ',
     'У': 'У',
     'Ф': 'Эф',
+    'Х': 'Ха',
     'Ц': 'Цэ',
     'Ч': 'Че',
     'Ш': 'Ша',
     'Щ': 'Ща',
     'Э': 'Э',
     'Ю': 'Ю',
-    'Я': 'Я'
+    'Я': 'Я',
+    // Латинские буквы (встречаются в сериях Q-000001, A-000001, L-000001)
+    'A': 'А',
+    'B': 'Бэ',
+    'C': 'Цэ',
+    'D': 'Дэ',
+    'E': 'Е',
+    'F': 'Эф',
+    'G': 'Джи',
+    'H': 'Аш',
+    'I': 'И',
+    'J': 'Джей',
+    'K': 'Ка',
+    'L': 'Эль',
+    'M': 'Эм',
+    'N': 'Эн',
+    'O': 'О',
+    'P': 'Пэ',
+    'Q': 'Ку',
+    'R': 'Эр',
+    'S': 'Эс',
+    'T': 'Тэ',
+    'U': 'У',
+    'V': 'Вэ',
+    'W': 'Дубль-вэ',
+    'X': 'Икс',
+    'Y': 'Игрек',
+    'Z': 'Зет'
   };
 
-  if (parts.length === 2) {
-    const letter = parts[0].trim().toUpperCase();
-    const numInt = parseInt(parts[1], 10);
+  // Парсинг талона (поддерживает Q-000042, A-000015, L-000123, А042, О031, П015)
+  let letter = '';
+  let numInt: number | null = null;
+
+  const match = cleanTicket.match(/^([A-Za-zА-Яа-яЁё]+)[-\s]?([0-9]+)$/);
+  if (match) {
+    letter = match[1].toUpperCase();
+    numInt = parseInt(match[2], 10);
+  } else {
+    const parts = cleanTicket.split('-');
+    if (parts.length === 2) {
+      letter = parts[0].trim().toUpperCase();
+      numInt = parseInt(parts[1], 10);
+    }
+  }
+
+  if (letter && numInt !== null && !isNaN(numInt)) {
     const letterSpoken = letterPronunciations[letter] || letter;
-    // Озвучиваем номер естественными словами на русском («сорок два», «семь», «сто пять»)
-    const numSpoken = !isNaN(numInt) ? numberToRussianWords(numInt) : parts[1];
+    const numSpoken = numberToRussianWords(numInt);
     phoneticTicket = `${letterSpoken}, ${numSpoken}`;
   }
 
@@ -233,10 +371,13 @@ export function formatAnnouncementPhrase(
     '5': 'пять',
     '6': 'шесть',
     '7': 'семь',
-    '8': 'восемь'
+    '8': 'восемь',
+    '9': 'девять',
+    '10': 'десять'
   };
 
-  const windowPhrase = windowNames[String(windowId)] || String(windowId);
+  const windowStr = String(windowId).trim();
+  const windowPhrase = windowNames[windowStr] || (!isNaN(Number(windowStr)) ? numberToRussianWords(Number(windowStr)) : windowStr);
 
   // Вежливая, плавная и благозвучная фраза по современному регламенту Почты России
   // Знаки препинания (точки, запятые) обеспечивают естественные дыхательные паузы синтезатора
@@ -323,10 +464,11 @@ export async function announceTicketCall(
   windowId: number | string,
   options?: AnnouncementOptions
 ): Promise<AnnouncementData> {
+  const masterSound = isSoundEnabled();
   const {
-    soundEnabled = true,
-    voiceEnabled = true,
-    speechRate = 0.88, // Неспешный, спокойный и уважительный темп речи
+    soundEnabled = masterSound,
+    voiceEnabled = masterSound,
+    speechRate = 0.88, // Спокойный темп речи диктора
     speechPitch = 1.03, // Мягкий и благозвучный тембр
     selectedVoiceName,
     onStart,
@@ -344,6 +486,11 @@ export async function announceTicketCall(
   if (voiceEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
     return new Promise((resolve) => {
       try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.cancel();
+
         const utterance = new SpeechSynthesisUtterance(announcementData.phrase);
         utterance.lang = 'ru-RU';
         utterance.rate = speechRate;
@@ -356,7 +503,6 @@ export async function announceTicketCall(
         }
 
         if (!utterance.voice && rankedVoices.length > 0) {
-          // Выбираем лучший ранжированный голос по умолчанию
           utterance.voice = rankedVoices[0];
         }
 
@@ -381,13 +527,23 @@ export async function announceTicketCall(
           handleFinish();
         };
 
-        window.speechSynthesis.speak(utterance);
+        // Небольшая задержка перед речью после гонга
+        setTimeout(() => {
+          try {
+            window.speechSynthesis.speak(utterance);
+          } catch (speakErr) {
+            console.warn('Failed to speak utterance:', speakErr);
+            handleFinish();
+          }
+        }, 50);
 
         // Страховочный таймаут (если синтез зависнет в браузере)
         timeout = setTimeout(() => {
-          window.speechSynthesis.cancel();
+          try {
+            window.speechSynthesis.cancel();
+          } catch {}
           handleFinish();
-        }, 7000);
+        }, 8000);
       } catch (err) {
         console.warn('Speech synthesis exception:', err);
         if (onEnd) onEnd();
@@ -396,10 +552,12 @@ export async function announceTicketCall(
     });
   } else {
     if (onStart) onStart();
-    await new Promise<void>(resolve => setTimeout(() => {
-      if (onEnd) onEnd();
-      resolve();
-    }, 1200));
+    await new Promise<void>((resolve) =>
+      setTimeout(() => {
+        if (onEnd) onEnd();
+        resolve();
+      }, 1000)
+    );
     return announcementData;
   }
 }

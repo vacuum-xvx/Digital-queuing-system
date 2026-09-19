@@ -8,6 +8,7 @@ import { Service } from '../../api/client/types';
 import { getMe, User } from '../../api/authApi';
 import { ActionControls } from './ActionControls';
 import { TicketCard } from './TicketCard';
+import { announceTicketCall } from '../../utils/postalVoice';
 import {
   Clock,
   UserPlus,
@@ -50,6 +51,7 @@ export function OperatorWorkspace() {
   const epoch = useRef(0);
   const busy = useRef(false);
   const liveKey = useRef<{ selection: string; key: string } | null>(null);
+  const lastAnnouncedTicketId = useRef<string | null>(null);
 
   useEffect(() => {
     getMe().then(setCurrentUser).catch(() => {});
@@ -93,6 +95,14 @@ export function OperatorWorkspace() {
         const [ticket, items] = await Promise.all([api.getCurrentTicket(windowId), api.listWindows(branchId)]);
         if (epoch.current !== generation || busy.current) return;
         setCurrent(ticket); setWindows(items); setReady(true); setError('');
+
+        if (ticket && ticket.status === 'CALLED' && ticket.id !== lastAnnouncedTicketId.current) {
+          lastAnnouncedTicketId.current = ticket.id;
+          const winNum = items.find(w => w.id === windowId)?.number ?? '';
+          if (winNum) {
+            void announceTicketCall(ticket.publicNumber, winNum);
+          }
+        }
 
         // Also fetch real TV queue for side panel
         if (branchId) {
@@ -227,7 +237,14 @@ export function OperatorWorkspace() {
           await arriveAppointment(publicNum);
         } catch {}
       }
-      await api.callNext(windowId, publicNum);
+      const ticket = await api.callNext(windowId, publicNum);
+      const targetNum = ticket?.publicNumber || publicNum;
+      if (ticket) {
+        lastAnnouncedTicketId.current = ticket.id;
+      }
+      if (selected) {
+        void announceTicketCall(targetNum, selected.number);
+      }
     });
   }
 
@@ -428,14 +445,26 @@ export function OperatorWorkspace() {
                       onCallNext={() =>
                         void act(async () => {
                           try {
-                            await api.callNext(windowId);
+                            const ticket = await api.callNext(windowId);
+                            if (ticket) {
+                              lastAnnouncedTicketId.current = ticket.id;
+                              if (selected) {
+                                void announceTicketCall(ticket.publicNumber, selected.number);
+                              }
+                            }
                           } catch (err) {
                             if (err instanceof OperatorApiError && err.code === 'NO_ELIGIBLE_TICKETS' && tvQueue.length > 0) {
                               const nextApt = tvQueue.find(t => t.publicNumber.startsWith('A-'));
                               if (nextApt) {
                                 try {
                                   await arriveAppointment(nextApt.publicNumber);
-                                  await api.callNext(windowId);
+                                  const ticket = await api.callNext(windowId);
+                                  if (ticket) {
+                                    lastAnnouncedTicketId.current = ticket.id;
+                                    if (selected) {
+                                      void announceTicketCall(ticket.publicNumber, selected.number);
+                                    }
+                                  }
                                   return;
                                 } catch {}
                               }
@@ -444,6 +473,11 @@ export function OperatorWorkspace() {
                           }
                         })
                       }
+                      onRepeatCall={() => {
+                        if (current && selected) {
+                          void announceTicketCall(current.publicNumber, selected.number);
+                        }
+                      }}
                       onStartService={() => current && void act(() => api.startService(current.id))}
                       onCompleteService={() => current && void act(() => api.completeService(current.id))}
                       onNoShow={() => current && void act(() => api.markNoShow(current.id))}
