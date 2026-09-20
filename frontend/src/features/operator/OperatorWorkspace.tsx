@@ -251,12 +251,12 @@ export function OperatorWorkspace() {
         <div className="flex flex-col gap-4 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-[#003B73] text-white font-mono font-black text-2xl flex items-center justify-center shadow-md shrink-0">
-              № {selected?.number ?? '—'}
+              {`№${selected?.number ?? '—'}`}
             </div>
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="font-black text-lg text-slate-900 tracking-tight">
-                                    {selected ? `Окно № ${selected.number}` : 'Рабочее место оператора'}
+                  {selected ? `Окно №${selected.number}` : 'Рабочее место оператора'}
                 </h1>
                 {selected && (
                   <span

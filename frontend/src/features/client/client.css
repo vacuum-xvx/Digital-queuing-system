@@ -701,10 +701,10 @@
 .main-product-header .cx-header-btn > * {
   color: inherit !important;
 }
-.main-product-header .cx-header-btn[aria-pressed="true"] {
-  background: #ffe600 !important;
-  color: #111827 !important;
-  border-color: #ffe600 !important;
+html:not(.a11y-contrast) .main-product-header .cx-header-btn[aria-pressed="true"] {
+  background: #003b73 !important;
+  color: #ffffff !important;
+  border-color: #003b73 !important;
 }
 
 @media (max-width: 640px) {
