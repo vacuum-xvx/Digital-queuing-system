@@ -36,9 +36,9 @@ export const WindowsManagementView: React.FC<WindowsManagementViewProps> = ({
         )}
       </div>
 
-      <div className="admin-table-container">
+      <div className="admin-table-container max-h-[500px] overflow-y-auto scrollbar-thin">
         <table className="admin-table">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr>
               <th>Номер</th>
               <th>Оператор</th>
@@ -49,7 +49,7 @@ export const WindowsManagementView: React.FC<WindowsManagementViewProps> = ({
             </tr>
           </thead>
           <tbody>
-            {windows.map((w) => {
+            {windows.slice().sort((a, b) => a.number - b.number).map((w) => {
               const isOpen = w.status === 'OPEN';
               return (
                 <tr key={w.id}>
