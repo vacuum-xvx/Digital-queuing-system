@@ -113,6 +113,7 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isTLS := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sess.Token,
@@ -120,6 +121,7 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		Expires:  sess.ExpiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   isTLS,
 	})
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -136,12 +138,16 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	isTLS := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
-		Name:    sessionCookie,
-		Value:   "",
-		Path:    "/",
-		Expires: time.Unix(0, 0),
-		MaxAge:  -1,
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isTLS,
 	})
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }

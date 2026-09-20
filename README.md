@@ -180,31 +180,154 @@ CHROMIUM_PATH=/usr/bin/google-chrome node qa/sprint4/visual-regression.mjs
 
 ## Структура
 
-### Архитектура
+### Архитектура — интерактивная схема
 
-```text
-React + TypeScript
-        │ HTTP / JSON
-        ▼
-     Go API ──────► PostgreSQL
-        │               │
-        │ метрики       └──► Резервные копии
-        ▼
-   Prometheus ────► Grafana ◄──── Loki / Promtail
-        │
-        └────────► Alertmanager
+> Наведите на узел, кликните по цвету. Разверните детали ▼ под схемой.
+
+```mermaid
+flowchart TB
+    %% ── Frontend ──
+    subgraph FE["🖥 Frontend — React 19 + TS 5.9 + Vite"]
+        direction TB
+        Client["👤 Клиент<br/>/ — выбор отделения, запись, талоны"]
+        QR["📱 QR<br/>/q/:branchId"]
+        Kiosk["🏦 Киоск<br/>/kiosk/:branchId"]
+        Operator["🎛 Оператор<br/>/operator — окна, вызов"]
+        Admin["👑 Начальник<br/>/admin — аналитика, политики"]
+        TV["📺 Табло<br/>/tv — табло зала + звук"]
+    end
+
+    %% ── Backend ──
+    subgraph BE["⚙️ Backend — Go 1.25 + chi + pgx"]
+        direction TB
+        Router["httpapi/router.go<br/>chi + CORS + X-Request-ID + /metrics"]
+        Auth["auth — sessions<br/>HttpOnly SameSite=Lax"]
+        Domain["domain/<br/>FSM + queue_schedule.go<br/>ComputeSchedule() pure"]
+        Persist["persistence/postgres.go<br/>CallNext SKIP LOCKED<br/>due_at → rank → checkin → id"]
+        ETA["eta.go<br/>взвешенное 20 последних<br/>симуляция по окнам"]
+        Policy["queue_policy.yaml<br/>hot-reload 5с + RWMutex"]
+    end
+
+    %% ── Data & Infra ──
+    subgraph PG["🗄 PostgreSQL 17"]
+        direction TB
+        DB[("tickets / windows<br/>branches / services<br/>ticket_events append-only")]
+        Idx["Индексы<br/>tickets_waiting_due_at<br/>one_active_per_window"]
+    end
+
+    subgraph OBS["📊 Наблюдаемость"]
+        Prometheus["Prometheus :9090<br/>scrape backend + exporter"]
+        Grafana["Grafana :3001<br/>15 панелей"]
+        Loki["Loki + Promtail<br/>docker.sock"]
+        Alert["Alertmanager :9093<br/>Telegram"]
+        Backup["postgres-backup<br/>@every 6h GFS"]
+    end
+
+    Docs["📄 OpenAPI<br/>docs/openapi.yaml<br/>Swagger :8081"]
+
+    %% ── Связи ──
+    Client & QR & Kiosk & Operator & Admin & TV -->|"HTTP/JSON<br/>credentials:include<br/>Idempotency-Key"| Router
+    Router --> Auth
+    Router --> Domain
+    Domain --> Persist
+    Persist --> ETA
+    Policy -.->|"SetPolicy() 5с"| Persist
+    Router -->|"pgxpool 30/5<br/>migrate up на старте"| DB
+    Persist <--> DB
+    Idx -.-> DB
+    Router -->|"http_requests_total<br/>http_request_duration"| Prometheus
+    Prometheus --> Grafana
+    Prometheus --> Alert
+    Loki --> Grafana
+    Backup -.-> DB
+    Docs -.-> Router
+
+    %% ── Стили ──
+    classDef fe fill:#E3F2FD,stroke:#003B73,stroke-width:2px,color:#0A1929
+    classDef be fill:#FFF3E0,stroke:#ED6C02,stroke-width:2px,color:#0A1929
+    classDef db fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#0A1929
+    classDef obs fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,color:#0A1929
+    classDef doc fill:#FFFDE7,stroke:#F9A825,stroke-width:2px,color:#0A1929
+
+    class Client,QR,Kiosk,Operator,Admin,TV fe
+    class Router,Auth,Domain,Persist,ETA,Policy be
+    class DB,Idx db
+    class Prometheus,Grafana,Loki,Alert,Backup obs
+    class Docs doc
+
+    click Client href "#сценарии-проекта" "К сценариям"
+    click Docs href "docs/openapi.yaml" "Открыть OpenAPI"
+    click Policy href "queue_policy.yaml" "Политика очереди"
 ```
 
-```text
-backend/       Go API, доменная логика, persistence и тесты
-frontend/      React-приложение, стили и frontend-тесты
-postgres/      начальная схема БД
-docs/          OpenAPI и документы предметной области
-qa/            проверки спринтов и browser smoke
-monitoring/    метрики, логи, дашборды и оповещения
-scripts/       вспомогательные скрипты
-queue_policy.yaml  политика планирования
+<details>
+<summary><b>🔍 Как читать схему — кликни чтобы развернуть</b></summary>
+
+| Цвет | Слой | Что внутри | Ключевой файл |
+|---|---|---|---|
+| <span style="color:#003B73">■</span> Синий | Frontend | Клиент / QR / Киоск / Оператор / Начальник / Табло — polling 2–5с, Moscow TZ, a11y | `frontend/src/App.tsx:14`, `features/client/`, `operator/`, `admin/`, `TVBoard.tsx` |
+| <span style="color:#ED6C02">■</span> Оранжевый | Backend | `chi` роутер, сессии, чистая `domain`, `SKIP LOCKED` вызов, ETA-симуляция, hot-reload политики | `backend/cmd/api/main.go:52`, `internal/domain/queue_schedule.go:133`, `persistence/postgres.go:375` |
+| <span style="color:#2E7D32">■</span> Зелёный | Данные | Postgres 17, `tickets`+`windows`+`events` append-only, индексы `due_at`, бэкапы GFS | `postgres/init.sql`, `migrations/000014`, `docker-compose.yml:219` |
+| <span style="color:#7B1FA2">■</span> Фиолетовый | Наблюдаемость | Prometheus → Grafana (15 панелей) → Alertmanager (Telegram), Loki+Promtail | `monitoring/prometheus.yml`, `grafana/.../overview.json` |
+
+</details>
+
+<details>
+<summary><b>🔄 Жизненный цикл талона (последовательно)</b></summary>
+
+```mermaid
+sequenceDiagram
+    participant C as Клиент
+    participant API as Go API
+    participant Q as ComputeSchedule
+    participant DB as Postgres
+    participant O as Оператор
+    participant TV as Табло
+
+    C->>API: POST /branches/{id}/tickets/qr<br/>Idempotency-Key
+    API->>Q: due_at=checkin+30m, ready_at=checkin, rank=1
+    Q->>DB: INSERT tickets WAITING
+    DB-->>C: {publicNumber: Q-000123, status: WAITING}
+    C->>API: GET /tickets/{id}/position + /eta (poll 2с)
+    O->>API: POST /windows/{id}/call-next
+    API->>DB: SELECT ... ORDER BY due_at, rank, checkin, id<br/>FOR UPDATE SKIP LOCKED LIMIT 3
+    DB-->>API: winner → UPDATE CALLED
+    API->>DB: INSERT ticket_events CALLED + request_id
+    API-->>O: {ticket, window}
+    API-->>TV: GET /branches/{id}/tv (poll 3с)
+    TV->>TV: gong + SpeechSynthesis ru-RU
+    O->>API: POST /tickets/{id}/start → SERVING → complete → COMPLETED
 ```
+
+*Запись:* `due_at=scheduled_at`, `ready_at=max(checkin, scheduled-early_window)`; опоздание `> grace 15м` → `due_at=checkin+30m, rank=live` — клиент не теряется.
+
+</details>
+
+<details>
+<summary><b>📁 Карта репозитория</b></summary>
+
+```text
+backend/                Go API, домен, persistence, тесты
+  cmd/api/main.go         точка входа, automigrate, hot-reload, graceful shutdown
+  internal/domain/        FSM, queue_schedule.go, models, ETA
+  internal/persistence/   postgres.go (CallNext), eta.go, admin.go, users.go
+  migrations/000001-14    схема + сиды (Демо №1, admin/operator)
+frontend/               React 19 + TS 5.9 + Vite 7
+  src/App.tsx             ручной роутер (pushState), health-check, kiosk-mode
+  src/features/client/    запись, талоны, workload, TV
+  src/features/operator/  вызов/возврат/редирект, очередь 25
+  src/features/admin/     live-очередь, KPI, политика, расписание, юзеры
+  src/utils/time.ts       Europe/Moscow, workload.ts, postalVoice.ts
+postgres/init.sql       init для первого volume (далее — golang-migrate)
+docs/openapi.yaml       контракт API (1821 строка, Swagger :8081)
+qa/sprint{1,2,3}/       чёрный ящик HTTP-тесты + sprint4 smoke
+monitoring/             prometheus.yml, alerts.yml, loki, grafana dashboards
+scripts/                validate_env.sh, autopull.sh, load_test.js (k6)
+queue_policy.yaml       appointment grace 15 / early 10 / sources rank / call 90s×2
+docker-compose.yml      12 сервисов, healthchecks, volumes, resource limits
+```
+
+</details>
 
 ### Документация
 
@@ -215,7 +338,6 @@ queue_policy.yaml  политика планирования
 | [Sprint 2](docs/sprint2-domain.md) | Развитие доменных сценариев |
 | [Sprint 3](docs/sprint3-domain.md) | Следующий этап реализации |
 | [Политика очереди](queue_policy.yaml) | Настройки планирования |
-| [Изменения интерфейса](DESIGN_CHANGELOG.md) | История визуальных доработок |
 
 ## Ограничения и эксплуатация
 

@@ -77,6 +77,7 @@ func (a *API) CallNext(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "called")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
 
@@ -87,6 +88,7 @@ func (a *API) StartService(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "service_started")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
 
@@ -97,6 +99,7 @@ func (a *API) CompleteService(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "completed")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
 
@@ -107,6 +110,7 @@ func (a *API) ReturnTicket(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "returned")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
 
@@ -141,5 +145,6 @@ func (a *API) RedirectTicket(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "redirected")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }

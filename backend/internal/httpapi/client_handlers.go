@@ -69,6 +69,8 @@ func (a *API) CreateQRTicket(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if res.Replayed {
 		status = http.StatusOK
+	} else {
+		a.publishTicketUpdate(res.Ticket, "created")
 	}
 	writeJSONResponse(w, status, mapTicket(res.Ticket))
 }
@@ -118,6 +120,8 @@ func (a *API) CreateLiveTicket(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if ticket.Replayed {
 		status = http.StatusOK
+	} else {
+		a.publishTicketUpdate(ticket.Ticket, "created")
 	}
 	writeJSONResponse(w, status, mapTicket(ticket.Ticket))
 }
@@ -184,6 +188,10 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 
+	if !result.Replayed {
+		a.publishTicketUpdate(result.Appointment.Ticket, "created")
+	}
+
 	writeJSONResponse(w, status, AppointmentResponse{
 		Ticket:      mapTicket(result.Appointment.Ticket),
 		ScheduledAt: result.Appointment.ScheduledAt,
@@ -197,6 +205,7 @@ func (a *API) CancelAppointment(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(appView.Ticket, "cancelled")
 
 	writeJSONResponse(w, http.StatusOK, AppointmentResponse{
 		Ticket:      mapTicket(appView.Ticket),
@@ -211,6 +220,7 @@ func (a *API) CancelTicket(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "cancelled")
 
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
