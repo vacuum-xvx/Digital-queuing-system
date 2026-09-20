@@ -37,30 +37,11 @@ func Load() (Config, error) {
 		}
 	}
 	c.HTTPPort = os.Getenv("HTTP_PORT")
-	rawOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-	if strings.TrimSpace(rawOrigins) == "" {
-		rawOrigins = os.Getenv("CORS_ALLOWED_ORIGIN")
+	c.AllowedOrigin = os.Getenv("CORS_ALLOWED_ORIGIN")
+	origin, err := url.Parse(c.AllowedOrigin)
+	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Host == "" || strings.Contains(origin.Host, "*") || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
+		return c, fmt.Errorf("CORS_ALLOWED_ORIGIN must be one http(s) origin without a path")
 	}
-	if strings.TrimSpace(rawOrigins) == "" {
-		return c, fmt.Errorf("CORS_ALLOWED_ORIGIN is required")
-	}
-	parts := strings.Split(rawOrigins, ",")
-	var validOrigins []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		origin, err := url.Parse(p)
-		if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Host == "" || strings.Contains(origin.Host, "*") || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
-			return c, fmt.Errorf("CORS_ALLOWED_ORIGIN must be one http(s) origin without a path")
-		}
-		validOrigins = append(validOrigins, p)
-	}
-	if len(validOrigins) == 0 {
-		return c, fmt.Errorf("CORS_ALLOWED_ORIGIN is required")
-	}
-	c.AllowedOrigin = strings.Join(validOrigins, ",")
 	dsn := url.URL{Scheme: "postgres", User: url.UserPassword(os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD")), Host: net.JoinHostPort(os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT")), Path: "/" + os.Getenv("POSTGRES_DB")}
 	// The Foundation Compose network is local development only.
 	dsn.RawQuery = "sslmode=disable&connect_timeout=3"

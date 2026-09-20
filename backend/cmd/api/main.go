@@ -89,7 +89,7 @@ func run() int {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if fi, err := os.Stat(policyPath); err == nil && fi.ModTime().After(lastMod) && fi.Size() > 0 {
+				if fi, err := os.Stat(policyPath); err == nil && fi.ModTime().After(lastMod) {
 					lastMod = fi.ModTime()
 					if reloaded, err := domain.LoadQueuePolicyFile(policyPath); err == nil {
 						usecases.SetPolicy(reloaded)

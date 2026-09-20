@@ -363,6 +363,13 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		return empty, application.ErrWindowBusy
 	}
 
+	legacyPolicy, pErr := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, branch))
+	if errors.Is(pErr, application.ErrNotFound) {
+		return empty, errors.New("queue policy missing for branch")
+	}
+	if pErr != nil {
+		return empty, dbError(pErr)
+	}
 
 	// 1. Fetch top candidates with FOR UPDATE SKIP LOCKED ordered by due_at ASC, source_rank ASC, checkin_at ASC, id ASC
 	candidateRows, err := tx.Query(ctx, `
@@ -375,7 +382,7 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
 		  AND t.ready_at <= $3::timestamptz
 		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
-		LIMIT 1
+		LIMIT 3
 		FOR UPDATE OF t SKIP LOCKED
 	`, branch, windowID, decisionTime)
 	if err != nil {
@@ -460,15 +467,8 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	explanation := fmt.Sprintf("chosen due_at=%v source_rank=%d checkin_at=%v; candidates_count=%d",
 		winner.DueAt, winner.SourceRank, winner.CheckinAt, len(candidates))
 
-	policyVersion := p.GetPolicy().PolicyVersion
-	if policyVersion <= 0 {
-		policyVersion = 1
-	}
-	priority := int64(100 - winner.SourceRank*10)
-	if legacyPolicy, pErr := scanPolicy(tx.QueryRow(ctx, policySelect+` WHERE branch_id=$1::uuid`, branch)); pErr == nil {
-		policyVersion = legacyPolicy.Version
-		priority = calculateLegacyPriority(winner, decisionTime, legacyPolicy)
-	}
+	policyVersion := legacyPolicy.Version
+	priority := calculateLegacyPriority(winner, decisionTime, legacyPolicy)
 
 	extra := EventExtra{
 		Actor:     "operator",

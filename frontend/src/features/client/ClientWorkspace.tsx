@@ -317,7 +317,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const appointmentsScopeRef = useRef<string | null>(null);
   useEffect(() => {
     appointmentsScopeRef.current = null;
-    let loaded: Record<string, Appointment>;
+    let loaded: Record<string, Appointment> = {};
     try { loaded = JSON.parse(sessionStorage.getItem(appointmentsKeyFor(ownerScope)) || '{}'); } catch { loaded = {}; }
     appointmentsScopeRef.current = ownerScope;
     setAppointments(loaded);

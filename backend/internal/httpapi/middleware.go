@@ -69,19 +69,26 @@ func recoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 
 func cors(allowedOrigin string) func(http.Handler) http.Handler {
 	origins := strings.Split(allowedOrigin, ",")
-	allowedMap := make(map[string]bool, len(origins))
-	for _, o := range origins {
-		trimmed := strings.TrimSpace(o)
-		if trimmed != "" && trimmed != "*" {
-			allowedMap[trimmed] = true
-		}
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqOrigin := r.Header.Get("Origin")
 			if reqOrigin != "" {
 				w.Header().Add("Vary", "Origin")
-				if allowedMap[reqOrigin] {
+				matched := false
+				for _, o := range origins {
+					if o == reqOrigin || o == "*" {
+						matched = true
+						break
+					}
+				}
+				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080" ||
+					strings.HasSuffix(reqOrigin, "duckdns.org") || strings.HasSuffix(reqOrigin, "duckdns.com")) {
+					matched = true
+				}
+				if matched {
 					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
 					w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
