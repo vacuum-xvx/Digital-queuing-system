@@ -21,12 +21,6 @@ services:
           memory: 256M
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    volumes: []
-    ports:
-      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
     deploy:
       resources:
         limits:
