@@ -1,5 +1,4 @@
 import { defineConfig, loadEnv } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
 
 /**
  * Docker Desktop монтирует исходники с Windows-хоста (bind mount), и inotify
@@ -16,7 +15,6 @@ import tailwindcss from '@tailwindcss/vite';
  */
 
 export default defineConfig(({ mode }) => ({
-  plugins: [tailwindcss()],
   define: {
     'import.meta.env.PUBLIC_APP_BASE_URL': JSON.stringify(
       loadEnv(mode, process.cwd(), '').PUBLIC_APP_BASE_URL ||
