@@ -9,7 +9,6 @@ import {
   Check,
   Building2,
   Smartphone,
-  Sparkles,
 } from 'lucide-react';
 import { PochtaEmblem, PochtaWordmark } from '../../components/common/PochtaBrand';
 
@@ -114,11 +113,10 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
                 </span>
               </div>
               <h3 className="text-base font-black text-slate-900">
-                Быстрое взятие талона клиентом
+                QR-код для страницы отделения
               </h3>
               <p className="text-slate-600 leading-relaxed">
-                Разместите этот QR-код на входе или на информационных стойках отделения. При сканировании камерой любого смартфона клиент{' '}
-                <strong className="text-slate-900">сразу попадает в окно взятия талона данного отделения</strong>, где выбирает нужную услугу и получает электронный талон без необходимости стоять в очереди к терминалу самообслуживания.
+                Разместите QR-код на стойке или у входа. После сканирования клиент открывает страницу этого отделения и может воспользоваться доступными сценариями электронной очереди.
               </p>
             </div>
 
@@ -189,12 +187,12 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
         </div>
       </section>
 
-      {/* Printable Poster/Stand (window.print only) */}
+      {/* Printable poster: intentionally contains only the verified QR entry point. */}
       <div
         id="print-ticket-slip"
         className="hidden print:flex"
       >
-        <div className="w-full max-w-[620px] mx-auto border-[3px] border-[#003B73] rounded-3xl p-7 text-center font-sans bg-white relative flex flex-col items-center">
+        <div className="w-full max-w-[620px] mx-auto border-2 border-[#003B73] p-10 text-center font-sans bg-white relative flex flex-col items-center">
           {/* Top Brand Header */}
           <div className="w-full border-b-2 border-[#003B73] pb-4 mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3 text-left">
@@ -207,26 +205,18 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
               </div>
             </div>
 
-            <div className="text-right">
-              <span className="inline-block px-3 py-1 bg-[#003B73] text-white rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider">
-                СУО 3.0
-              </span>
-              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                Цифровая очередь
-              </div>
-            </div>
           </div>
 
           {/* Postal Red Accent Line */}
-          <div className="w-full h-1 bg-[#D92534] mb-5 rounded-full"></div>
+          <div className="w-full h-1 bg-[#D92534] mb-8"></div>
 
           {/* Main Title */}
           <div className="space-y-1 mb-5">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight uppercase">
-              Электронный талон в очередь
+            <h1 className="text-3xl sm:text-4xl font-black text-[#003B73] tracking-tight">
+              Электронная очередь
             </h1>
-            <p className="text-sm font-bold text-[#003B73]">
-              Возьмите талон со своего смартфона без ожидания у терминала
+            <p className="text-base font-bold text-slate-800">
+              Отсканируйте QR-код камерой телефона
             </p>
           </div>
 
@@ -237,17 +227,17 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
                 src={qrImage}
                 width="260"
                 height="260"
-                className="w-64 h-64 mx-auto block"
+                className="w-72 h-72 mx-auto block"
                 alt="QR-код для взятия талона"
               />
-              <div className="mt-2 text-[11px] font-bold text-slate-700 font-mono">
-                Наведите камеру любого телефона на QR-код
+              <div className="mt-3 text-sm font-semibold text-slate-800">
+                Откройте ссылку, которая появится на экране
               </div>
             </div>
           ) : null}
 
-          {/* 3 Step Instruction Guide */}
-          <div className="w-full grid grid-cols-3 gap-3 my-5 text-left">
+          {/* Three actions are deliberately factual and short. */}
+          <div className="w-full grid grid-cols-3 gap-3 my-7 text-left">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
               <div className="w-7 h-7 rounded-full bg-[#003B73] text-white font-black text-xs flex items-center justify-center mb-2">
                 1
@@ -256,7 +246,7 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
                 Наведите камеру
               </div>
               <p className="text-[11px] text-slate-600 leading-tight">
-                Откройте камеру смартфона и нажмите на всплывшую ссылку
+                Наведите камеру на QR-код
               </p>
             </div>
 
@@ -265,10 +255,10 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
                 2
               </div>
               <div className="font-bold text-xs text-slate-900 mb-1">
-                Выберите услугу
+                Откройте страницу
               </div>
               <p className="text-[11px] text-slate-600 leading-tight">
-                Нажмите на нужную операцию (посылки, письма, платежи)
+                Нажмите на ссылку в уведомлении камеры
               </p>
             </div>
 
@@ -277,23 +267,17 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
                 3
               </div>
               <div className="font-bold text-xs text-slate-900 mb-1">
-                Следите за вызовом
+                Выберите действие
               </div>
               <p className="text-[11px] text-slate-600 leading-tight">
-                Номер окна отобразится на табло отделения и в телефоне
+                Дальше следуйте подсказкам на странице
               </p>
             </div>
           </div>
 
-          {/* Advantages Banner */}
-          <div className="w-full bg-blue-50 border border-blue-200 rounded-2xl p-2.5 text-xs text-[#003B73] font-semibold text-center mb-3">
-            ✓ Без ожидания у терминала • ✓ Виброоповещение о вызове • ✓ Защита вашего времени
-          </div>
-
           {/* Footer Metadata */}
-          <div className="w-full border-t border-slate-200 pt-3 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-            <span>{branchName ? `${branchName} • ` : ''}ID: {branchId}</span>
-            <span>АО «Почта России»</span>
+          <div className="w-full border-t border-slate-200 pt-4 text-sm text-slate-600">
+            <span>{branchName || 'Отделение почтовой связи'}</span>
           </div>
         </div>
       </div>

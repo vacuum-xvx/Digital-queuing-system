@@ -186,6 +186,8 @@ test('Appointment24hPicker and schedule manager strictly enforce 24-hour format'
   assert.match(picker, /24-часовой формат/);
   assert.match(picker, /POPULAR_24H_SLOTS/);
   assert.match(picker, /Часы \(00–23\)/);
+  assert.match(picker, /timeZone: 'Europe\/Moscow'/);
+  assert.doesNotMatch(picker, /tomorrow\.toISOString\(\)\.split\('T'\)\[0\]/);
 
   const shift = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
   assert.match(shift, /24-часовой формат/);

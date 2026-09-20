@@ -113,7 +113,7 @@ export function TVBoard() {
   }, [selectedBranchId]);
 
   /* ── live data ── */
-  const { data: tvData } = useTVQueue(selectedBranchId, 2500);
+  const { data: tvData, isLoading, error } = useTVQueue(selectedBranchId, 2500);
 
   /* ── sound announcements & cross-tab calls ── */
   const lastAnnouncedRef = useRef<Map<number, string>>(new Map());
@@ -186,7 +186,7 @@ export function TVBoard() {
 
   /* ── derived data ── */
   const calls: TVCall[] = useMemo(() => {
-    if (!tvData?.windows) return defaultCalls;
+    if (!tvData?.windows) return [];
     const list = (tvData.windows as Array<{ number: number; currentTicketNumber?: string; status: string }>)
       .filter(w => w.status !== 'CLOSED' && !!w.currentTicketNumber)
       .map(w => ({
@@ -196,17 +196,17 @@ export function TVBoard() {
         serviceTitle: 'Обслуживание',
         status: w.status,
       }));
-    return list.length > 0 ? list : defaultCalls;
+    return list;
   }, [tvData]);
 
   const waiting: TVWaiting[] = useMemo(() => {
-    if (!tvData?.queue) return defaultWaiting;
+    if (!tvData?.queue) return [];
     const list = (tvData.queue as Array<{ publicNumber: string; serviceName?: string }>)
       .map(q => ({ number: q.publicNumber, serviceTitle: q.serviceName || 'Услуга почты' }));
-    return list.length > 0 ? list : defaultWaiting;
+    return list;
   }, [tvData]);
 
-  const branchName = branches.find(b => b.id === selectedBranchId)?.name || 'ОПС 390000 • Главпочтамт';
+  const branchName = branches.find(b => b.id === selectedBranchId)?.name || 'Табло электронной очереди';
 
   const timeString = now.toLocaleTimeString('ru-RU', {
     timeZone: 'Europe/Moscow',
@@ -238,9 +238,8 @@ export function TVBoard() {
           </div>
         </div>
         <div className="tv-topbar-right">
-          <div className="tv-status-badge">
-            <span className="tv-status-dot" />
-            ОНЛАЙН
+          <div className="tv-status-badge" role="status">
+            {error ? 'Нет связи · данные могут устареть' : isLoading ? 'Подключение…' : 'Данные обновляются'}
           </div>
           <div className="tv-date">{dateString}</div>
           <div className="tv-clock">{timeString}</div>
@@ -277,7 +276,9 @@ export function TVBoard() {
             ))}
 
             {calls.length === 0 && (
-              <div className="tv-empty">Нет активных вызовов</div>
+              <div className="tv-empty">
+                {isLoading ? 'Подключаем табло…' : error ? 'Нет связи с системой очереди' : 'Сейчас никто не вызывается'}
+              </div>
             )}
           </div>
         </section>
@@ -297,7 +298,9 @@ export function TVBoard() {
               </div>
             ))}
             {waiting.length === 0 && (
-              <div className="tv-empty-small">Очередь пуста</div>
+              <div className="tv-empty-small">
+                {isLoading ? 'Загрузка очереди…' : error ? 'Данные временно недоступны' : 'Ожидающих нет'}
+              </div>
             )}
           </div>
         </section>
@@ -316,24 +319,6 @@ export function TVBoard() {
     </div>
   );
 }
-
-/* ─────────────── DEFAULT / DEMO DATA ─────────────── */
-const defaultCalls: TVCall[] = [
-  { windowId: 1, ticketNumber: 'А042', serviceTitle: 'Получение', status: 'SERVING' },
-  { windowId: 2, ticketNumber: 'П015', serviceTitle: 'Финансы',   status: 'CALLED' },
-  { windowId: 3, ticketNumber: 'О031', serviceTitle: 'Отправка',  status: 'SERVING' },
-  { windowId: 4, ticketNumber: 'Б008', serviceTitle: 'Подписка',  status: 'CALLED' },
-];
-
-const defaultWaiting: TVWaiting[] = [
-  { number: 'А043', serviceTitle: 'Получение писем и посылок' },
-  { number: 'О032', serviceTitle: 'Отправка посылок' },
-  { number: 'П016', serviceTitle: 'Финансовые операции' },
-  { number: 'А044', serviceTitle: 'Получение писем и посылок' },
-  { number: 'Т008', serviceTitle: 'Товары и открытки' },
-  { number: 'А045', serviceTitle: 'Получение писем и посылок' },
-  { number: 'О033', serviceTitle: 'Отправка 1 класс' },
-];
 
 /* ═════════════════════ CSS ═════════════════════ */
 const tvStyles = `
@@ -477,7 +462,7 @@ const tvStyles = `
 }
 .tv-calls-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 1.8vh;
   flex: 1;
   align-content: start;
@@ -487,13 +472,15 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2.5vh 2vw;
+  padding: 1.5vh 2vw;
+  min-width: 0;
+  container-type: inline-size;
   border-radius: 2.5vh;
   background: #FFFFFF;
   border: 2px solid #E2E8F0;
   box-shadow: 0 4px 16px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.03);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  animation: tv-card-appear 0.6s ease-out backwards;
+  animation: none;
 }
 .tv-call-card:hover {
   transform: scale(1.01);
@@ -511,10 +498,12 @@ const tvStyles = `
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
-  color: #94A3B8;
+  color: #475569;
 }
 .tv-call-ticket {
-  font-size: 6.5vh;
+  font-size: min(6.5vh, 7cqi);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
   color: #003B73;
@@ -522,7 +511,8 @@ const tvStyles = `
   letter-spacing: 0.02em;
 }
 .tv-call-window {
-  font-size: 6.5vh;
+  font-size: min(6.5vh, 7cqi);
+  white-space: nowrap;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
   color: #FFFFFF;

@@ -71,6 +71,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
 
   const toggleA11yMode = (enable: boolean) => {
     setIsA11y(enable);
+    if (enable) setContrast(true);
     if (enable && scale === 100) {
       setScale(125);
     }
@@ -191,6 +192,8 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             <button
               type="button"
               onClick={() => toggleSound()}
+              aria-pressed={soundEnabled}
+              aria-label={soundEnabled ? 'Выключить звук' : 'Включить звук'}
               className="cx-header-btn h-8 w-8 sm:w-auto sm:min-w-[104px] sm:px-2.5 sm:gap-1.5"
               title="Звуковое оповещение"
             >
@@ -250,6 +253,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                   <button
                     type="button"
                     onClick={() => toggleA11yMode(!isA11y)}
+                    aria-pressed={isA11y}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       isA11y
                         ? 'bg-[#FFE600] text-black shadow-sm'
@@ -278,7 +282,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                         aria-pressed={scale === val && isA11y}
                         onClick={() => {
                           setScale(val);
-                          if (!isA11y) toggleA11yMode(true);
+                          if (!isA11y) { setIsA11y(true); setContrast(true); }
                         }}
                         className={`py-1.5 px-1 text-center rounded-lg text-xs font-bold border transition-all ${
                           scale === val && isA11y

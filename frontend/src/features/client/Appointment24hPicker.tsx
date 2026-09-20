@@ -2,6 +2,23 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, Clock, Check, Sparkles } from 'lucide-react';
 import { getMoscowTimeComponents, parseWorkHours } from '../../utils/workload';
 
+function moscowDateInput(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function addMoscowDays(date: Date, days: number): string {
+  const parts = moscowDateInput(date).split('-').map(Number);
+  const shifted = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+  return shifted.toISOString().slice(0, 10);
+}
+
 interface Appointment24hPickerProps {
   value: string; // ISO-like "YYYY-MM-DDTHH:mm"
   onChange: (val: string) => void;
@@ -37,10 +54,7 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
       return [d, t.slice(0, 5)];
     }
     // По умолчанию: завтра в 10:00
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = tomorrow.toISOString().split('T')[0];
-    return [dateStr, '10:00'];
+    return [addMoscowDays(new Date(), 1), '10:00'];
   }, [value]);
 
   const [selectedHour, selectedMinute] = useMemo(() => {
@@ -69,20 +83,15 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
 
   // Быстрые дни
   const todayDateStr = useMemo(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
+    return moscowDateInput(new Date());
   }, []);
 
   const tomorrowDateStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return addMoscowDays(new Date(), 1);
   }, []);
 
   const afterTomorrowDateStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    return d.toISOString().split('T')[0];
+    return addMoscowDays(new Date(), 2);
   }, []);
 
   // Синхронизация при первом рендере если value пусто
@@ -139,10 +148,11 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(todayDateStr)}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 ${
+            aria-pressed={datePart === todayDateStr}
+            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
               datePart === todayDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
             }`}
           >
             Сегодня
@@ -151,10 +161,11 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(tomorrowDateStr)}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 ${
+            aria-pressed={datePart === tomorrowDateStr}
+            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
               datePart === tomorrowDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
             }`}
           >
             Завтра
@@ -163,10 +174,11 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(afterTomorrowDateStr)}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 ${
+            aria-pressed={datePart === afterTomorrowDateStr}
+            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
               datePart === afterTomorrowDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
             }`}
           >
             Послезавтра
@@ -252,10 +264,11 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
                   type="button"
                   disabled={disabled}
                   onClick={() => handleSlotSelect(slot)}
-                  className={`py-2 px-1 rounded-xl font-mono text-xs font-bold text-center transition-all border truncate min-w-0 ${
+                  aria-pressed={active}
+                  className={`py-2 px-1 rounded-xl font-mono text-xs font-bold text-center transition-all border truncate min-w-0 transform ${
                     active
-                      ? 'bg-[#003B73] text-white border-[#003B73] shadow-xs ring-1 ring-[#003B73]'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/40 scale-110'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-105 hover:shadow-md'
                   }`}
                 >
                   {slot}

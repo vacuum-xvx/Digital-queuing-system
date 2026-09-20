@@ -114,7 +114,7 @@ function ErrorBanner({ message, onClose }: { message: string; onClose: () => voi
     >
       <div className="flex items-center gap-2 min-w-0">
         <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-        <span className="truncate">{message}</span>
+        <span className="cx-message-text">{message}</span>
       </div>
       <button
         type="button"
@@ -178,7 +178,7 @@ function BranchCard({ branch, selected, onSelect }: { branch: Branch; selected: 
       <div className="flex items-start justify-between gap-2 w-full">
         <div className="flex-1 min-w-0">
           <span className="cx-choice-title text-sm sm:text-base">{branch.name}</span>
-          {branch.address ? <span className="cx-choice-meta text-xs"><MapPin size={13} aria-hidden className="shrink-0" /> <span className="truncate">{branch.address}</span></span> : null}
+          {branch.address ? <span className="cx-choice-meta text-xs"><MapPin size={13} aria-hidden className="shrink-0" /> <span className="cx-message-text">{branch.address}</span></span> : null}
           {branch.workHours ? <span className="cx-choice-meta text-xs"><Clock size={13} aria-hidden className="shrink-0" /> {branch.workHours}</span> : null}
         </div>
         <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all mt-0.5 ${selected ? 'bg-[#003B73] border-[#003B73] text-white' : 'border-slate-300 bg-white'}`}>
@@ -284,12 +284,6 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!error) return;
-    const timer = window.setTimeout(() => setError(null), 6000);
-    return () => window.clearTimeout(timer);
-  }, [error]);
-
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -326,6 +320,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const [positions, setPositions] = useState<Record<string, QueuePosition>>({});
   const [etas, setEtas] = useState<Record<string, TicketETA>>({});
   const [pollError, setPollError] = useState<string | null>(null);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
   const [arrivalAcknowledgedTicketIds, setArrivalAcknowledgedTicketIds] = useState<Set<string>>(new Set());
 
   const [creating, setCreating] = useState(false);
@@ -485,6 +480,8 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     const ids = getSavedTicketIds(scope);
 
     if (ids.length === 0) {
+      setTicketsLoading(false);
+      setPollError(null);
       setTickets([]);
       setAppointments({});
       setPositions({});
@@ -546,6 +543,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
       if (generation !== pollGeneration.current) return;
       setPollError(friendlyError(reason, 'Не удалось обновить талоны'));
     }).finally(() => {
+      if (generation === pollGeneration.current) setTicketsLoading(false);
       if (generation === pollGeneration.current && getSavedTicketIds(scope).length > 0) {
         pollTimer.current = window.setTimeout(pollAll, POLL_INTERVAL_MS);
       }
@@ -555,6 +553,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   useEffect(() => {
     if (screen === 'my') {
       stopPolling();
+      setTicketsLoading(true);
       pollAll();
     }
     return () => {
@@ -769,13 +768,13 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
               <div className="text-[10px] sm:text-xs font-mono uppercase tracking-wider text-blue-200 font-bold">
                 Почта России · Сервис очередей
               </div>
-              <h2 className="text-xl sm:text-3xl font-black tracking-tight">
+              <h2 className="text-xl sm:text-3xl font-black tracking-tight text-white">
                 Добро пожаловать
               </h2>
             </div>
           </div>
           <p className="text-xs sm:text-sm text-blue-100 max-w-md pt-1 leading-relaxed">
-            Получите талон на обслуживание или выберите удобное время визита заранее, чтобы не ждать в зале.
+            Получите талон на обслуживание или запишитесь на удобное время визита.
           </p>
         </div>
       </div>
@@ -902,6 +901,10 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
           {bookingStep === 1 && (
             <div className="space-y-3">
+              <p className="cx-selection-summary">
+                <Building2 size={18} aria-hidden />
+                {branches.find(b => b.id === branchId)?.name || 'Выбранное отделение'}
+              </p>
               <h3 className="text-sm font-bold text-slate-800">Выберите услугу</h3>
               {servicesLoading ? (
                 <p className="text-xs text-slate-400 font-mono py-8 text-center animate-pulse">Загрузка услуг...</p>
@@ -928,6 +931,14 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
 
           {bookingStep === 2 && (
             <div className="space-y-4">
+              <div className="cx-selection-summary">
+                <Building2 size={18} aria-hidden />
+                <div>
+                  <strong>{branches.find(b => b.id === branchId)?.name}</strong>
+                  <p>{services.find(s => s.id === serviceId)?.name}</p>
+                  <p>Дата и время указаны по Москве (МСК)</p>
+                </div>
+              </div>
               <BranchWorkloadCard branch={branches.find(b => b.id === branchId)} />
               <div className="p-4 sm:p-6 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-4 max-w-full min-w-0 overflow-hidden">
               <Appointment24hPicker
@@ -1088,9 +1099,13 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
         <div className="space-y-4">
           {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
           {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
-          {pollError && <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
+          {pollError && <div role="status" className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-[#054FA6] text-xs font-semibold">{pollError}</div>}
 
-          {tickets.length === 0 ? (
+          {ticketsLoading && tickets.length === 0 ? (
+            <div className="cx-request-state" role="status">Загружаем ваши талоны…</div>
+          ) : pollError && tickets.length === 0 ? (
+            <div className="cx-request-state" role="status">Восстанавливаем соединение. Ваши талоны сохранены, повторная загрузка выполняется автоматически.</div>
+          ) : tickets.length === 0 ? (
             <div className="text-center py-16 px-4 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                 <TicketIcon size={32} />
@@ -1117,7 +1132,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                 return (
                   <div key={ticket.id} className="cx-active-ticket">
                     {/* Branded Ticket Header */}
-                    <div className="cx-ticket-header">
+                    <div className="cx-ticket-header" aria-live="polite" aria-atomic="true">
                       <span className="cx-ticket-num font-mono">{ticket.publicNumber}</span>
                       <StatusBadge status={ticket.status} source={ticket.source} />
                     </div>
@@ -1252,7 +1267,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   );
 
   return (
-    <div className="w-full">
+    <div className={kiosk ? 'w-full' : 'cx-client-flow w-full'}>
       {kiosk && kioskTicket ? renderKioskTicket() : (
         <>
           {screen === 'booking' && renderBooking()}
