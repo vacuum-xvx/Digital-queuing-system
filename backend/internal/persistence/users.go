@@ -20,10 +20,8 @@ const sessionTTL = 7 * 24 * time.Hour
 // Register
 // ─────────────────────────────────────────────────────────────────────────────
 
-const bcryptCost = 12
-
 func (p *Postgres) Register(ctx context.Context, email, password string) (domain.User, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return domain.User{}, fmt.Errorf("hashing password: %w", err)
 	}

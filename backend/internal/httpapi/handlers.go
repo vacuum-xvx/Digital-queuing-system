@@ -14,23 +14,18 @@ import (
 
 type API struct {
 	usecases application.UseCases
-	broker   *EventBroker
 }
 
 func NewAPI(usecases application.UseCases) *API {
-	return &API{usecases: usecases, broker: NewEventBroker()}
+	return &API{usecases: usecases}
 }
 
 func (a *API) RegisterRoutes(r chi.Router) {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(a.loadSession)
 
-		// ── Realtime Server-Sent Events ────────────────────────────────────
-		r.Get("/events", a.SSE)
-
 		// ── Auth (публичные) ──────────────────────────────────────────────
 		r.Route("/auth", func(r chi.Router) {
-			r.Use(RateLimit(5, 10))
 			r.Post("/register", a.Register)
 			r.Get("/confirm", a.ConfirmEmail)
 			r.Post("/login", a.Login)
@@ -41,10 +36,10 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		// ── Клиент: публичные ─────────────────────────────────────────────
 		r.Get("/branches", a.ListBranches)
 		r.Get("/branches/{branchId}/services", a.ListBranchServices)
-		r.With(RateLimit(20, 40)).Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
-		r.With(RateLimit(20, 40)).Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
-		r.With(RateLimit(20, 40)).Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
-		r.With(RateLimit(20, 40)).Post("/appointments", a.CreateAppointment)
+		r.Post("/branches/{branchId}/tickets/qr", a.CreateQRTicket)
+		r.Post("/branches/{branchId}/tickets/live", a.CreateLiveTicket)
+		r.Post("/branches/{branchId}/tickets/appointment", a.CreateAppointment)
+		r.Post("/appointments", a.CreateAppointment)
 		r.Post("/appointments/{ticketId}/cancel", a.CancelAppointment)
 		r.Post("/appointments/{ticketId}/arrive", a.ArriveAppointment)
 		r.Get("/tickets/{ticketId}", a.GetTicket)
@@ -276,18 +271,6 @@ func writeJSONResponse(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
-}
-
-func (a *API) publishTicketUpdate(ticket domain.Ticket, eventType string) {
-	if a.broker == nil {
-		return
-	}
-	dto := mapTicket(ticket)
-	a.broker.Publish("ticket:"+ticket.ID, "ticket_update", dto)
-	if ticket.BranchID != "" {
-		a.broker.Publish("branch:"+ticket.BranchID+":tv", "tv_update", map[string]string{"type": "refresh", "event": eventType})
-		a.broker.Publish("branch:"+ticket.BranchID+":queue", "queue_update", map[string]string{"type": "refresh", "event": eventType})
-	}
 }
 
 // Handlers are located in client_handlers.go, operator_handlers.go, and admin_handlers.go

@@ -1,16 +1,15 @@
-import { MouseEvent, ReactNode, Suspense, lazy, useEffect, useState } from 'react';
+import { MouseEvent, ReactNode, useEffect, useState } from 'react';
 import { checkHealth } from './api/health';
 import { ClientPage } from './pages/ClientPage';
+import { OperatorPage } from './pages/OperatorPage';
+import { AdminPage } from './pages/AdminPage';
+import PochtaDemo from './PochtaDemo';
 import { AuthBoundary } from './features/auth/AuthBoundary';
 import './product.css';
+import { PhysicalQRPage } from './pages/PhysicalQRPage';
 import { ProductHeader } from './components/common/ProductHeader';
-
-const TVBoard = lazy(() => import('./features/client/TVBoard').then(m => ({ default: m.TVBoard })));
-const PochtaDemo = lazy(() => import('./PochtaDemo'));
-const OperatorPage = lazy(() => import('./pages/OperatorPage').then(m => ({ default: m.OperatorPage })));
-const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })));
-const PhysicalQRPage = lazy(() => import('./pages/PhysicalQRPage').then(m => ({ default: m.PhysicalQRPage })));
-const ClientQueueBoard = lazy(() => import('./features/client/ClientQueueBoard').then(m => ({ default: m.ClientQueueBoard })));
+import { ClientQueueBoard } from './features/client/ClientQueueBoard';
+import { TVBoard } from './features/client/TVBoard';
 
 export function App() {
   const [health, setHealth] = useState<'Checking...' | 'Available' | 'Unavailable'>('Checking...');
@@ -53,20 +52,11 @@ export function App() {
   }, []);
 
   if (currentPath === '/tv' || currentPath === '/tv/' || currentPath.startsWith('/tv/') || currentPath.startsWith('/tv?')) {
-    return (
-      <Suspense fallback={<div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">Загрузка табло...</div>}>
-        <TVBoard />
-      </Suspense>
-    );
+    return <TVBoard />;
   }
 
   if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
-    return (
-      <Suspense fallback={<div className="p-8 text-center text-slate-500">Загрузка демо-режима...</div>}>
-        <p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p>
-        <PochtaDemo currentPath={currentPath} navigate={navigate} />
-      </Suspense>
-    );
+    return <><p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p><PochtaDemo currentPath={currentPath} navigate={navigate} /></>;
   }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
     { path: '/tv', label: 'TV', page: <TVBoard /> },
@@ -90,9 +80,7 @@ export function App() {
     <div className="product-shell min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
       <ProductHeader currentPath={currentPath} />
       <main id="main" className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 sm:py-6">
-        <Suspense fallback={<div className="p-8 text-center text-slate-500">Загрузка...</div>}>
-          {activeRoute.page}
-        </Suspense>
+        {activeRoute.page}
       </main>
     </div>
   );
