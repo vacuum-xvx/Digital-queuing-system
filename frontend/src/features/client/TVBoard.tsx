@@ -544,7 +544,7 @@ const tvStyles = `
   flex-direction: column;
   background: #FFFFFF;
   border-radius: 2.5vh;
-  padding: 2vh 1.5vw;
+  padding: 2vh 1.2vw;
   border: 2px solid #E2E8F0;
   box-shadow: 0 4px 16px rgba(0,0,0,0.04);
   min-height: 0;
@@ -572,7 +572,8 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.2vh 1.5vw;
+  padding: 1vh 0.5vw;
+  min-width: 0;
   background: #F1F5F9;
   border: 2px solid #E2E8F0;
   border-radius: 1.5vh;
@@ -584,12 +585,14 @@ const tvStyles = `
   border-color: #93C5FD;
 }
 .tv-waiting-num {
-  font-size: 3.2vh;
+  font-size: 2.6vh;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
   color: #1E293B;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ═══════════════════════ BOTTOM BAR ═══════════════════════ */
