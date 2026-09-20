@@ -77,6 +77,7 @@ func (a *API) MarkNoShow(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, r, err)
 		return
 	}
+	a.publishTicketUpdate(ticket, "no_show")
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
 
