@@ -53,6 +53,13 @@ export function OperatorWorkspace() {
   const busy = useRef(false);
   const liveKey = useRef<{ selection: string; key: string } | null>(null);
   const lastAnnouncedTicketId = useRef<string | null>(null);
+  const activeWindowRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (activeWindowRef.current) {
+      activeWindowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [windowId]);
 
   useEffect(() => {
     getMe().then(setCurrentUser).catch(() => {});
@@ -310,12 +317,15 @@ export function OperatorWorkspace() {
             </div>
 
             {/* Quick Window Buttons */}
-            <div className="flex flex-col shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Окно</span>
-              <div className="flex items-center gap-2 h-12">
+            <div className="flex flex-col min-w-0 flex-1 max-w-full">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">
+                Окно {windows.length > 5 ? `(${windows.length})` : ''}
+              </span>
+              <div className="flex items-center gap-2 h-12 overflow-x-auto overflow-y-hidden max-w-full pb-1 pt-0.5 px-0.5 scrollbar-thin">
               {windows.map(w => (
                 <button
                   key={w.id}
+                  ref={windowId === w.id ? activeWindowRef : null}
                   type="button"
                   onClick={() => {
                     if (w.id === windowId) return;

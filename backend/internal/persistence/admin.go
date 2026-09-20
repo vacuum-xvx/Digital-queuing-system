@@ -362,6 +362,34 @@ func defaultPriorityRules() []domain.PriorityRule {
 	}
 }
 
+// renumberBranchWindowsTx renumbers all windows of a branch sequentially (1..N)
+// safely handling the UNIQUE (branch_id, number) constraint by shifting numbers first.
+func renumberBranchWindowsTx(ctx context.Context, tx pgx.Tx, bid pgtype.UUID) error {
+	// Step 1: Temporarily shift numbers to prevent UNIQUE (branch_id, number) collisions
+	if _, err := tx.Exec(ctx, `
+		UPDATE windows 
+		SET number = number + 100000 
+		WHERE branch_id = $1`, bid); err != nil {
+		return dbError(err)
+	}
+
+	// Step 2: Reassign clean sequential 1..N order
+	if _, err := tx.Exec(ctx, `
+		WITH ordered AS (
+			SELECT id, ROW_NUMBER() OVER (ORDER BY number ASC) AS new_num
+			FROM windows
+			WHERE branch_id = $1
+		)
+		UPDATE windows w
+		SET number = o.new_num
+		FROM ordered o
+		WHERE w.id = o.id`, bid); err != nil {
+		return dbError(err)
+	}
+
+	return nil
+}
+
 // CreateWindow creates a new window in the branch and assigns default branch services.
 func (p *Postgres) CreateWindow(ctx context.Context, branchID string) (domain.Window, error) {
 	var empty domain.Window
@@ -374,6 +402,11 @@ func (p *Postgres) CreateWindow(ctx context.Context, branchID string) (domain.Wi
 		return empty, dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+
+	// Normalize any existing windows first to prevent gaps
+	if err := renumberBranchWindowsTx(ctx, tx, bid); err != nil {
+		return empty, err
+	}
 
 	var maxNumber int
 	err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(number), 0) + 1 FROM windows WHERE branch_id = $1`, bid).Scan(&maxNumber)
@@ -412,7 +445,7 @@ func (p *Postgres) CreateWindow(ctx context.Context, branchID string) (domain.Wi
 	return domain.Window{ID: newID, BranchID: branchID, Number: maxNumber, Status: domain.WindowStatusClosed}, nil
 }
 
-// DeleteWindow removes a window if it has no active tickets.
+// DeleteWindow removes a window if it has no active tickets and renumbers remaining windows sequentially.
 func (p *Postgres) DeleteWindow(ctx context.Context, windowID string) error {
 	wid, err := uuid(windowID)
 	if err != nil {
@@ -423,6 +456,13 @@ func (p *Postgres) DeleteWindow(ctx context.Context, windowID string) error {
 		return dbError(err)
 	}
 	defer tx.Rollback(context.Background())
+
+	var branchID string
+	var deletedNum int
+	err = tx.QueryRow(ctx, `SELECT branch_id::text, number FROM windows WHERE id = $1`, wid).Scan(&branchID, &deletedNum)
+	if err != nil {
+		return dbError(err)
+	}
 
 	var hasActive bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tickets WHERE window_id=$1 AND status IN ('CALLED', 'SERVING'))`, wid).Scan(&hasActive)
@@ -445,6 +485,15 @@ func (p *Postgres) DeleteWindow(ctx context.Context, windowID string) error {
 	}
 	if res.RowsAffected() == 0 {
 		return application.ErrNotFound
+	}
+
+	// Renumber remaining windows sequentially: 1, 2, 3...
+	bid, err := uuid(branchID)
+	if err != nil {
+		return err
+	}
+	if err := renumberBranchWindowsTx(ctx, tx, bid); err != nil {
+		return err
 	}
 
 	return dbError(tx.Commit(ctx))

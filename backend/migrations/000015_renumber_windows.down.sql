@@ -1,0 +1,2 @@
+-- 000015_renumber_windows.down.sql
+-- No-op: Sequential window renumbering preserves valid numbering and cannot be inverted.
