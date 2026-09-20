@@ -1,138 +1,204 @@
-/* Admin Panel Styling - Russian Post / Post Tech Design */
+/* Светлая версия встроенного live-табло: текст остаётся читаемым при любом
+   состоянии окна и не зависит от полупрозрачного синего фона. */
+.live-queue-board {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 8%);
+}
+.live-queue-board .text-blue-200,
+.live-queue-board .text-blue-300 {
+  color: #334155 !important;
+}
+.live-queue-board .text-white {
+  color: #0f172a !important;
+}
+.live-queue-board .bg-white {
+  color: #0f172a !important;
+}
+.live-queue-board .bg-\[\#0055A5\] {
+  background: #e8f1fb !important;
+  color: #003b73 !important;
+  border-color: #8eb5de !important;
+}
+.live-queue-board .bg-blue-900\/80,
+.live-queue-board .bg-slate-800 {
+  background: #dbe6f2 !important;
+  color: #183b5e !important;
+  border-color: #a5bad1 !important;
+}
+.live-queue-number { white-space: nowrap; font-size: clamp(1rem, 2vw, 1.75rem); overflow: hidden; text-overflow: ellipsis; }
+.live-queue-board .border-white\/10 {
+  border-color: #cbd5e1 !important;
+}
+.live-queue-board .bg-blue-950\/60,
+.live-queue-board .bg-slate-900\/40 {
+  background: #eef2f7 !important;
+  color: #334155 !important;
+  border-color: #cbd5e1 !important;
+}
+.live-queue-board .text-white\/70,
+.live-queue-board .text-white\/90 {
+  color: #475569 !important;
+}
+.live-queue-board .bg-white\/10 {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #b7c9dc !important;
+}
+.live-queue-board .bg-\[\#0055A5\] .text-white,
+.live-queue-board .bg-\[\#0055A5\] .text-white\/70,
+.live-queue-board .bg-\[\#0055A5\] .text-white\/90 { color: #003b73 !important; }
+.live-queue-board .bg-indigo-500\/90 { background: #dce7fa !important; color: #263967 !important; }
+.live-queue-board .bg-sky-500\/90 { background: #d5ecf9 !important; color: #075079 !important; }
+.live-queue-board .bg-amber-500\/90 { background: #fce9bd !important; color: #633c04 !important; }
+.live-queue-board .bg-white\/5 { background: #fff !important; }
+@media (prefers-reduced-motion: reduce) {
+  .live-queue-board .animate-ping { animation: none; }
+}
+.live-queue-board .bg-white\/10 .text-white\/70,
+.live-queue-board .bg-white\/10 .text-white\/90 {
+  color: #475569 !important;
+}
+/* === АДМИН-ПАНЕЛЬ — ПОЧТА РОССИИ === */
+/* Чистый, светлый, профессиональный дизайн */
 
 .admin-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 16px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  color: #1e293b;
+  padding: 1.5rem 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #0A1929;
 }
 
 .admin-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 16px;
-  margin-bottom: 24px;
+  border-bottom: 1px solid #E3E8EF;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .admin-header-title h1 {
-  margin: 0 0 6px 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #003b73;
+  margin: 0 0 0.375rem 0;
+  font-size: 1.625rem;
+  font-weight: 600;
+  color: #003B73;
 }
 
 .admin-header-title p {
   margin: 0;
-  color: #64748b;
-  font-size: 14px;
+  color: #6B7A8D;
+  font-size: 0.875rem;
 }
 
 .admin-branch-badge {
-  background: #e6f0fa;
-  color: #003b73;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
+  background: #E3F2FD;
+  color: #003B73;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
   font-weight: 600;
-  border: 1px solid #bfdbfe;
+  border: 1px solid #90CAF9;
 }
 
-/* KPI Cards Grid */
+/* === KPI КАРТОЧКИ === */
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .kpi-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 18px 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  border-top: 4px solid #0055a5;
-  transition: transform 0.15s ease;
+  background: #FFFFFF;
+  border: 1px solid #E3E8EF;
+  border-radius: 8px;
+  padding: 1.125rem 1.25rem;
+  border-left: 4px solid #0055A5;
+  transition: border-color 150ms ease;
 }
 
 .kpi-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-left-color: #003B73;
 }
 
 .kpi-card.warning {
-  border-top-color: #f59e0b;
+  border-left-color: #ED6C02;
 }
 
 .kpi-card.success {
-  border-top-color: #10b981;
+  border-left-color: #2E7D32;
 }
 
 .kpi-card.purple {
-  border-top-color: #8b5cf6;
+  border-left-color: #8B5CF6;
 }
 
 .kpi-label {
-  font-size: 13px;
-  color: #64748b;
+  font-size: 0.8125rem;
+  color: #6B7A8D;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.5rem;
 }
 
 .kpi-value {
-  font-size: 32px;
-  font-weight: 800;
-  color: #0f172a;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #0A1929;
   line-height: 1.1;
 }
 
 .kpi-sub {
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #6B7A8D;
+  margin-top: 0.375rem;
 }
 
-/* Navigation Tabs */
+/* === ВКЛАДКИ НАВИГАЦИИ === */
+
 .admin-tabs {
   display: flex;
-  gap: 8px;
-  border-bottom: 2px solid #e2e8f0;
-  margin-bottom: 24px;
+  gap: 0.5rem;
+  border-bottom: 1px solid #E3E8EF;
+  margin-bottom: 1.5rem;
   overflow-x: auto;
 }
 
 .admin-tab-btn {
   background: transparent;
   border: none;
-  border-bottom: 3px solid transparent;
-  padding: 12px 20px;
-  font-size: 15px;
+  border-bottom: 2px solid transparent;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  color: #64748b;
+  color: #6B7A8D;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 150ms ease;
   white-space: nowrap;
 }
 
 .admin-tab-btn:hover {
-  color: #003b73;
+  color: #003B73;
+  background: #F5F7FA;
 }
 
 .admin-tab-btn.active {
-  color: #003b73;
-  border-bottom-color: #0055a5;
+  color: #003B73;
+  border-bottom-color: #0055A5;
+  background: transparent;
 }
 
-/* Dashboard Sections */
+/* === СЕКЦИИ ДАШБОРДА === */
+
 .admin-section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 1.5rem;
 }
 
 @media (max-width: 900px) {
@@ -142,23 +208,24 @@
 }
 
 .admin-panel-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: #FFFFFF;
+  border: 1px solid #E3E8EF;
+  border-radius: 8px;
+  padding: 1.25rem;
 }
 
 .admin-panel-card h2 {
-  margin: 0 0 16px 0;
-  font-size: 18px;
-  color: #003b73;
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  color: #003B73;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* Tables */
+/* === ТАБЛИЦЫ === */
+
 .admin-table-container {
   overflow-x: auto;
 }
@@ -166,185 +233,195 @@
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: left;
 }
 
 .admin-table th {
-  background: #f8fafc;
-  color: #475569;
+  background: #F5F7FA;
+  color: #3E5060;
   font-weight: 600;
-  padding: 12px 14px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid #E3E8EF;
 }
 
 .admin-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid #E3E8EF;
+  color: #0A1929;
 }
 
 .admin-table tr:hover td {
-  background: #f8fafc;
+  background: #F5F7FA;
 }
 
-/* Badges */
+/* === БЕЙДЖИ === */
+
 .status-pill {
   display: inline-block;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 700;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
 }
 
 .status-open {
-  background: #dcfce7;
-  color: #15803d;
+  background: #E8F5E9;
+  color: #1B5E20;
 }
 
 .status-closed {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: #FFEBEE;
+  color: #C62828;
 }
 
 .source-badge {
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
 }
 
 .source-qr {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #E3F2FD;
+  color: #01579B;
 }
 
 .source-appointment {
-  background: #fef3c7;
-  color: #b45309;
+  background: #FFF4E5;
+  color: #E65100;
 }
 
 .source-live {
-  background: #f3e8ff;
-  color: #7e22ce;
+  background: #F3E5F5;
+  color: #6A1B9A;
 }
 
-/* Priority Sliders */
+/* === СЛАЙДЕРЫ ПРИОРИТЕТОВ === */
+
 .priority-rule-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 18px;
-  margin-bottom: 16px;
+  background: #F5F7FA;
+  border: 1px solid #E3E8EF;
+  border-radius: 6px;
+  padding: 1.125rem;
+  margin-bottom: 1rem;
 }
 
 .priority-rule-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 
 .priority-rule-name {
-  font-weight: 700;
-  font-size: 15px;
-  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #0A1929;
 }
 
 .priority-weight-badge {
-  background: #0055a5;
-  color: #ffffff;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 700;
+  background: #0055A5;
+  color: #FFFFFF;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .priority-rule-desc {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 12px;
+  font-size: 0.8125rem;
+  color: #6B7A8D;
+  margin-bottom: 0.75rem;
 }
 
 .slider-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .slider-group input[type='range'] {
   flex: 1;
-  accent-color: #0055a5;
+  accent-color: #0055A5;
 }
 
-/* Buttons */
+/* === КНОПКИ === */
+
 .btn-sm {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   border-radius: 6px;
   border: none;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 150ms ease;
 }
 
 .btn-toggle-open {
-  background: #fee2e2;
-  color: #991b1b;
+  background: #FFEBEE;
+  color: #C62828;
+  border: 1px solid #EF9A9A;
 }
 
 .btn-toggle-open:hover {
-  background: #fecaca;
+  background: #FFCDD2;
 }
 
 .btn-toggle-closed {
-  background: #dcfce7;
-  color: #166534;
+  background: #E8F5E9;
+  color: #1B5E20;
+  border: 1px solid #A5D6A7;
 }
 
 .btn-toggle-closed:hover {
-  background: #bbf7d0;
+  background: #C8E6C9;
 }
 
 .btn-save-priorities {
-  background: #0055a5;
-  color: #ffffff;
-  padding: 10px 24px;
-  font-size: 15px;
+  background: #0055A5;
+  color: #FFFFFF;
+  padding: 0.625rem 1.5rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  margin-top: 12px;
+  margin-top: 0.75rem;
+  transition: background 150ms ease;
 }
 
 .btn-save-priorities:hover {
-  background: #003b73;
+  background: #003B73;
 }
 
-/* Anomalies */
+/* === АНОМАЛИИ === */
+
 .anomaly-item {
-  border-left: 4px solid #ef4444;
-  padding: 12px 16px;
-  background: #fef2f2;
-  border-radius: 0 8px 8px 0;
-  margin-bottom: 12px;
+  border-left: 4px solid #D32F2F;
+  padding: 0.75rem 1rem;
+  background: #FFEBEE;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 0.75rem;
 }
 
 .anomaly-title {
-  font-weight: 700;
-  color: #991b1b;
-  font-size: 14px;
-  margin-bottom: 4px;
+  font-weight: 600;
+  color: #C62828;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
 }
 
 .anomaly-desc {
-  font-size: 13px;
-  color: #4b5563;
+  font-size: 0.8125rem;
+  color: #3E5060;
 }
 
-/* Queue Policy Editor (Sprint 2) */
+/* === РЕДАКТОР ПОЛИТИКИ ОЧЕРЕДИ === */
+
 .queue-policy-card {
   max-width: 680px;
   margin: 0 auto;
@@ -354,16 +431,17 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 
 .policy-version-badge {
-  background: #e6f0fa;
-  color: #003b73;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  border: 1px solid #bfdbfe;
+  background: #E3F2FD;
+  color: #003B73;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  border: 1px solid #90CAF9;
+  font-weight: 600;
 }
 
 .policy-form {
@@ -374,35 +452,35 @@
 .form-group label {
   display: block;
   font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-  margin-bottom: 6px;
+  font-size: 0.875rem;
+  color: #0A1929;
+  margin-bottom: 0.375rem;
 }
 
 .label-hint {
   font-weight: 400;
-  color: #64748b;
-  font-size: 12px;
+  color: #6B7A8D;
+  font-size: 0.75rem;
 }
 
 .policy-input {
   max-width: 240px;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .validation-error-text {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  padding: 8px 12px;
+  color: #C62828;
+  background: #FFEBEE;
+  border: 1px solid #EF9A9A;
+  padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  font-size: 13px;
-  margin-top: 14px;
+  font-size: 0.8125rem;
+  margin-top: 0.875rem;
 }
 
 .policy-updated-text {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 12px;
+  font-size: 0.75rem;
+  color: #6B7A8D;
+  margin-top: 0.75rem;
 }

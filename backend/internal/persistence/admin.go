@@ -279,6 +279,49 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 	return overview, nil
 }
 
+func (p *Postgres) ListAnomalies(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error) {
+	var page domain.AnomalyPage
+	id, err := p.branch(ctx, branchID)
+	if err != nil { return page, err }
+
+	const anomalyFilter = `branch_id = $1 AND (
+		(status = 'WAITING' AND queue_entered_at < NOW() - INTERVAL '15 minutes')
+		OR (status = 'NO_SHOW' AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
+	)`
+	err = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE `+anomalyFilter, id).Scan(&page.Total)
+	if err != nil { return page, dbError(err) }
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT id::text, public_number, status, queue_entered_at, no_show_at,
+			GREATEST(0, EXTRACT(EPOCH FROM (NOW() - queue_entered_at)) / 60)::int
+		FROM tickets WHERE `+anomalyFilter+`
+		ORDER BY COALESCE(no_show_at, queue_entered_at) DESC, id DESC
+		LIMIT $2 OFFSET $3`, id, limit, offset)
+	if err != nil { return page, dbError(err) }
+	defer rows.Close()
+	page.Items = make([]domain.AnomalyTicket, 0, limit)
+	for rows.Next() {
+		var item domain.AnomalyTicket
+		var status domain.TicketStatus
+		var enteredAt time.Time
+		var noShowAt *time.Time
+		if err = rows.Scan(&item.ID, &item.PublicNumber, &status, &enteredAt, &noShowAt, &item.DurationMinutes); err != nil {
+			return page, dbError(err)
+		}
+		item.Time = enteredAt
+		item.Type = domain.AnomalyExceededWait
+		item.Description = "Превышено максимальное время ожидания"
+		if status == domain.TicketStatusNoShow {
+			item.Type = domain.AnomalyNoShow
+			item.Description = "Клиент не явился к окну оператора"
+			item.DurationMinutes = 0
+			if noShowAt != nil { item.Time = *noShowAt }
+		}
+		page.Items = append(page.Items, item)
+	}
+	return page, dbError(rows.Err())
+}
+
 // loadPriorityRules reads persisted rules; falls back to defaults if none exist.
 func (p *Postgres) loadPriorityRules(ctx context.Context, id pgtype.UUID) ([]domain.PriorityRule, error) {
 	rows, err := p.pool.Query(ctx, `

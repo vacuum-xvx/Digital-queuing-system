@@ -10,6 +10,7 @@ import (
 type TVWindowDTO struct {
 	Number              int     `json:"number"`
 	CurrentTicketNumber *string `json:"currentTicketNumber"`
+	CurrentTicketStatus string  `json:"currentTicketStatus,omitempty"`
 	Status              string  `json:"status"`
 }
 
@@ -27,7 +28,7 @@ type TVQueueResponse struct {
 
 func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 	branchID := chi.URLParam(r, "branchId")
-	
+
 	// Reuse GetAdminOverview to avoid writing new complex SQL queries for MVP
 	overview, err := a.usecases.GetAdminOverview(r.Context(), branchID)
 	if err != nil {
@@ -36,11 +37,20 @@ func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	windows := make([]TVWindowDTO, 0, len(overview.Windows))
+	statusByTicket := make(map[string]string, len(overview.Queue))
+	for _, ticket := range overview.Queue {
+		statusByTicket[ticket.PublicNumber] = string(ticket.Status)
+	}
 	for _, wnd := range overview.Windows {
 		if wnd.Status != domain.WindowStatusClosed {
+			currentStatus := ""
+			if wnd.CurrentTicketNumber != nil {
+				currentStatus = statusByTicket[*wnd.CurrentTicketNumber]
+			}
 			windows = append(windows, TVWindowDTO{
 				Number:              wnd.Number,
 				CurrentTicketNumber: wnd.CurrentTicketNumber,
+				CurrentTicketStatus: currentStatus,
 				Status:              string(wnd.Status),
 			})
 		}
@@ -48,8 +58,11 @@ func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 
 	// For the TV, we only need top waiting tickets
 	queue := make([]TVQueueTicketDTO, 0, len(overview.Queue))
-	for i, t := range overview.Queue {
-		if i >= 15 {
+	for _, t := range overview.Queue {
+		if t.Status != domain.TicketStatusWaiting {
+			continue
+		}
+		if len(queue) >= 15 {
 			break
 		}
 		queue = append(queue, TVQueueTicketDTO{

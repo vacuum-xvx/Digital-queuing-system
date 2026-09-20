@@ -23,7 +23,6 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
   const [a11yOpen, setA11yOpen] = useState(false);
   const [scale, setScale] = useState(() => Number(localStorage.getItem('pochta_a11y_scale') || (isA11y ? '125' : '100')));
   const [contrast, setContrast] = useState(() => localStorage.getItem('pochta_a11y_contrast') === 'true');
-  const [reducedMotion, setReducedMotion] = useState(() => localStorage.getItem('pochta_a11y_motion') === 'true');
   const [timeStr, setTimeStr] = useState('');
 
   const a11yRef = useRef<HTMLDivElement>(null);
@@ -71,6 +70,7 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
 
   const toggleA11yMode = (enable: boolean) => {
     setIsA11y(enable);
+    if (!enable) setScale(100);
     if (enable && scale === 100) {
       setScale(125);
     }
@@ -80,12 +80,10 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
     setIsA11y(false);
     setScale(100);
     setContrast(false);
-    setReducedMotion(false);
     try {
       localStorage.removeItem('pochta_a11y');
       localStorage.removeItem('pochta_a11y_scale');
       localStorage.removeItem('pochta_a11y_contrast');
-      localStorage.removeItem('pochta_a11y_motion');
     } catch {}
   };
 
@@ -98,28 +96,28 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
         localStorage.setItem('pochta_a11y_scale', String(scale));
       } catch {}
     } else {
-      document.documentElement.classList.remove('a11y-mode');
-      document.documentElement.classList.remove('a11y-contrast');
       document.documentElement.style.fontSize = '';
       try {
         localStorage.removeItem('pochta_a11y');
       } catch {}
     }
-  }, [isA11y, scale]);
+    document.documentElement.classList.toggle('a11y-mode', isA11y || contrast);
+  }, [isA11y, scale, contrast]);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('a11y-contrast', isA11y && contrast);
+    // Удаляем настройку старого пункта меню, чтобы он не мог включиться сам.
+    document.documentElement.removeAttribute('data-reduced-motion');
+    try {
+      localStorage.removeItem('pochta_a11y_motion');
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('a11y-contrast', contrast);
     try {
       localStorage.setItem('pochta_a11y_contrast', String(contrast));
     } catch {}
   }, [contrast, isA11y]);
-
-  useEffect(() => {
-    document.documentElement.toggleAttribute('data-reduced-motion', reducedMotion);
-    try {
-      localStorage.setItem('pochta_a11y_motion', String(reducedMotion));
-    } catch {}
-  }, [reducedMotion]);
 
   useEffect(() => {
     let active = true;
@@ -191,6 +189,8 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
             <button
               type="button"
               onClick={() => toggleSound()}
+              aria-pressed={soundEnabled}
+              aria-label={soundEnabled ? 'Выключить звук' : 'Включить звук'}
               className="cx-header-btn h-8 w-8 sm:w-auto sm:min-w-[104px] sm:px-2.5 sm:gap-1.5"
               title="Звуковое оповещение"
             >
@@ -244,12 +244,13 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                 {/* Master Toggle */}
                 <div className="mb-3.5 bg-white/10 p-2.5 rounded-xl flex items-center justify-between">
                   <div className="pr-2">
-                    <div className="font-bold text-xs text-white">Режим для слабовидящих</div>
-                    <div className="text-[10px] text-blue-200">Увеличенные шрифты и контраст</div>
+                    <div className="font-bold text-xs text-white">Увеличенный текст</div>
+                    <div className="text-[10px] text-blue-200">Без изменения цветовой схемы</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => toggleA11yMode(!isA11y)}
+                    aria-pressed={isA11y}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       isA11y
                         ? 'bg-[#FFE600] text-black shadow-sm'
@@ -275,13 +276,13 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                       <button
                         key={val}
                         type="button"
-                        aria-pressed={scale === val && isA11y}
+                        aria-pressed={scale === val}
                         onClick={() => {
                           setScale(val);
-                          if (!isA11y) toggleA11yMode(true);
+                          setIsA11y(val !== 100);
                         }}
                         className={`py-1.5 px-1 text-center rounded-lg text-xs font-bold border transition-all ${
-                          scale === val && isA11y
+                          scale === val
                             ? 'bg-[#FFE600] text-black border-[#FFE600] shadow'
                             : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
                         }`}
@@ -310,13 +311,10 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                     </button>
                     <button
                       type="button"
-                      aria-pressed={contrast && isA11y}
-                      onClick={() => {
-                        setContrast(true);
-                        if (!isA11y) toggleA11yMode(true);
-                      }}
+                      aria-pressed={contrast}
+                      onClick={() => setContrast(true)}
                       className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
-                        contrast && isA11y
+                        contrast
                           ? 'bg-black text-[#FFE600] border-[#FFE600] shadow'
                           : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
                       }`}
@@ -326,34 +324,12 @@ export function ProductHeader({ currentPath }: ProductHeaderProps) {
                   </div>
                 </div>
 
-                {/* Toggles */}
-                <div className="space-y-1.5 pt-2 border-t border-white/15">
-                  <label className="flex items-center justify-between cursor-pointer select-none py-1">
-                    <span className="text-xs text-blue-100">Уменьшить анимации</span>
-                    <input
-                      type="checkbox"
-                      checked={reducedMotion}
-                      onChange={(e) => setReducedMotion(e.target.checked)}
-                      className="w-4 h-4 rounded accent-[#FFE600] cursor-pointer"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between cursor-pointer select-none py-1">
-                    <span className="text-xs text-blue-100">Звуковое оповещение</span>
-                    <input
-                      type="checkbox"
-                      checked={soundEnabled}
-                      onChange={(e) => toggleSound(e.target.checked)}
-                      className="w-4 h-4 rounded accent-[#FFE600] cursor-pointer"
-                    />
-                  </label>
-                </div>
-
                 {/* Footer Controls */}
                 <div className="mt-3.5 pt-2.5 border-t border-white/15 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={handleResetA11y}
-                    className="text-[11px] text-blue-200 hover:text-white flex items-center gap-1 transition-colors"
+                    className="header-reset-button text-[11px] text-blue-200 hover:text-white flex items-center gap-1 transition-colors"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>Сбросить</span>

@@ -94,6 +94,7 @@ type UseCases interface {
 	ReturnTicket(ctx context.Context, ticketID string) (domain.Ticket, error)
 	RedirectTicket(ctx context.Context, cmd RedirectTicketCommand) (domain.Ticket, error)
 	GetAdminOverview(ctx context.Context, branchID string) (domain.AdminBranchOverview, error)
+	GetOperatorQueue(ctx context.Context, branchID string) (domain.OperatorQueue, error)
 	SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error
 
 	GetBranchWorkload(ctx context.Context, branchID string) (domain.BranchWorkload, error)
@@ -106,7 +107,8 @@ type UseCases interface {
 	Login(ctx context.Context, email, password string) (domain.Session, error)
 	Logout(ctx context.Context, token string) error
 	GetSessionUser(ctx context.Context, token string) (domain.User, error)
-	ListUsers(ctx context.Context) ([]domain.User, error)
+	ListUsers(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error)
+	ListAnomalies(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error)
 	ChangeUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
 }
 

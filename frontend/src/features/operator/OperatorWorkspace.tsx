@@ -39,6 +39,7 @@ export function OperatorWorkspace() {
 
   // Side panel TV queue state
   const [tvQueue, setTvQueue] = useState<Array<{ publicNumber: string; source?: string; serviceName?: string }>>([]);
+  const [queueTotal, setQueueTotal] = useState(0);
 
   // Elapsed timer for active service
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -71,6 +72,7 @@ export function OperatorWorkspace() {
   useEffect(() => {
     let active = true;
     setWindowId(''); setWindows([]); setServices([]); setServiceId(''); setCurrent(null); setReady(false);
+    setTvQueue([]); setQueueTotal(0);
     if (!branchId) return;
     localStorage.setItem('operator.branch', branchId);
     Promise.all([api.listWindows(branchId), listServices(branchId)]).then(([items, catalog]) => {
@@ -100,14 +102,15 @@ export function OperatorWorkspace() {
           lastAnnouncedTicketId.current = ticket.id;
         }
 
-        // Also fetch real TV queue for side panel
+        // Refresh the bounded first page after every action and during polling.
         if (branchId) {
           try {
-            const tvRes = await fetch(`/api/v1/branches/${encodeURIComponent(branchId)}/tv`);
+            const tvRes = await fetch(`/api/v1/admin/branches/${encodeURIComponent(branchId)}/queue`, { credentials: 'include' });
             if (tvRes.ok) {
               const tvData = await tvRes.json();
-              if (epoch.current === generation && tvData?.queue) {
-                setTvQueue(tvData.queue);
+              if (epoch.current === generation && Array.isArray(tvData?.items)) {
+                setTvQueue(tvData.items);
+                setQueueTotal(tvData.total);
               }
             }
           } catch {}
@@ -251,12 +254,12 @@ export function OperatorWorkspace() {
         <div className="flex flex-col gap-4 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-[#003B73] text-white font-mono font-black text-2xl flex items-center justify-center shadow-md shrink-0">
-              № {selected?.number ?? '—'}
+              {`№${selected?.number ?? '—'}`}
             </div>
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="font-black text-lg text-slate-900 tracking-tight">
-                                    {selected ? `Окно № ${selected.number}` : 'Рабочее место оператора'}
+                  {selected ? `Окно №${selected.number}` : 'Рабочее место оператора'}
                 </h1>
                 {selected && (
                   <span
@@ -589,10 +592,11 @@ export function OperatorWorkspace() {
                 </p>
               </div>
               <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-full bg-blue-50 text-[#054FA6] border border-blue-200">
-                {tvQueue.length} в очереди
+                {queueTotal} в очереди
               </span>
             </div>
 
+            {queueTotal > tvQueue.length && <p className="text-xs text-slate-500">Первые {tvQueue.length} из {queueTotal}. Список обновляется автоматически.</p>}
             {tvQueue.length > 0 ? (
               <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
                 {tvQueue.map((item, idx) => {

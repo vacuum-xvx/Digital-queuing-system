@@ -6,6 +6,14 @@ export interface User {
   confirmed: boolean;
 }
 
+export interface UserPage {
+  items: User[];
+  total: number;
+  counts: Record<'all' | 'employee' | 'opc_chief' | 'client' | 'terminal', number>;
+  limit: number;
+  offset: number;
+}
+
 export interface AuthError {
   code: string;
   message: string;
@@ -103,9 +111,15 @@ export async function getMe(): Promise<User | null> {
   }
 }
 
-export async function listUsers(): Promise<User[]> {
-  const res = await request<{items: User[]}>('/admin/users', { method: 'GET' });
-  return res.items ?? [];
+export async function listUsers(params: { page?: number; limit?: number; search?: string; role?: string } = {}): Promise<UserPage> {
+  const limit = params.limit ?? 25;
+  const query = new URLSearchParams({
+    limit: String(limit),
+    offset: String(((params.page ?? 1) - 1) * limit),
+  });
+  if (params.search?.trim()) query.set('search', params.search.trim());
+  if (params.role && params.role !== 'ALL') query.set('role', params.role);
+  return request<UserPage>(`/admin/users?${query}`, { method: 'GET' });
 }
 
 export async function changeUserRole(userId: string, role: string): Promise<void> {

@@ -316,16 +316,15 @@ export function ClientQueueBoard({
 
         {/* Быстрый поиск талона и фильтры */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="relative flex-1">
+          <div className="field-with-icon relative flex-1">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Найти номер своего талона (например, А042)..."
-              style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }}
-              className="w-full py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+              className="field-with-icon__input w-full py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="field-with-icon__icon w-4 h-4 text-slate-400" aria-hidden="true" />
           </div>
 
           {/* Табы фильтров */}

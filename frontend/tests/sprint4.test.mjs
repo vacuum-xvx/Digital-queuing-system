@@ -161,10 +161,28 @@ test('BranchScheduleShiftManager renders schedule presets and shift closure moda
 test('UsersManagement supports instant user search, role filtering, and empty state', async () => {
   const content = await readFile(new URL('../src/features/admin/UsersManagement.tsx', import.meta.url), 'utf8');
   assert.match(content, /Поиск по email, роли/);
-  assert.match(content, /filteredUsers/);
+  assert.match(content, /listUsers\(\{ page, limit: pageSize, search: searchQuery, role: roleFilter \}\)/);
+  for (const role of ['all', 'employee', 'opc_chief', 'client', 'terminal']) {
+    assert.ok(content.includes(`{counts.${role}}`));
+  }
+  assert.match(content, /setPageSize\(size\); setPage\(1\)/);
   assert.match(content, /roleFilter/);
+  assert.match(content, /<Pagination page=\{page\} total=\{total\}/);
   assert.match(content, /Пользователи не найдены/);
   assert.match(content, /Сбросить фильтры/);
+});
+
+test('admin lists request bounded pages and icon fields reserve text space', async () => {
+  const workspace = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  const api = await readFile(new URL('../src/api/admin/adminApi.ts', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../src/product.css', import.meta.url), 'utf8');
+  const header = await readFile(new URL('../src/components/common/ProductHeader.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /listAnomalies\(selectedBranchId, anomaliesPage, anomaliesPageSize\)/);
+  assert.match(workspace, /setAnomaliesPageSize\(size\); setAnomaliesPage\(1\)/);
+  assert.match(workspace, /<Pagination page=\{anomaliesPage\} total=\{anomaliesTotal\}/);
+  assert.match(api, /offset: String\(\(page - 1\) \* limit\)/);
+  assert.match(css, /\.field-with-icon__input\s*\{\s*padding-left: 2\.75rem !important/);
+  assert.match(header, /header-reset-button/);
 });
 
 test('BranchWorkloadCard aligns columns, multi-tier bar styles and provides interactive hour details', async () => {
@@ -186,12 +204,33 @@ test('Appointment24hPicker and schedule manager strictly enforce 24-hour format'
   assert.match(picker, /24-часовой формат/);
   assert.match(picker, /POPULAR_24H_SLOTS/);
   assert.match(picker, /Часы \(00–23\)/);
+  assert.match(picker, /timeZone: 'Europe\/Moscow'/);
+  assert.doesNotMatch(picker, /tomorrow\.toISOString\(\)\.split\('T'\)\[0\]/);
 
   const shift = await readFile(new URL('../src/features/admin/BranchScheduleShiftManager.tsx', import.meta.url), 'utf8');
   assert.match(shift, /24-часовой формат/);
   assert.match(shift, /open-h-/);
   assert.match(shift, /close-h-/);
-});test('Operator workspace supports redirect to another window and distinct source tags', async () => {
+});
+
+test('selection controls expose accessible state without layout-shifting CSS', async () => {
+  const picker = await readFile(new URL('../src/features/client/Appointment24hPicker.tsx', import.meta.url), 'utf8');
+  const admin = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+  const operatorWindow = await readFile(new URL('../src/features/operator/WindowSelector.tsx', import.meta.url), 'utf8');
+  const productCss = await readFile(new URL('../src/product.css', import.meta.url), 'utf8');
+
+  assert.equal((picker.match(/aria-pressed=/g) ?? []).length, 4);
+  assert.doesNotMatch(picker, /appointment-choice-check/);
+  assert.doesNotMatch(picker, /scale-10[05]/);
+  assert.equal((admin.match(/aria-current=/g) ?? []).length, 7);
+  assert.match(operatorWindow, /aria-pressed=\{isSelected\}/);
+  assert.match(productCss, /\.appointment-choice\[aria-pressed="true"\]/);
+  assert.match(productCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(productCss, /^\.ring-[12]\s*\{/m);
+  assert.doesNotMatch(productCss, /^\.scale-10[05]\s*\{/m);
+});
+
+test('Operator workspace supports redirect to another window and distinct source tags', async () => {
   const operatorWorkspace = await readFile(new URL('../src/features/operator/OperatorWorkspace.tsx', import.meta.url), 'utf8');
   assert.match(operatorWorkspace, /redirectWindowId/);
   assert.match(operatorWorkspace, /Целевое окно/);
@@ -216,4 +255,41 @@ test('Admin workspace provides real-time live queue monitor with TV board and ta
   assert.match(liveQueue, /Оперативный реестр/);
   assert.match(liveQueue, /СЕЙЧАС ОБСЛУЖИВАЮТСЯ У СТОЕК/);
   assert.match(liveQueue, /ОЖИДАЮТ В ОЧЕРЕДИ/);
+});
+
+test('live queue keeps called and serving tickets in the operational register', async () => {
+  const liveQueue = await readFile(new URL('../src/features/admin/LiveQueueView.tsx', import.meta.url), 'utf8');
+  assert.match(liveQueue, /const filtered = queue\.filter/);
+  assert.match(liveQueue, /item\.status === 'SERVING'/);
+  assert.match(liveQueue, /item\.status === 'CALLED'/);
+});
+
+test('TV board shows only called tickets, not tickets already in service', async () => {
+  const tv = await readFile(new URL('../src/features/client/TVBoard.tsx', import.meta.url), 'utf8');
+  const handler = await readFile(new URL('../../backend/internal/httpapi/tv_handlers.go', import.meta.url), 'utf8');
+  assert.match(tv, /w\.currentTicketStatus === 'CALLED'/);
+  assert.match(tv, /callWindow\.currentTicketStatus !== 'CALLED'/);
+  assert.match(tv, /\.filter\(q => q\.status === 'WAITING'\)/);
+  assert.match(handler, /CurrentTicketStatus\s+string/);
+  assert.match(handler, /statusByTicket\[ticket\.PublicNumber\]/);
+  assert.match(handler, /t\.Status != domain\.TicketStatusWaiting/);
+});
+
+test('Admin overview hall board uses the reference queue-card layout', async () => {
+  const admin = await readFile(new URL('../src/features/admin/AdminWorkspace.tsx', import.meta.url), 'utf8');
+
+  assert.match(admin, /admin-live-preview bg-white rounded-3xl/);
+  assert.match(admin, /admin-live-preview__grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6/);
+  assert.match(admin, /admin-live-preview__ticket p-4 rounded-2xl/);
+  assert.match(admin, /style=\{\{ minHeight: 198 \}\}/);
+});
+
+test('printable branch QR poster has no red accent stripe', async () => {
+  const branchQr = await readFile(new URL('../src/features/admin/BranchQR.tsx', import.meta.url), 'utf8');
+  const posterStart = branchQr.indexOf('id="print-ticket-slip"');
+  assert.notEqual(posterStart, -1);
+  const printablePoster = branchQr.slice(posterStart);
+
+  assert.doesNotMatch(printablePoster, /Postal Red Accent Line/);
+  assert.doesNotMatch(printablePoster, /bg-\[#D92534\]/);
 });

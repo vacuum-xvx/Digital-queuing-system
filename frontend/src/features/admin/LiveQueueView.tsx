@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import './admin.css';
 import { AdminWindow, AdminQueueTicket } from '../../api/admin/types';
 import { formatMoscowTime } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
@@ -51,9 +52,10 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
     );
   }, [queue, windows]);
 
-  // Filtered queue for table view
+  // Filtered queue for table view. Unlike the hall preview, the operational
+  // register must include tickets that are already CALLED or SERVING.
   const filteredQueue = useMemo(() => {
-    return waitingQueue.filter((item) => {
+    const filtered = queue.filter((item) => {
       // Source filter
       if (sourceFilter !== 'ALL' && item.source !== sourceFilter) {
         return false;
@@ -67,7 +69,9 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
       }
       return true;
     });
-  }, [waitingQueue, sourceFilter, searchQuery]);
+    // Limit to 50 tickets max to prevent excessive scrolling
+    return filtered.slice(0, 50);
+  }, [queue, sourceFilter, searchQuery]);
 
   // Source counters
   const counts = useMemo(() => {
@@ -118,6 +122,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
               <button
                 type="button"
                 onClick={() => setViewMode('tv')}
+                aria-pressed={viewMode === 'tv'}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                   viewMode === 'tv'
                     ? 'bg-white text-[#003B73] shadow-sm'
@@ -130,6 +135,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
+                aria-pressed={viewMode === 'table'}
                 className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                   viewMode === 'table'
                     ? 'bg-white text-[#003B73] shadow-sm'
@@ -159,7 +165,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
 
       {/* 2. MODE 1: TV HALL DISPLAY (КАК ВИДЯТ ПОСЕТИТЕЛИ В ЗАЛЕ) */}
       {viewMode === 'tv' && (
-        <div className="bg-[#00274D] text-white rounded-3xl p-5 sm:p-7 shadow-xl border border-blue-900/40 space-y-6">
+        <div className="live-queue-board rounded-2xl p-5 sm:p-7 border space-y-6" aria-label="Предпросмотр информационного табло зала">
           {/* TV Board Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div className="flex items-center gap-3.5">
@@ -179,8 +185,8 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-wider">
                   {formatMoscowTime(new Date())} <span className="text-xs font-bold text-blue-300">МСК</span>
                 </div>
-                <div className="text-[11px] text-blue-200 font-semibold">
-                  24-часовой режим работы
+                  <div className="text-[11px] text-blue-200 font-semibold">
+                    Московское время
                 </div>
               </div>
             </div>
@@ -234,7 +240,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                     <div className="my-1 text-center py-2">
                       {isServing ? (
                         <div>
-                          <div className="text-3xl sm:text-4xl font-black font-mono text-[#003B73] tracking-tight">
+                          <div className="live-queue-number text-3xl sm:text-4xl font-black font-mono text-[#003B73] tracking-tight">
                             {win.currentTicketNumber}
                           </div>
                           <div className="text-xs font-semibold text-slate-600 mt-1 truncate max-w-full">
@@ -274,47 +280,57 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
             </div>
 
             {waitingQueue.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-                {waitingQueue.map((item, idx) => {
-                  const isApt = item.source === 'APPOINTMENT';
-                  const isQr = item.source === 'QR';
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                  {waitingQueue.slice(0, 50).map((item, idx) => {
+                    const isApt = item.source === 'APPOINTMENT';
+                    const isQr = item.source === 'QR';
 
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-3 rounded-2xl border text-center flex flex-col justify-between transition-all ${
-                        idx === 0
-                          ? 'bg-[#0055A5] text-white border-blue-400/50 shadow-md ring-2 ring-white/30'
-                          : 'bg-white/10 text-white border-white/15 hover:bg-white/15'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px] font-mono text-blue-200">
-                        <span>#{idx + 1}</span>
-                        <span>{item.waitTimeMinutes}м</span>
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-3 rounded-2xl border text-center flex flex-col justify-between transition-all ${
+                          idx === 0
+                            ? 'bg-[#0055A5] text-white border-blue-400/50 shadow-md ring-2 ring-white/30'
+                            : 'bg-white/10 text-white border-white/20 hover:bg-white/15'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[10px] font-mono text-white/70">
+                          <span>#{idx + 1}</span>
+                          <span>{item.waitTimeMinutes}м</span>
+                        </div>
+                        <div className="live-queue-number font-black font-mono tracking-tight my-1">
+                          {item.publicNumber}
+                        </div>
+                        <div className="text-[10px] font-semibold truncate text-white/90">
+                          {item.serviceName}
+                        </div>
+                        <div className="mt-1">
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${
+                              isApt
+                                ? 'bg-indigo-500/90 text-white'
+                                : isQr
+                                ? 'bg-sky-500/90 text-white'
+                                : 'bg-amber-500/90 text-white'
+                            }`}
+                          >
+                            {isApt ? 'Запись' : isQr ? 'QR' : 'Живая'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-2xl font-black font-mono tracking-tight my-1">
-                        {item.publicNumber}
-                      </div>
-                      <div className="text-[10px] font-semibold truncate text-blue-100">
-                        {item.serviceName}
-                      </div>
-                      <div className="mt-1">
-                        <span
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${
-                            isApt
-                              ? 'bg-indigo-900/80 text-indigo-200'
-                              : isQr
-                              ? 'bg-sky-900/80 text-sky-200'
-                              : 'bg-amber-900/80 text-amber-200'
-                          }`}
-                        >
-                          {isApt ? 'Запись' : isQr ? 'QR' : 'Живая'}
-                        </span>
-                      </div>
+                    );
+                  })}
+                </div>
+                {waitingQueue.length > 50 && (
+                  <div className="mt-3 text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white/80 text-xs font-semibold">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>Показаны первые 50 из {waitingQueue.length} талонов в очереди</span>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-10 bg-white/5 rounded-2xl border border-white/10 space-y-2">
                 <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
@@ -334,14 +350,14 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
           {/* Controls Bar: Search & Category Filter */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="field-with-icon relative flex-1 max-w-md">
+              <Search className="field-with-icon__icon w-4 h-4 text-slate-400" aria-hidden="true" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по номеру талона (A-001, Q-015...) или услуге"
-                className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
+                className="field-with-icon__input w-full py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
               />
               {searchQuery && (
                 <button
@@ -406,6 +422,19 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
             </div>
           </div>
 
+          {/* Results Summary */}
+          {filteredQueue.length > 0 && filteredQueue.length < waitingQueue.length && (
+            <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs">
+              <div className="flex items-center gap-2 text-blue-800 font-semibold">
+                <AlertCircle className="w-4 h-4" />
+                <span>
+                  Показано {filteredQueue.length} из {waitingQueue.length} талонов
+                  {searchQuery || sourceFilter !== 'ALL' ? ' (применены фильтры)' : ' (лимит отображения)'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="w-full text-left text-xs font-mono">
@@ -426,7 +455,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                     <td colSpan={7} className="text-center py-12 text-slate-400 font-sans text-xs">
                       {searchQuery || sourceFilter !== 'ALL'
                         ? 'По заданному фильтру талонов не найдено'
-                        : 'В очереди нет ожидающих клиентов'}
+                        : 'В реестре нет активных талонов'}
                     </td>
                   </tr>
                 ) : (
