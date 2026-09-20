@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,16 +164,42 @@ func (a *API) GetMe(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func (a *API) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := a.usecases.ListUsers(r.Context())
+	limit, offset, ok := paginationParams(w, r)
+	if !ok {
+		return
+	}
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	role := strings.TrimSpace(r.URL.Query().Get("role"))
+	users, err := a.usecases.ListUsers(r.Context(), limit, offset, search, role)
 	if err != nil {
 		a.respondError(w, r, err)
 		return
 	}
-	dtos := make([]userDTO, len(users))
-	for i, u := range users {
+	dtos := make([]userDTO, len(users.Items))
+	for i, u := range users.Items {
 		dtos[i] = toUserDTO(u)
 	}
-	writeJSONResponse(w, http.StatusOK, map[string]interface{}{"items": dtos})
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{"items": dtos, "total": users.Total, "counts": users.Counts, "limit": limit, "offset": offset})
+}
+
+func paginationParams(w http.ResponseWriter, r *http.Request) (int, int, bool) {
+	limit, offset := 50, 0
+	var err error
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err = strconv.Atoi(raw)
+	}
+	if err != nil || limit < 1 || limit > 50 {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "limit must be between 1 and 50")
+		return 0, 0, false
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		offset, err = strconv.Atoi(raw)
+	}
+	if err != nil || offset < 0 {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "offset must be zero or greater")
+		return 0, 0, false
+	}
+	return limit, offset, true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

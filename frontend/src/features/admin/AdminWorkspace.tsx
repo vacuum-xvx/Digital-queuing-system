@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { QueuePolicyEditor } from './QueuePolicyEditor';
 import { Branch } from '../../api/operator/types';
 import * as api from '../../api/admin/adminApi';
-import { AdminBranchOverview, AdminWindow } from '../../api/admin/types';
+import { AdminBranchOverview, AdminWindow, AnomalyTicket } from '../../api/admin/types';
 import { BranchQR } from './BranchQR';
 import { AdminSelfQR } from './AdminSelfQR';
 import { UsersManagement } from './UsersManagement';
@@ -12,6 +12,7 @@ import { getMe, User } from '../../api/authApi';
 import { BranchScheduleShiftManager } from './BranchScheduleShiftManager';
 import { LiveQueueView } from './LiveQueueView';
 import { formatMoscowDateTime } from '../../utils/time';
+import { Pagination } from '../../components/common/Pagination';
 import {
   Activity,
   Sliders,
@@ -36,6 +37,12 @@ export const AdminWorkspace: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [anomalies, setAnomalies] = useState<AnomalyTicket[]>([]);
+  const [anomaliesTotal, setAnomaliesTotal] = useState(0);
+  const [anomaliesPage, setAnomaliesPage] = useState(1);
+  const [anomaliesPageSize, setAnomaliesPageSize] = useState(25);
+  const [anomaliesLoading, setAnomaliesLoading] = useState(false);
+  const [anomaliesError, setAnomaliesError] = useState<string | null>(null);
 
   // Real backend overview data
   const [overview, setOverview] = useState<AdminBranchOverview | null>(null);
@@ -89,6 +96,25 @@ export const AdminWorkspace: React.FC = () => {
     };
   }, [selectedBranchId, activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'anomalies' || !selectedBranchId) return;
+    let active = true;
+    setAnomaliesLoading(true);
+    setAnomaliesError(null);
+    api.listAnomalies(selectedBranchId, anomaliesPage, anomaliesPageSize)
+      .then(result => {
+        if (!active) return;
+        setAnomalies(result.items);
+        setAnomaliesTotal(result.total);
+        setAnomaliesPage(current => Math.min(current, Math.max(1, Math.ceil(result.total / anomaliesPageSize))));
+      })
+      .catch(() => { if (active) setAnomaliesError('Не удалось загрузить журнал аномалий'); })
+      .finally(() => { if (active) setAnomaliesLoading(false); });
+    return () => { active = false; };
+  }, [activeTab, anomaliesPage, anomaliesPageSize, selectedBranchId]);
+
+  useEffect(() => { setAnomaliesPage(1); }, [selectedBranchId]);
+
   const handleToggleWindow = async (windowId: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
     try {
@@ -124,8 +150,7 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
-  const anomaliesList = overview?.anomalies || [];
-  const noShowCount = anomaliesList.filter(a => a.type === 'NO_SHOW').length;
+  const noShowCount = overview?.anomalies.filter(a => a.type === 'NO_SHOW').length ?? 0;
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -166,6 +191,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
+            aria-current={activeTab === 'overview' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'overview'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -179,6 +205,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('queue')}
+            aria-current={activeTab === 'queue' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'queue'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -197,6 +224,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('policy')}
+            aria-current={activeTab === 'policy' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'policy'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -210,6 +238,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('schedule')}
+            aria-current={activeTab === 'schedule' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'schedule'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -223,6 +252,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('anomalies')}
+            aria-current={activeTab === 'anomalies' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'anomalies'
                 ? 'bg-white text-[#D92534] shadow-sm'
@@ -231,9 +261,9 @@ export const AdminWorkspace: React.FC = () => {
           >
             <AlertTriangle className="w-4 h-4 text-red-600" />
             <span>Аномалии</span>
-            {anomaliesList.length > 0 && (
+            {anomaliesTotal > 0 && (
               <span className="w-5 h-5 rounded-full bg-red-100 text-red-700 text-[10px] flex items-center justify-center font-mono font-black">
-                {anomaliesList.length}
+                {anomaliesTotal}
               </span>
             )}
           </button>
@@ -241,6 +271,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('users')}
+            aria-current={activeTab === 'users' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'users'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -254,6 +285,7 @@ export const AdminWorkspace: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('qr')}
+            aria-current={activeTab === 'qr' ? 'page' : undefined}
             className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
               activeTab === 'qr'
                 ? 'bg-white text-[#003B73] shadow-sm'
@@ -391,17 +423,17 @@ export const AdminWorkspace: React.FC = () => {
               </div>
 
               {/* Quick Live Queue Preview Card */}
-              <div className="bg-white rounded-3xl border border-[#D2D8E2] p-5 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="admin-live-preview bg-white rounded-3xl border border-[#D2D8E2] p-5 sm:p-7 space-y-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#003B73] flex items-center justify-center">
-                      <Tv className="w-4 h-4" />
+                    <div className="w-12 h-12 rounded-2xl bg-[#EFF6FF] text-[#003B73] flex items-center justify-center shrink-0">
+                      <Tv className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-slate-900">
+                      <h3 className="font-black text-lg text-slate-900 tracking-tight">
                         Оперативная очередь отделения
                       </h3>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-sm text-slate-500">
                         Клиенты, ожидающие обслуживания прямо сейчас ({overview?.queue?.length ?? 0} чел.)
                       </p>
                     </div>
@@ -409,7 +441,7 @@ export const AdminWorkspace: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setActiveTab('queue')}
-                    className="px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#054FA6] text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                    className="px-5 py-3 rounded-2xl bg-[#003B73] hover:bg-[#054FA6] text-white text-sm font-bold transition-all shadow-sm flex items-center gap-2"
                   >
                     <span>Открыть табло очереди</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -417,28 +449,29 @@ export const AdminWorkspace: React.FC = () => {
                 </div>
 
                 {overview?.queue && overview.queue.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                  <div className="admin-live-preview__grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     {overview.queue.slice(0, 6).map((item, idx) => {
                       const isApt = item.source === 'APPOINTMENT';
                       const isQr = item.source === 'QR';
                       return (
                         <div
                           key={item.id}
-                          className="p-3 rounded-2xl border border-slate-200 bg-slate-50 text-center flex flex-col justify-between"
+                          className="admin-live-preview__ticket p-4 rounded-2xl border border-[#DCE4EE] bg-[#F8FAFC] text-center flex flex-col justify-between"
+                          style={{ minHeight: 198 }}
                         >
-                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                          <div className="flex items-center justify-between text-sm font-mono text-slate-500">
                             <span>#{idx + 1}</span>
                             <span>{item.waitTimeMinutes}м</span>
                           </div>
-                          <div className="text-xl font-black font-mono text-[#003B73] my-1">
+                          <div className="text-2xl font-black font-mono text-[#003B73] tracking-tight my-2">
                             {item.publicNumber}
                           </div>
-                          <div className="text-[10px] text-slate-600 truncate font-semibold">
+                          <div className="text-sm text-slate-700 truncate font-bold">
                             {item.serviceName}
                           </div>
-                          <div className="mt-1">
+                          <div className="mt-3">
                             <span
-                              className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${
+                              className={`text-[11px] px-2.5 py-1 rounded-lg font-mono font-bold uppercase ${
                                 isApt
                                   ? 'bg-indigo-100 text-indigo-800'
                                   : isQr
@@ -530,13 +563,17 @@ export const AdminWorkspace: React.FC = () => {
                   </p>
                 </div>
                 <span className="font-mono text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
-                  {anomaliesList.length} событий
+                  {anomaliesTotal} событий
                 </span>
               </div>
 
               <div className="space-y-2">
-                {anomaliesList.length > 0 ? (
-                  anomaliesList.map((item) => (
+                {anomaliesError ? (
+                  <div role="alert" className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">{anomaliesError}</div>
+                ) : anomaliesLoading ? (
+                  <div role="status" className="text-center py-12 text-xs text-slate-500 font-mono">Загрузка событий…</div>
+                ) : anomalies.length > 0 ? (
+                  anomalies.map((item) => (
                     <div
                       key={item.id}
                       className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-xs"
@@ -568,6 +605,9 @@ export const AdminWorkspace: React.FC = () => {
                   </div>
                 )}
               </div>
+              {!anomaliesError && <Pagination page={anomaliesPage} total={anomaliesTotal} pageSize={anomaliesPageSize}
+                disabled={anomaliesLoading} onPageChange={setAnomaliesPage}
+                onPageSizeChange={size => { setAnomaliesPageSize(size); setAnomaliesPage(1); }} itemLabel="аномалиям" />}
             </div>
           )}
 

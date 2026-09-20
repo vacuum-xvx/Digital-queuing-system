@@ -69,6 +69,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(requireRole(domain.RoleEmployee, domain.RoleOPCChief))
 			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
+			r.Get("/branches/{branchId}/queue", a.GetOperatorQueue)
+			r.Get("/branches/{branchId}/anomalies", a.ListAnomalies)
 			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
 			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)

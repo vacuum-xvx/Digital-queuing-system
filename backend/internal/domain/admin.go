@@ -34,6 +34,11 @@ type AdminQueueTicket struct {
 	Status          TicketStatus `json:"status"`
 }
 
+type OperatorQueue struct {
+	Items []AdminQueueTicket `json:"items"`
+	Total int `json:"total"`
+}
+
 type PriorityRule struct {
 	Source              TicketSource `json:"source"`
 	Name                string       `json:"name"`
@@ -58,6 +63,11 @@ type AnomalyTicket struct {
 	Description     string      `json:"description"`
 	Time            time.Time   `json:"time"`
 	DurationMinutes int         `json:"durationMinutes"`
+}
+
+type AnomalyPage struct {
+	Items []AnomalyTicket `json:"items"`
+	Total int             `json:"total"`
 }
 
 type AdminBranchOverview struct {

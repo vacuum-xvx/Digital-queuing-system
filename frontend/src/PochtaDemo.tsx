@@ -593,7 +593,7 @@ export default function PochtaDemo({ currentPath = '/demo', navigate }: { curren
     if (currentUser?.role === 'opc_chief') {
       try {
         const users = await listUsers();
-        setAdminUsers(users);
+        setAdminUsers(users.items);
       } catch (err) {
         console.error('Failed to load users', err);
       }

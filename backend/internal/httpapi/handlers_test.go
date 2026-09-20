@@ -53,7 +53,8 @@ type FakeUseCases struct {
 	LoginFunc          func(ctx context.Context, email, password string) (domain.Session, error)
 	LogoutFunc         func(ctx context.Context, token string) error
 	GetSessionUserFunc func(ctx context.Context, token string) (domain.User, error)
-	ListUsersFunc      func(ctx context.Context) ([]domain.User, error)
+	ListUsersFunc      func(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error)
+	ListAnomaliesFunc  func(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error)
 	ChangeUserRoleFunc func(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
 }
 
@@ -194,6 +195,10 @@ func (f *FakeUseCases) GetAdminOverview(ctx context.Context, branchID string) (d
 	return f.GetAdminOverviewFunc(ctx, branchID)
 }
 
+func (f *FakeUseCases) GetOperatorQueue(ctx context.Context, branchID string) (domain.OperatorQueue, error) {
+	return domain.OperatorQueue{Items: []domain.AdminQueueTicket{}}, nil
+}
+
 func (f *FakeUseCases) SavePriorityRules(ctx context.Context, branchID string, rules []domain.PriorityRule) error {
 	if f.SavePriorityRulesFunc != nil {
 		return f.SavePriorityRulesFunc(ctx, branchID, rules)
@@ -260,11 +265,17 @@ func (f *FakeUseCases) GetSessionUser(ctx context.Context, token string) (domain
 	return domain.User{}, application.ErrNotFound
 }
 
-func (f *FakeUseCases) ListUsers(ctx context.Context) ([]domain.User, error) {
+func (f *FakeUseCases) ListUsers(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error) {
 	if f.ListUsersFunc != nil {
-		return f.ListUsersFunc(ctx)
+		return f.ListUsersFunc(ctx, limit, offset, search, role)
 	}
-	return nil, nil
+	return domain.UserPage{}, nil
+}
+func (f *FakeUseCases) ListAnomalies(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error) {
+	if f.ListAnomaliesFunc != nil {
+		return f.ListAnomaliesFunc(ctx, branchID, limit, offset)
+	}
+	return domain.AnomalyPage{}, nil
 }
 
 func (f *FakeUseCases) ChangeUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error) {

@@ -131,24 +131,43 @@ func (p *Postgres) GetSessionUser(ctx context.Context, token string) (domain.Use
 // ListUsers (только для opc_chief)
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (p *Postgres) ListUsers(ctx context.Context) ([]domain.User, error) {
-	rows, err := p.pool.Query(ctx, `
+func (p *Postgres) ListUsers(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error) {
+	var page domain.UserPage
+	query := `
 		SELECT id::text, email, role, is_terminal, confirmed, created_at
-		FROM users ORDER BY created_at DESC
-	`)
+		FROM users
+		WHERE ($3 = '' OR email ILIKE '%' || $3 || '%' OR role::text ILIKE '%' || $3 || '%')
+		  AND ($4 = '' OR ($4 = 'terminal' AND is_terminal) OR role::text = $4)
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1 OFFSET $2`
+	rows, err := p.pool.Query(ctx, query, limit, offset, search, role)
 	if err != nil {
-		return nil, dbError(err)
+		return page, dbError(err)
 	}
 	defer rows.Close()
-	var users []domain.User
+	page.Items = make([]domain.User, 0, limit)
 	for rows.Next() {
 		var u domain.User
 		if err = rows.Scan(&u.ID, &u.Email, &u.Role, &u.IsTerminal, &u.Confirmed, &u.CreatedAt); err != nil {
-			return nil, dbError(err)
+			return page, dbError(err)
 		}
-		users = append(users, u)
+		page.Items = append(page.Items, u)
 	}
-	return users, dbError(rows.Err())
+	if err = rows.Err(); err != nil {
+		return page, dbError(err)
+	}
+	err = p.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FILTER (WHERE $2 = '' OR ($2 = 'terminal' AND is_terminal) OR role::text = $2),
+		       COUNT(*),
+		       COUNT(*) FILTER (WHERE role::text = 'employee'),
+		       COUNT(*) FILTER (WHERE role::text = 'opc_chief'),
+		       COUNT(*) FILTER (WHERE role::text = 'client'),
+		       COUNT(*) FILTER (WHERE role::text = 'terminal' OR is_terminal)
+		FROM users
+		WHERE ($1 = '' OR email ILIKE '%' || $1 || '%' OR role::text ILIKE '%' || $1 || '%')
+	`, search, role).Scan(&page.Total, &page.Counts.All, &page.Counts.Employee,
+		&page.Counts.OPCChief, &page.Counts.Client, &page.Counts.Terminal)
+	return page, dbError(err)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

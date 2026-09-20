@@ -207,9 +207,6 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
 
           </div>
 
-          {/* Postal Red Accent Line */}
-          <div className="w-full h-1 bg-[#D92534] mb-8"></div>
-
           {/* Main Title */}
           <div className="space-y-1 mb-5">
             <h1 className="text-3xl sm:text-4xl font-black text-[#003B73] tracking-tight">

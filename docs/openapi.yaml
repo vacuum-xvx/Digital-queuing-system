@@ -192,6 +192,11 @@ paths:
     get:
       security: [{ sessionCookie: [] }]
       summary: List users (opc_chief only)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string } }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -201,11 +206,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, total, limit, offset]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer, minimum: 0 }
+                  limit: { type: integer }
+                  offset: { type: integer }
         '500': { $ref: '#/components/responses/InternalError' }
   /admin/users/{userID}/role:
     put:
@@ -639,6 +647,32 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /admin/branches/{branchId}/anomalies:
+    get:
+      security: [{ sessionCookie: [] }]
+      summary: List branch anomalies with bounded pagination
+      parameters:
+        - { name: branchId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200':
+          description: Anomaly page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AnomalyTicket' } }
+                  total: { type: integer, minimum: 0 }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /admin/branches/{branchId}/priorities:
     put:
       security: [{ sessionCookie: [] }]

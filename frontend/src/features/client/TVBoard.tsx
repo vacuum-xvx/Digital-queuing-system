@@ -145,7 +145,7 @@ export function TVBoard() {
 
   useEffect(() => {
     if (!tvData?.windows) return;
-    const windows = tvData.windows as Array<{ number: number; currentTicketNumber?: string }>;
+    const windows = tvData.windows as Array<{ number: number; currentTicketNumber?: string; currentTicketStatus?: string }>;
 
     if (isInitialRef.current) {
       windows.forEach(w => {
@@ -168,6 +168,24 @@ export function TVBoard() {
     });
   }, [tvData]);
 
+  // A call is relevant only while the ticket is CALLED. Remove the transient
+  // full-screen card as soon as polling reports that service has started.
+  useEffect(() => {
+    if (!flash || !tvData?.windows) return;
+    const callWindow = (tvData.windows as Array<{
+      number: number;
+      currentTicketNumber?: string;
+      currentTicketStatus?: string;
+    }>).find(w => String(w.number) === String(flash.windowId));
+    if (
+      !callWindow ||
+      callWindow.currentTicketNumber !== flash.ticket ||
+      callWindow.currentTicketStatus !== 'CALLED'
+    ) {
+      setFlash(null);
+    }
+  }, [flash, tvData]);
+
   /* ── enable sound on first click / touch (autoplay policy) ── */
   useEffect(() => {
     if (!isSoundEnabled()) setSoundEnabled(true);
@@ -187,8 +205,13 @@ export function TVBoard() {
   /* ── derived data ── */
   const calls: TVCall[] = useMemo(() => {
     if (!tvData?.windows) return [];
-    const list = (tvData.windows as Array<{ number: number; currentTicketNumber?: string; status: string }>)
-      .filter(w => w.status !== 'CLOSED' && !!w.currentTicketNumber)
+    const list = (tvData.windows as Array<{
+      number: number;
+      currentTicketNumber?: string;
+      currentTicketStatus?: string;
+      status: string;
+    }>)
+      .filter(w => w.status !== 'CLOSED' && w.currentTicketStatus === 'CALLED' && !!w.currentTicketNumber)
       .map(w => ({
         windowId: w.number,
         windowName: `Окно ${w.number}`,
@@ -201,7 +224,8 @@ export function TVBoard() {
 
   const waiting: TVWaiting[] = useMemo(() => {
     if (!tvData?.queue) return [];
-    const list = (tvData.queue as Array<{ publicNumber: string; serviceName?: string }>)
+    const list = (tvData.queue as Array<{ publicNumber: string; serviceName?: string; status?: string }>)
+      .filter(q => q.status === 'WAITING')
       .map(q => ({ number: q.publicNumber, serviceTitle: q.serviceName || 'Услуга почты' }));
     return list;
   }, [tvData]);

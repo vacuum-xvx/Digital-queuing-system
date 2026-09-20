@@ -6,10 +6,10 @@ import "time"
 type UserRole string
 
 const (
-	RoleClient    UserRole = "client"
-	RoleEmployee  UserRole = "employee"
-	RoleOPCChief  UserRole = "opc_chief"  // Начальник ОПС
-	RoleTerminal  UserRole = "terminal"
+	RoleClient   UserRole = "client"
+	RoleEmployee UserRole = "employee"
+	RoleOPCChief UserRole = "opc_chief" // Начальник ОПС
+	RoleTerminal UserRole = "terminal"
 )
 
 // User — аккаунт в системе электронной очереди.
@@ -22,6 +22,21 @@ type User struct {
 	Confirmed    bool
 	ConfirmToken *string
 	CreatedAt    time.Time
+}
+
+type UserPage struct {
+	Items  []User     `json:"items"`
+	Total  int        `json:"total"`
+	Counts UserCounts `json:"counts"`
+}
+
+// UserCounts includes all search matches, before role filtering and pagination.
+type UserCounts struct {
+	All      int `json:"all"`
+	Employee int `json:"employee"`
+	OPCChief int `json:"opc_chief"`
+	Client   int `json:"client"`
+	Terminal int `json:"terminal"`
 }
 
 // Session — аутентификационная сессия (cookie-based).

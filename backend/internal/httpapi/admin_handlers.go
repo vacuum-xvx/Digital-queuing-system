@@ -15,6 +15,19 @@ type ChangeWindowStatusRequest struct {
 	Status string `json:"status"`
 }
 
+func (a *API) ListAnomalies(w http.ResponseWriter, r *http.Request) {
+	limit, offset, ok := paginationParams(w, r)
+	if !ok { return }
+	page, err := a.usecases.ListAnomalies(r.Context(), chi.URLParam(r, "branchId"), limit, offset)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"items": page.Items, "total": page.Total, "limit": limit, "offset": offset,
+	})
+}
+
 func (a *API) ChangeWindowStatus(w http.ResponseWriter, r *http.Request) {
 	windowID := chi.URLParam(r, "windowId")
 

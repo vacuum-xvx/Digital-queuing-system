@@ -90,6 +90,13 @@ export interface AnomalyTicket {
   durationMinutes: number;
 }
 
+export interface AnomalyPage {
+  items: AnomalyTicket[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface AdminBranchOverview {
   branchId: string;
   branchName: string;

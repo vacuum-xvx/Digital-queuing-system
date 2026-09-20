@@ -66,7 +66,7 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Электронная почта
             </label>
-            <div className="relative flex items-center">
+            <div className="field-with-icon relative flex items-center">
               <input
                 name="email"
                 type="email"
@@ -75,10 +75,9 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
                 disabled={pending}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="client@example.com"
-                style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }}
-                className="w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+                className="field-with-icon__input w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
               />
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Mail className="field-with-icon__icon w-4 h-4 text-slate-400" aria-hidden="true" />
             </div>
           </div>
 
@@ -86,7 +85,7 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Пароль
             </label>
-            <div className="relative flex items-center">
+            <div className="field-with-icon relative flex items-center">
               <input
                 name="password"
                 type={showPassword ? 'text' : 'password'}
@@ -96,10 +95,9 @@ export function ClientAuthModal({ isOpen, onClose, onUserChanged }: ClientAuthMo
                 disabled={pending}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
-                className="w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
+                className="field-with-icon__input w-full py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent"
               />
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Lock className="field-with-icon__icon w-4 h-4 text-slate-400" aria-hidden="true" />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}

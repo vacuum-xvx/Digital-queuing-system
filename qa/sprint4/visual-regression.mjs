@@ -12,10 +12,11 @@ try {
     if (await sound.getAttribute('aria-pressed') !== 'true') await sound.click();
     await page.waitForFunction(() => {
       const button = document.querySelector('.main-product-header button[aria-label="Выключить звук"]');
-      return button && getComputedStyle(button).backgroundColor === 'rgb(0, 59, 115)';
+      return button && getComputedStyle(button).backgroundColor === 'rgb(219, 234, 254)';
     });
-    assert.equal(await sound.evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
+    assert.equal(await sound.evaluate(el => getComputedStyle(el).color), 'rgb(0, 59, 115)');
     assert.equal(await sound.evaluate(el => getComputedStyle(el).color === getComputedStyle(el.querySelector('span')).color), true);
+    await page.screenshot({ path: `/tmp/queue-sound-${width}.png`, fullPage: true });
     await page.locator('button[aria-controls="a11y-settings"]').click();
     await page.locator('#a11y-settings').getByRole('button', { name: 'ВЫКЛ', exact: true }).click();
     assert(await page.evaluate(() => document.documentElement.classList.contains('a11y-contrast')));

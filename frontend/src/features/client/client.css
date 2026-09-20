@@ -493,6 +493,61 @@
   font-size: 0.875rem;
 }
 
+.cx-appointment-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cx-appointment-summary .cx-appointment-summary-date,
+.cx-appointment-summary-label {
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.cx-appointment-summary-time,
+.cx-eta-duration {
+  white-space: nowrap;
+}
+
+.cx-ticket-position.cx-ticket-eta {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.cx-eta-label {
+  flex: 1 1 10rem;
+  line-height: 1.5;
+}
+
+.cx-eta-chart {
+  display: flex;
+  flex: 1 1 12rem;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cx-eta-chart > svg {
+  width: 6rem;
+  height: 2rem;
+  flex-shrink: 0;
+}
+
+.cx-eta-load {
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
 .cx-pos-val {
   font-size: 1.5rem;
   font-weight: 700;
@@ -702,9 +757,9 @@
   color: inherit !important;
 }
 html:not(.a11y-contrast) .main-product-header .cx-header-btn[aria-pressed="true"] {
-  background: #003b73 !important;
-  color: #ffffff !important;
-  border-color: #003b73 !important;
+  background: #dbeafe !important;
+  color: #003b73 !important;
+  border-color: #93c5fd !important;
 }
 
 @media (max-width: 640px) {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, Check, Sparkles } from 'lucide-react';
-import { getMoscowTimeComponents, parseWorkHours } from '../../utils/workload';
+import React, { useEffect, useMemo } from 'react';
+import { Calendar, Clock, Check } from 'lucide-react';
+import { parseWorkHours } from '../../utils/workload';
 
 function moscowDateInput(date: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -44,7 +44,6 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
   disabled = false,
   workHours = '08:00–20:00',
 }) => {
-  const moscowNow = useMemo(() => getMoscowTimeComponents(), []);
   const parsedWorkHours = useMemo(() => parseWorkHours(workHours), [workHours]);
 
   // Разбор текущего значения YYYY-MM-DDTHH:mm
@@ -149,39 +148,27 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
             disabled={disabled}
             onClick={() => handleDateChange(todayDateStr)}
             aria-pressed={datePart === todayDateStr}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
-              datePart === todayDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
-            }`}
+            className="appointment-choice appointment-date-choice"
           >
-            Сегодня
+            <span>Сегодня</span>
           </button>
           <button
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(tomorrowDateStr)}
             aria-pressed={datePart === tomorrowDateStr}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
-              datePart === tomorrowDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
-            }`}
+            className="appointment-choice appointment-date-choice"
           >
-            Завтра
+            <span>Завтра</span>
           </button>
           <button
             type="button"
             disabled={disabled}
             onClick={() => handleDateChange(afterTomorrowDateStr)}
             aria-pressed={datePart === afterTomorrowDateStr}
-            className={`py-2 px-1 sm:px-2 rounded-xl text-[10px] xs:text-[11px] sm:text-xs font-bold transition-all border text-center truncate min-w-0 transform ${
-              datePart === afterTomorrowDateStr
-                ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/30 scale-105'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-102 hover:shadow-md'
-            }`}
+            className="appointment-choice appointment-date-choice"
           >
-            Послезавтра
+            <span>Послезавтра</span>
           </button>
         </div>
 
@@ -265,13 +252,9 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
                   disabled={disabled}
                   onClick={() => handleSlotSelect(slot)}
                   aria-pressed={active}
-                  className={`py-2 px-1 rounded-xl font-mono text-xs font-bold text-center transition-all border truncate min-w-0 transform ${
-                    active
-                      ? 'bg-[#003B73] text-white border-[#003B73] shadow-lg ring-2 ring-[#003B73]/40 scale-110'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:scale-105 hover:shadow-md'
-                  }`}
+                  className="appointment-choice appointment-time-choice"
                 >
-                  {slot}
+                  <span>{slot}</span>
                 </button>
               );
             })}
@@ -280,15 +263,15 @@ export const Appointment24hPicker: React.FC<Appointment24hPickerProps> = ({
       </div>
 
       {/* 3. Информационный бейдж с подтверждением 24-часового формата */}
-      <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full max-w-full min-w-0">
+      <div className="cx-appointment-summary p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs text-slate-800 w-full max-w-full min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Check className="w-4 h-4 text-[#003B73] shrink-0" />
           <div className="min-w-0 flex-1">
-            <span className="text-[11px] text-slate-500 block truncate">Выбранное время визита:</span>
-            <strong className="text-slate-900 font-bold capitalize truncate block text-xs">{formattedPreview}</strong>
+            <span className="cx-appointment-summary-label text-[11px] text-slate-500 block">Выбранное время визита:</span>
+            <strong className="cx-appointment-summary-date text-slate-900 font-bold capitalize block text-xs">{formattedPreview}</strong>
           </div>
         </div>
-        <span className="font-mono text-xs font-black text-[#003B73] px-2.5 py-1 rounded-xl bg-white border border-blue-200 shadow-2xs shrink-0 self-start sm:self-auto">
+        <span className="cx-appointment-summary-time font-mono text-xs font-black text-[#003B73] px-2.5 py-1 rounded-xl bg-white border border-blue-200 shadow-2xs">
           {selectedHour}:{selectedMinute}
         </span>
       </div>

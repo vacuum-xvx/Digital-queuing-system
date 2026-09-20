@@ -6,6 +6,14 @@ export async function getOverview(branchId: string): Promise<import('./types').A
   return handleResponse(response);
 }
 
+export async function listAnomalies(branchId: string, page = 1, limit = 25): Promise<import('./types').AnomalyPage> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String((page - 1) * limit) });
+  const response = await fetch(`${getApiBaseUrl()}/admin/branches/${encodeURIComponent(branchId)}/anomalies?${query}`, {
+    credentials: 'include', headers: { Accept: 'application/json' },
+  });
+  return handleResponse(response);
+}
+
 function getApiBaseUrl(): string {
   let envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : undefined;
 

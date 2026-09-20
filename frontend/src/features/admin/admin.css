@@ -1,7 +1,7 @@
 /* Светлая версия встроенного live-табло: текст остаётся читаемым при любом
    состоянии окна и не зависит от полупрозрачного синего фона. */
 .live-queue-board {
-  background: #f8fafc;
+  background: #ffffff;
   color: #0f172a;
   border-color: #cbd5e1;
   box-shadow: 0 10px 30px rgb(15 23 42 / 8%);
@@ -22,15 +22,12 @@
   border-color: #8eb5de !important;
 }
 .live-queue-board .bg-blue-900\/80,
-.live-queue-board .bg-slate-800,
-.live-queue-board .bg-indigo-500\/90,
-.live-queue-board .bg-sky-500\/90,
-.live-queue-board .bg-amber-500\/90 {
-  background: #e2e8f0 !important;
-  color: #1e293b !important;
-  border-color: #94a3b8 !important;
+.live-queue-board .bg-slate-800 {
+  background: #dbe6f2 !important;
+  color: #183b5e !important;
+  border-color: #a5bad1 !important;
 }
-.live-queue-number { white-space: nowrap; font-size: clamp(1rem, 2.2vw, 2rem); }
+.live-queue-number { white-space: nowrap; font-size: clamp(1rem, 2vw, 1.75rem); overflow: hidden; text-overflow: ellipsis; }
 .live-queue-board .border-white\/10 {
   border-color: #cbd5e1 !important;
 }
@@ -47,7 +44,17 @@
 .live-queue-board .bg-white\/10 {
   background: #ffffff !important;
   color: #0f172a !important;
-  border-color: #cbd5e1 !important;
+  border-color: #b7c9dc !important;
+}
+.live-queue-board .bg-\[\#0055A5\] .text-white,
+.live-queue-board .bg-\[\#0055A5\] .text-white\/70,
+.live-queue-board .bg-\[\#0055A5\] .text-white\/90 { color: #003b73 !important; }
+.live-queue-board .bg-indigo-500\/90 { background: #dce7fa !important; color: #263967 !important; }
+.live-queue-board .bg-sky-500\/90 { background: #d5ecf9 !important; color: #075079 !important; }
+.live-queue-board .bg-amber-500\/90 { background: #fce9bd !important; color: #633c04 !important; }
+.live-queue-board .bg-white\/5 { background: #fff !important; }
+@media (prefers-reduced-motion: reduce) {
+  .live-queue-board .animate-ping { animation: none; }
 }
 .live-queue-board .bg-white\/10 .text-white\/70,
 .live-queue-board .bg-white\/10 .text-white\/90 {

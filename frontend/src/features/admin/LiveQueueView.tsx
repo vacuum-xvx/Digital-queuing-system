@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import './admin.css';
 import { AdminWindow, AdminQueueTicket } from '../../api/admin/types';
 import { formatMoscowTime } from '../../utils/time';
 import { PochtaEmblem } from '../../components/common/PochtaBrand';
@@ -51,9 +52,10 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
     );
   }, [queue, windows]);
 
-  // Filtered queue for table view
+  // Filtered queue for table view. Unlike the hall preview, the operational
+  // register must include tickets that are already CALLED or SERVING.
   const filteredQueue = useMemo(() => {
-    const filtered = waitingQueue.filter((item) => {
+    const filtered = queue.filter((item) => {
       // Source filter
       if (sourceFilter !== 'ALL' && item.source !== sourceFilter) {
         return false;
@@ -69,7 +71,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
     });
     // Limit to 50 tickets max to prevent excessive scrolling
     return filtered.slice(0, 50);
-  }, [waitingQueue, sourceFilter, searchQuery]);
+  }, [queue, sourceFilter, searchQuery]);
 
   // Source counters
   const counts = useMemo(() => {
@@ -163,7 +165,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
 
       {/* 2. MODE 1: TV HALL DISPLAY (КАК ВИДЯТ ПОСЕТИТЕЛИ В ЗАЛЕ) */}
       {viewMode === 'tv' && (
-        <div className="live-queue-board rounded-2xl p-5 sm:p-7 border space-y-6">
+        <div className="live-queue-board rounded-2xl p-5 sm:p-7 border space-y-6" aria-label="Предпросмотр информационного табло зала">
           {/* TV Board Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div className="flex items-center gap-3.5">
@@ -297,7 +299,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                           <span>#{idx + 1}</span>
                           <span>{item.waitTimeMinutes}м</span>
                         </div>
-                        <div className="text-2xl font-black font-mono tracking-tight my-1">
+                        <div className="live-queue-number font-black font-mono tracking-tight my-1">
                           {item.publicNumber}
                         </div>
                         <div className="text-[10px] font-semibold truncate text-white/90">
@@ -348,14 +350,14 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
           {/* Controls Bar: Search & Category Filter */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="field-with-icon relative flex-1 max-w-md">
+              <Search className="field-with-icon__icon w-4 h-4 text-slate-400" aria-hidden="true" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Поиск по номеру талона (A-001, Q-015...) или услуге"
-                className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
+                className="field-with-icon__input w-full py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#003B73] bg-slate-50/50"
               />
               {searchQuery && (
                 <button
@@ -453,7 +455,7 @@ export const LiveQueueView: React.FC<LiveQueueViewProps> = ({
                     <td colSpan={7} className="text-center py-12 text-slate-400 font-sans text-xs">
                       {searchQuery || sourceFilter !== 'ALL'
                         ? 'По заданному фильтру талонов не найдено'
-                        : 'В очереди нет ожидающих клиентов'}
+                        : 'В реестре нет активных талонов'}
                     </td>
                   </tr>
                 ) : (

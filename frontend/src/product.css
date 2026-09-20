@@ -129,6 +129,49 @@ html, body {
   transition: border-color 150ms ease;
 }
 
+/* Icon fields keep the icon in its own slot; text can never flow beneath it. */
+.field-with-icon { position: relative; }
+.field-with-icon__icon {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.field-with-icon__input { padding-left: 2.75rem !important; padding-right: 2.75rem !important; }
+.header-reset-button {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.25rem 0 !important;
+}
+.data-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.data-pagination__controls { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.data-pagination__size { margin-right: auto; }
+.data-pagination__size select { background: white; color: #0f172a; border: 1px solid var(--border-medium); border-radius: 0.5rem; padding: 0.4rem; }
+.data-pagination button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border-medium);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  color: var(--brand-primary);
+}
+.data-pagination button svg { width: 0.9rem; height: 0.9rem; }
+.data-pagination button:disabled { opacity: 0.45; }
+
 :where(.product-shell button) {
   cursor: pointer;
   font: inherit;
@@ -209,7 +252,6 @@ html, body {
 
 /* Режим доступности / Версия для слабовидящих */
 html.a11y-mode {
-  font-size: 115%;
   --a11y-text: #ffffff;
   --a11y-background: #000000;
   --a11y-surface: #000000;
@@ -473,218 +515,87 @@ html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-redu
  * УЛУЧШЕННЫЕ АНИМАЦИИ И ВИЗУАЛЬНАЯ ОБРАТНАЯ СВЯЗЬ
  * ============================================================================= */
 
-/* Keyframe Animations */
-@keyframes pulse-ring {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.3;
-  }
-}
-
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* Animation Classes */
-.animate-pulse-ring {
-  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
 }
 
 .animate-fade-in {
   animation: fade-in 0.2s ease-out;
 }
 
-/* Enhanced Button States */
-.product-shell button,
-.product-shell .button {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.product-shell button:active:not(:disabled),
-.product-shell .button:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-/* Scale Transform Utilities */
-.hover\:scale-102:hover:not(:disabled) {
-  transform: scale(1.02);
-}
-
-.hover\:scale-105:hover:not(:disabled) {
-  transform: scale(1.05);
-}
-
-.scale-105 {
-  transform: scale(1.05);
-}
-
-.scale-110 {
-  transform: scale(1.10);
-}
-
-/* Enhanced Shadow States */
+/* Utility missing from the generated stylesheet but used by existing controls. */
 .shadow-2xs {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.shadow-xs {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-}
-
-.hover\:shadow-md:hover {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-/* Ring Utilities */
-.ring-1 {
-  box-shadow: 0 0 0 1px currentColor;
-}
-
-.ring-2 {
-  box-shadow: 0 0 0 2px currentColor;
-}
-
-/* Card Hover Effects */
-.card-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-/* Skeleton Loader */
-.skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 2s infinite;
-  border-radius: 0.5rem;
-}
-
-/* Status Indicators with Pulse */
-.status-indicator {
-  position: relative;
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.status-indicator::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  border-radius: 50%;
-  animation: pulse-ring 2s infinite;
-}
-
-.status-indicator.status-success {
-  background-color: #2E7D32;
-}
-
-.status-indicator.status-success::before {
-  background-color: rgba(46, 125, 50, 0.3);
-}
-
-.status-indicator.status-warning {
-  background-color: #FF6B00;
-}
-
-.status-indicator.status-warning::before {
-  background-color: rgba(255, 107, 0, 0.3);
-}
-
-.status-indicator.status-danger {
-  background-color: #D32F2F;
-}
-
-.status-indicator.status-danger::before {
-  background-color: rgba(211, 47, 47, 0.3);
-}
-
-/* Loading Dots Animation */
-.loading-dots {
+/* Selection uses a solid fill; keyboard focus has a separate visible outline. */
+.appointment-choice {
+  min-width: 0;
+  min-height: 2.5rem;
   display: inline-flex;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+  transition: background-color 150ms ease, border-color 150ms ease,
+    color 150ms ease, box-shadow 150ms ease;
 }
 
-.loading-dots span {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: currentColor;
-  animation: loading-pulse 1.4s infinite ease-in-out;
+.appointment-time-choice {
+  font-family: var(--font-family-mono);
 }
 
-.loading-dots span:nth-child(1) {
-  animation-delay: -0.32s;
+.appointment-choice > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.loading-dots span:nth-child(2) {
-  animation-delay: -0.16s;
+.appointment-choice:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: #e8f1fb;
+  border-color: #7aa7d5;
+  color: #003b73;
 }
 
-@keyframes loading-pulse {
-  0%, 80%, 100% {
-    transform: scale(0.8);
-    opacity: 0.5;
+.appointment-choice[aria-pressed="true"] {
+  background: #003b73;
+  border-color: #003b73;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.appointment-choice:focus-visible {
+  outline: 3px solid #0b63ce;
+  outline-offset: 3px;
+}
+
+.appointment-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 380px) {
+  .appointment-date-choice {
+    font-size: 0.625rem;
   }
-  40% {
-    transform: scale(1);
-    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
   }
-}
 
-/* Improved Selection States */
-.selected {
-  position: relative;
-  background-color: var(--brand-primary) !important;
-  color: white !important;
-  border-color: var(--brand-primary) !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 59, 115, 0.3), 0 4px 6px -2px rgba(0, 59, 115, 0.2);
-}
-
-.selected::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  padding: 2px;
-  background: linear-gradient(135deg, #003B73, #054FA6);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.4;
-  pointer-events: none;
+  .appointment-choice {
+    transition: none;
+  }
 }
 
