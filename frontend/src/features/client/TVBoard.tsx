@@ -18,24 +18,39 @@ interface TVWaiting {
   serviceTitle: string;
 }
 
-/* ───────────────── animated arrow SVG ──────────────── */
-function AnimatedArrow() {
+/* ───────────────── Sber-style animated arrow ──────────────── */
+function SberArrow() {
   return (
-    <div className="tv-arrow-wrap">
-      <svg width="64" height="40" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="tv-arrow-svg">
+    <div className="tv-sber-arrow">
+      <svg width="80" height="48" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Three chevrons that animate sequentially like Sber terminals */}
         <path
-          d="M4 20H52M52 20L38 6M52 20L38 34"
-          stroke="url(#arrowGrad)"
-          strokeWidth="5"
+          className="tv-chevron tv-chevron-1"
+          d="M8 8L28 24L8 40"
+          stroke="#003B73"
+          strokeWidth="4"
           strokeLinecap="round"
           strokeLinejoin="round"
+          fill="none"
         />
-        <defs>
-          <linearGradient id="arrowGrad" x1="4" y1="20" x2="52" y2="20" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#38BDF8" />
-            <stop offset="1" stopColor="#FACC15" />
-          </linearGradient>
-        </defs>
+        <path
+          className="tv-chevron tv-chevron-2"
+          d="M28 8L48 24L28 40"
+          stroke="#003B73"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <path
+          className="tv-chevron tv-chevron-3"
+          d="M48 8L68 24L48 40"
+          stroke="#003B73"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
       </svg>
     </div>
   );
@@ -54,7 +69,7 @@ function FlashOverlay({ ticket, windowId }: { ticket: string; windowId: string |
       <div className="tv-flash-card">
         <div className="tv-flash-label">Талон вызван!</div>
         <div className="tv-flash-ticket">{ticket}</div>
-        <AnimatedArrow />
+        <SberArrow />
         <div className="tv-flash-window">Окно {windowId}</div>
       </div>
     </div>
@@ -188,9 +203,9 @@ export function TVBoard() {
       {/* ── TOP BAR ── */}
       <header className="tv-topbar">
         <div className="tv-topbar-left">
-          <PochtaEmblem className="tv-emblem" bg="#FFFFFF" fg="#003B73" />
+          <PochtaEmblem className="tv-emblem" bg="#003B73" fg="#FFFFFF" />
           <div className="tv-brand-block">
-            <PochtaWordmark className="tv-wordmark" color="#FFFFFF" />
+            <PochtaWordmark className="tv-wordmark" color="#003B73" />
             <span className="tv-branch-name">{branchName}</span>
           </div>
         </div>
@@ -222,8 +237,8 @@ export function TVBoard() {
                   <div className="tv-call-ticket">{c.ticketNumber}</div>
                 </div>
 
-                {/* Arrow */}
-                <AnimatedArrow />
+                {/* Sber-style Arrow */}
+                <SberArrow />
 
                 {/* Window */}
                 <div className="tv-call-window-col">
@@ -239,7 +254,7 @@ export function TVBoard() {
           </div>
         </section>
 
-        {/* RIGHT: Waiting queue */}
+        {/* RIGHT: Waiting queue — flex-wrap grid, no scroll */}
         <section className="tv-waiting-section">
           <div className="tv-section-header">
             <span className="tv-section-dot tv-section-dot--amber" />
@@ -247,12 +262,10 @@ export function TVBoard() {
             <span className="tv-waiting-count">{waiting.length}</span>
           </div>
 
-          <div className="tv-waiting-list">
+          <div className="tv-waiting-grid">
             {waiting.map((w, i) => (
-              <div key={`${w.number}-${i}`} className="tv-waiting-row">
-                <span className="tv-waiting-pos">{i + 1}</span>
+              <div key={`${w.number}-${i}`} className="tv-waiting-chip">
                 <span className="tv-waiting-num">{w.number}</span>
-                <span className="tv-waiting-svc">{w.serviceTitle}</span>
               </div>
             ))}
             {waiting.length === 0 && (
@@ -296,15 +309,15 @@ const defaultWaiting: TVWaiting[] = [
 
 /* ═════════════════════ CSS ═════════════════════ */
 const tvStyles = `
-/* ═══════════════════════ TV ROOT ═══════════════════════ */
+/* ═══════════════════════ TV ROOT — LIGHT DESIGN ═══════════════════════ */
 .tv-root {
   position: fixed;
   inset: 0;
   z-index: 99999;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, #001D3D 0%, #003566 40%, #001D3D 100%);
-  color: #FFFFFF;
+  background: #F2F5F9;
+  color: #1E293B;
   font-family: 'Golos Text', 'PT Sans', system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
@@ -316,11 +329,11 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1vh 2.5vw;
-  background: rgba(0, 29, 61, 0.85);
-  backdrop-filter: blur(12px);
-  border-bottom: 3px solid #D92534;
+  padding: 1.2vh 2.5vw;
+  background: #FFFFFF;
+  border-bottom: 4px solid #D92534;
   flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .tv-topbar-left {
   display: flex;
@@ -328,10 +341,10 @@ const tvStyles = `
   gap: 1.2vw;
 }
 .tv-emblem {
-  width: 5vh;
-  height: 5vh;
-  border-radius: 12px;
-  filter: drop-shadow(0 0 8px rgba(255,255,255,0.3));
+  width: 5.5vh;
+  height: 5.5vh;
+  border-radius: 14px;
+  filter: drop-shadow(0 2px 6px rgba(0,59,115,0.15));
 }
 .tv-brand-block {
   display: flex;
@@ -339,12 +352,12 @@ const tvStyles = `
   gap: 0.3vh;
 }
 .tv-wordmark {
-  height: 2.8vh;
+  height: 3vh;
   width: auto;
 }
 .tv-branch-name {
   font-size: 1.5vh;
-  color: #86BBFF;
+  color: #64748B;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -361,39 +374,38 @@ const tvStyles = `
   font-size: 1.4vh;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: #4ADE80;
+  color: #16A34A;
   text-transform: uppercase;
 }
 .tv-status-dot {
   width: 1vh;
   height: 1vh;
   border-radius: 50%;
-  background: #4ADE80;
-  box-shadow: 0 0 8px #4ADE80, 0 0 20px rgba(74,222,128,0.4);
+  background: #22C55E;
+  box-shadow: 0 0 8px rgba(34,197,94,0.5);
   animation: tv-pulse 2s ease-in-out infinite;
 }
 .tv-date {
-  font-size: 1.6vh;
-  color: #94A3B8;
+  font-size: 1.8vh;
+  color: #64748B;
   font-weight: 500;
   text-transform: capitalize;
 }
 .tv-clock {
-  font-size: 4vh;
+  font-size: 4.5vh;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
-  color: #FFFFFF;
-  text-shadow: 0 0 20px rgba(56,189,248,0.4);
+  color: #003B73;
 }
 
 /* ═══════════════════════ CONTENT ═══════════════════════ */
 .tv-content {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 28vw;
+  grid-template-columns: 1fr 30vw;
   gap: 1.5vw;
-  padding: 1.5vh 2vw;
+  padding: 2vh 2vw;
   min-height: 0;
   overflow: hidden;
 }
@@ -403,14 +415,14 @@ const tvStyles = `
   display: flex;
   align-items: center;
   gap: 0.8vw;
-  font-size: 2.2vh;
+  font-size: 2.4vh;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #CBD5E1;
-  margin-bottom: 1.5vh;
+  letter-spacing: 0.08em;
+  color: #334155;
+  margin-bottom: 1.8vh;
   padding-bottom: 1vh;
-  border-bottom: 2px solid rgba(255,255,255,0.08);
+  border-bottom: 2px solid #E2E8F0;
 }
 .tv-section-dot {
   width: 1.2vh;
@@ -418,13 +430,13 @@ const tvStyles = `
   border-radius: 50%;
 }
 .tv-section-dot--green {
-  background: #4ADE80;
-  box-shadow: 0 0 10px rgba(74,222,128,0.5);
+  background: #22C55E;
+  box-shadow: 0 0 10px rgba(34,197,94,0.4);
   animation: tv-pulse 2s ease-in-out infinite;
 }
 .tv-section-dot--amber {
-  background: #FBBF24;
-  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+  background: #F59E0B;
+  box-shadow: 0 0 10px rgba(245,158,11,0.4);
   animation: tv-pulse 2s ease-in-out infinite 0.5s;
 }
 
@@ -438,7 +450,7 @@ const tvStyles = `
 .tv-calls-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.5vh;
+  gap: 1.8vh;
   flex: 1;
   align-content: start;
   overflow: hidden;
@@ -447,17 +459,17 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2vh 2vw;
-  border-radius: 2vh;
-  background: linear-gradient(135deg, rgba(5,79,166,0.45) 0%, rgba(0,59,115,0.55) 100%);
-  border: 2px solid rgba(56,189,248,0.2);
-  box-shadow: 0 0 30px rgba(5,79,166,0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+  padding: 2.5vh 2vw;
+  border-radius: 2.5vh;
+  background: #FFFFFF;
+  border: 2px solid #E2E8F0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.03);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   animation: tv-card-appear 0.6s ease-out backwards;
 }
 .tv-call-card:hover {
   transform: scale(1.01);
-  box-shadow: 0 0 40px rgba(56,189,248,0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  box-shadow: 0 8px 24px rgba(0,59,115,0.08);
 }
 .tv-call-ticket-col,
 .tv-call-window-col {
@@ -471,14 +483,13 @@ const tvStyles = `
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
-  color: #64A5D6;
+  color: #94A3B8;
 }
 .tv-call-ticket {
   font-size: 6.5vh;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
-  color: #FFFFFF;
-  text-shadow: 0 0 30px rgba(56,189,248,0.5);
+  color: #003B73;
   line-height: 1;
   letter-spacing: 0.02em;
 }
@@ -486,108 +497,113 @@ const tvStyles = `
   font-size: 6.5vh;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
-  color: #FACC15;
-  text-shadow: 0 0 20px rgba(250,204,21,0.4);
+  color: #FFFFFF;
   line-height: 1;
-  background: linear-gradient(135deg, rgba(250,204,21,0.15) 0%, rgba(250,204,21,0.05) 100%);
+  background: #003B73;
   border-radius: 1.5vh;
   padding: 0.8vh 1.5vw;
-  border: 2px solid rgba(250,204,21,0.3);
 }
 
-/* ═══════════════════════ ANIMATED ARROW ═══════════════════════ */
-.tv-arrow-wrap {
+/* ═══════════════════════ SBER-STYLE ANIMATED ARROW ═══════════════════════ */
+.tv-sber-arrow {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0.5vw;
-  animation: tv-arrow-bounce 1.6s ease-in-out infinite;
+  padding: 0 0.3vw;
 }
-.tv-arrow-svg {
+.tv-sber-arrow svg {
   width: 5vw;
   height: auto;
-  filter: drop-shadow(0 0 8px rgba(56,189,248,0.5));
 }
 
-/* ═══════════════════════ WAITING LIST ═══════════════════════ */
+/* Sequential chevron animation — each chevron fades in/out with a stagger */
+.tv-chevron {
+  opacity: 0.15;
+  animation: tv-sber-chevron 1.5s ease-in-out infinite;
+}
+.tv-chevron-1 {
+  animation-delay: 0s;
+}
+.tv-chevron-2 {
+  animation-delay: 0.2s;
+}
+.tv-chevron-3 {
+  animation-delay: 0.4s;
+}
+
+@keyframes tv-sber-chevron {
+  0% { opacity: 0.12; stroke-width: 3; }
+  30% { opacity: 1; stroke-width: 5; }
+  60% { opacity: 0.12; stroke-width: 3; }
+  100% { opacity: 0.12; stroke-width: 3; }
+}
+
+/* ═══════════════════════ WAITING — CHIP GRID (no scroll) ═══════════════════════ */
 .tv-waiting-section {
   display: flex;
   flex-direction: column;
-  background: rgba(0, 29, 61, 0.5);
-  border-radius: 2vh;
+  background: #FFFFFF;
+  border-radius: 2.5vh;
   padding: 2vh 1.5vw;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 2px solid #E2E8F0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
   min-height: 0;
   overflow: hidden;
 }
 .tv-waiting-count {
-  background: rgba(251,191,36,0.2);
-  color: #FBBF24;
+  background: #FEF3C7;
+  color: #B45309;
   border-radius: 1vh;
   padding: 0.3vh 1vw;
   font-variant-numeric: tabular-nums;
   font-size: 1.8vh;
+  font-weight: 700;
   margin-left: auto;
 }
-.tv-waiting-list {
+.tv-waiting-grid {
   flex: 1;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.tv-waiting-list::-webkit-scrollbar { display: none; }
-
-.tv-waiting-row {
   display: grid;
-  grid-template-columns: 4vh 1fr 1fr;
-  gap: 1vw;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  gap: 1vh;
+  overflow: hidden;
+}
+.tv-waiting-chip {
+  display: flex;
   align-items: center;
-  padding: 1.2vh 1vw;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  transition: background 0.2s;
-  animation: tv-row-slide 0.4s ease-out backwards;
+  justify-content: center;
+  padding: 1.2vh 1.5vw;
+  background: #F1F5F9;
+  border: 2px solid #E2E8F0;
+  border-radius: 1.5vh;
+  animation: tv-chip-appear 0.4s ease-out backwards;
+  transition: background 0.2s, border-color 0.2s;
 }
-.tv-waiting-row:nth-child(even) {
-  background: rgba(255,255,255,0.02);
-}
-.tv-waiting-row:first-child {
-  background: rgba(56,189,248,0.08);
-  border-radius: 1vh;
-}
-.tv-waiting-pos {
-  font-size: 1.6vh;
-  font-weight: 700;
-  color: #64748B;
-  text-align: center;
+.tv-waiting-chip:first-child {
+  background: #EFF6FF;
+  border-color: #93C5FD;
 }
 .tv-waiting-num {
-  font-size: 3vh;
+  font-size: 3.2vh;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
-  color: #E2E8F0;
+  color: #1E293B;
   letter-spacing: 0.02em;
-}
-.tv-waiting-svc {
-  font-size: 1.5vh;
-  color: #64748B;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 /* ═══════════════════════ BOTTOM BAR ═══════════════════════ */
 .tv-bottombar {
   flex-shrink: 0;
-  background: rgba(0, 29, 61, 0.9);
-  border-top: 2px solid rgba(255,255,255,0.06);
+  background: #FFFFFF;
+  border-top: 2px solid #E2E8F0;
   padding: 1vh 2.5vw;
 }
 .tv-bottombar-inner {
   display: flex;
   justify-content: space-between;
   font-size: 1.4vh;
-  color: #475569;
+  color: #94A3B8;
   font-weight: 600;
   letter-spacing: 0.05em;
 }
@@ -599,16 +615,18 @@ const tvStyles = `
   align-items: center;
   justify-content: center;
   font-size: 3vh;
-  color: #475569;
+  color: #94A3B8;
   font-weight: 600;
 }
 .tv-empty-small {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   padding: 4vh 0;
   font-size: 2vh;
-  color: #475569;
+  color: #94A3B8;
   font-weight: 600;
 }
 
@@ -620,8 +638,8 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 13, 30, 0.85);
-  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px);
   animation: tv-flash-in 0.4s ease-out, tv-flash-out 0.6s ease-in 3.9s forwards;
 }
 .tv-flash-card {
@@ -634,26 +652,22 @@ const tvStyles = `
 .tv-flash-label {
   font-size: 4vh;
   font-weight: 800;
-  color: #4ADE80;
+  color: #16A34A;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  text-shadow: 0 0 30px rgba(74,222,128,0.6);
 }
 .tv-flash-ticket {
   font-size: 18vh;
   font-weight: 900;
   font-family: 'Golos Text', monospace;
-  color: #FFFFFF;
-  text-shadow: 0 0 60px rgba(56,189,248,0.6);
+  color: #003B73;
   line-height: 1;
 }
 .tv-flash-window {
   font-size: 10vh;
   font-weight: 900;
-  color: #FACC15;
-  text-shadow: 0 0 40px rgba(250,204,21,0.5);
-  background: rgba(250,204,21,0.1);
-  border: 3px solid rgba(250,204,21,0.3);
+  color: #FFFFFF;
+  background: #003B73;
   border-radius: 3vh;
   padding: 1vh 4vw;
 }
@@ -664,19 +678,14 @@ const tvStyles = `
   50% { opacity: 0.5; transform: scale(0.85); }
 }
 
-@keyframes tv-arrow-bounce {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(0.8vw); }
-}
-
 @keyframes tv-card-appear {
   from { opacity: 0; transform: translateY(2vh); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes tv-row-slide {
-  from { opacity: 0; transform: translateX(2vw); }
-  to { opacity: 1; transform: translateX(0); }
+@keyframes tv-chip-appear {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes tv-flash-in {
