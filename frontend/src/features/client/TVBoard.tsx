@@ -3,6 +3,7 @@ import { PochtaEmblem, PochtaWordmark } from '../../components/common/PochtaBran
 import { useTVQueue } from '../../api/queries';
 import { announceTicketCall, isSoundEnabled, setSoundEnabled } from '../../utils/postalVoice';
 import { enqueueAnnouncement } from '../../utils/announcementQueue';
+import { subscribeToTVCalls } from '../../utils/tvNotification';
 
 /* ─────────────────────── types ─────────────────────── */
 interface TVCall {
@@ -114,9 +115,33 @@ export function TVBoard() {
   /* ── live data ── */
   const { data: tvData } = useTVQueue(selectedBranchId, 2500);
 
-  /* ── sound announcements ── */
+  /* ── sound announcements & cross-tab calls ── */
   const lastAnnouncedRef = useRef<Map<number, string>>(new Map());
+  const lastAnnouncedTimestampRef = useRef<Map<string, number>>(new Map());
   const isInitialRef = useRef(true);
+
+  const triggerCallAnnouncement = (ticketNumber: string, windowId: number | string) => {
+    const key = `${ticketNumber}-${windowId}`;
+    const nowTs = Date.now();
+    const last = lastAnnouncedTimestampRef.current.get(key) || 0;
+    // Allow repeat calls after 1.5 seconds, but prevent instant duplicates (e.g. from broadcast + polling)
+    if (nowTs - last < 1500) {
+      return;
+    }
+    lastAnnouncedTimestampRef.current.set(key, nowTs);
+
+    enqueueAnnouncement(() => announceTicketCall(ticketNumber, windowId));
+    flashKeyRef.current += 1;
+    setFlash({ ticket: ticketNumber, windowId });
+  };
+
+  /* ── listen to operator cross-tab calls (call-next, specific call, repeat call) ── */
+  useEffect(() => {
+    const unsubscribe = subscribeToTVCalls((ticketNumber, windowNumber) => {
+      triggerCallAnnouncement(ticketNumber, windowNumber);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!tvData?.windows) return;
@@ -135,10 +160,7 @@ export function TVBoard() {
         const prev = lastAnnouncedRef.current.get(w.number);
         if (prev !== w.currentTicketNumber) {
           lastAnnouncedRef.current.set(w.number, w.currentTicketNumber);
-          enqueueAnnouncement(() => announceTicketCall(w.currentTicketNumber!, w.number));
-          // trigger flash
-          flashKeyRef.current += 1;
-          setFlash({ ticket: w.currentTicketNumber, windowId: w.number });
+          triggerCallAnnouncement(w.currentTicketNumber, w.number);
         }
       } else {
         lastAnnouncedRef.current.delete(w.number);
@@ -146,14 +168,20 @@ export function TVBoard() {
     });
   }, [tvData]);
 
-  /* ── enable sound on first click (autoplay policy) ── */
+  /* ── enable sound on first click / touch (autoplay policy) ── */
   useEffect(() => {
+    if (!isSoundEnabled()) setSoundEnabled(true);
     const enableOnce = () => {
       if (!isSoundEnabled()) setSoundEnabled(true);
       document.removeEventListener('click', enableOnce);
+      document.removeEventListener('touchstart', enableOnce);
     };
     document.addEventListener('click', enableOnce);
-    return () => document.removeEventListener('click', enableOnce);
+    document.addEventListener('touchstart', enableOnce);
+    return () => {
+      document.removeEventListener('click', enableOnce);
+      document.removeEventListener('touchstart', enableOnce);
+    };
   }, []);
 
   /* ── derived data ── */

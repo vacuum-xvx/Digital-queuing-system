@@ -8,7 +8,7 @@ import { Service } from '../../api/client/types';
 import { getMe, User } from '../../api/authApi';
 import { ActionControls } from './ActionControls';
 import { TicketCard } from './TicketCard';
-import { announceTicketCall } from '../../utils/postalVoice';
+import { broadcastTicketCallToTV } from '../../utils/tvNotification';
 import {
   Clock,
   UserPlus,
@@ -96,12 +96,8 @@ export function OperatorWorkspace() {
         if (epoch.current !== generation || busy.current) return;
         setCurrent(ticket); setWindows(items); setReady(true); setError('');
 
-        if (ticket && ticket.status === 'CALLED' && ticket.id !== lastAnnouncedTicketId.current) {
+        if (ticket && ticket.status === 'CALLED') {
           lastAnnouncedTicketId.current = ticket.id;
-          const winNum = items.find(w => w.id === windowId)?.number ?? '';
-          if (winNum) {
-            void announceTicketCall(ticket.publicNumber, winNum);
-          }
         }
 
         // Also fetch real TV queue for side panel
@@ -243,7 +239,7 @@ export function OperatorWorkspace() {
         lastAnnouncedTicketId.current = ticket.id;
       }
       if (selected) {
-        void announceTicketCall(targetNum, selected.number);
+        broadcastTicketCallToTV(targetNum, selected.number);
       }
     });
   }
@@ -449,7 +445,7 @@ export function OperatorWorkspace() {
                             if (ticket) {
                               lastAnnouncedTicketId.current = ticket.id;
                               if (selected) {
-                                void announceTicketCall(ticket.publicNumber, selected.number);
+                                broadcastTicketCallToTV(ticket.publicNumber, selected.number);
                               }
                             }
                           } catch (err) {
@@ -462,7 +458,7 @@ export function OperatorWorkspace() {
                                   if (ticket) {
                                     lastAnnouncedTicketId.current = ticket.id;
                                     if (selected) {
-                                      void announceTicketCall(ticket.publicNumber, selected.number);
+                                      broadcastTicketCallToTV(ticket.publicNumber, selected.number);
                                     }
                                   }
                                   return;
@@ -475,7 +471,7 @@ export function OperatorWorkspace() {
                       }
                       onRepeatCall={() => {
                         if (current && selected) {
-                          void announceTicketCall(current.publicNumber, selected.number);
+                          broadcastTicketCallToTV(current.publicNumber, selected.number);
                         }
                       }}
                       onStartService={() => current && void act(() => api.startService(current.id))}

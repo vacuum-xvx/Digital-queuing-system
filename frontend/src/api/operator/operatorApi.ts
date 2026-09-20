@@ -140,14 +140,18 @@ export async function callNext(windowId: string, specificTicket?: string): Promi
   }
 
   const base = getApiBaseUrl();
-  const res = await fetch(`${base}/operator/windows/${encodeURIComponent(windowId)}/call-next`, {
+  const url = specificTicket
+    ? `${base}/operator/windows/${encodeURIComponent(windowId)}/call-next?publicNumber=${encodeURIComponent(specificTicket)}`
+    : `${base}/operator/windows/${encodeURIComponent(windowId)}/call-next`;
+
+  const res = await fetch(url, {
     method: 'POST',
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: specificTicket ? JSON.stringify({ publicNumber: specificTicket }) : undefined,
+    body: specificTicket ? JSON.stringify({ publicNumber: specificTicket, ticketId: specificTicket }) : undefined,
   });
 
   return await handleResponse<Ticket>(res);

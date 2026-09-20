@@ -51,7 +51,7 @@ export function App() {
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, []);
 
-  if (currentPath === '/tv') {
+  if (currentPath === '/tv' || currentPath === '/tv/' || currentPath.startsWith('/tv/') || currentPath.startsWith('/tv?')) {
     return <TVBoard />;
   }
 
@@ -59,6 +59,8 @@ export function App() {
     return <><p role="note" style={{ padding: '12px', textAlign: 'center' }}>Демонстрационный режим: часть показателей моделируется. <a href="/">Открыть реальный клиент</a></p><PochtaDemo currentPath={currentPath} navigate={navigate} /></>;
   }
   const routes: Array<{ path: string; label: string; page: ReactNode }> = [
+    { path: '/tv', label: 'TV', page: <TVBoard /> },
+    { path: '/tv/', label: 'TV', page: <TVBoard /> },
     ...(currentPath.startsWith('/q/') ? [{ path: currentPath, label: 'QR', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(3)} kiosk={new URLSearchParams(window.location.search).get('kiosk') === '1'} /> }] : []),
     ...(currentPath.startsWith('/kiosk/') ? [{ path: currentPath, label: 'Kiosk', page: <PhysicalQRPage key={currentPath} branchId={currentPath.slice(7)} kiosk /> }] : []),
     { path: '/', label: 'Client', page: <ClientPage /> },
