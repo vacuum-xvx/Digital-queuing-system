@@ -69,25 +69,37 @@ func recoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 
 func cors(allowedOrigin string) func(http.Handler) http.Handler {
 	origins := strings.Split(allowedOrigin, ",")
-	for i := range origins {
-		origins[i] = strings.TrimSpace(origins[i])
+	allowedMap := make(map[string]bool)
+	for _, o := range origins {
+		trimmed := strings.TrimSpace(o)
+		if trimmed != "" {
+			allowedMap[trimmed] = true
+		}
 	}
+	// Explicitly trust known exact origins
+	trustedExact := []string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+		"http://localhost:8080",
+		"http://127.0.0.1:8080",
+		"http://localhost:3000",
+		"http://127.0.0.1:3000",
+		"https://pointers-team.tech",
+		"https://www.pointers-team.tech",
+		"https://post-queue.duckdns.org",
+		"http://144.31.181.192",
+		"https://144.31.181.192",
+	}
+	for _, t := range trustedExact {
+		allowedMap[t] = true
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqOrigin := r.Header.Get("Origin")
 			if reqOrigin != "" {
 				w.Header().Add("Vary", "Origin")
-				matched := false
-				for _, o := range origins {
-					if o == reqOrigin || o == "*" {
-						matched = true
-						break
-					}
-				}
-				if !matched && (reqOrigin == "http://localhost:5173" || reqOrigin == "http://127.0.0.1:5173" || reqOrigin == "http://localhost:8080" || reqOrigin == "http://127.0.0.1:8080" ||
-					strings.HasSuffix(reqOrigin, "duckdns.org") || strings.HasSuffix(reqOrigin, "duckdns.com")) {
-					matched = true
-				}
+				matched := allowedMap["*"] || allowedMap[reqOrigin]
 				if matched {
 					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
 					w.Header().Set("Access-Control-Allow-Credentials", "true")

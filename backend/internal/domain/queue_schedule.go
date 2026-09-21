@@ -132,7 +132,11 @@ type ScheduleTicketInput struct {
 // No DB access and no time.Now inside!
 func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, checkinAt time.Time) (dueAt time.Time, readyAt time.Time, sourceRank int) {
 	getMaxWait := func(srcKey string) time.Duration {
+		svcKey := strings.ToLower(ticket.ServiceID)
 		if srv, ok := policy.Services[ticket.ServiceID]; ok && srv.MaxWaitMinutes > 0 {
+			return time.Duration(srv.MaxWaitMinutes) * time.Minute
+		}
+		if srv, ok := policy.Services[svcKey]; ok && srv.MaxWaitMinutes > 0 {
 			return time.Duration(srv.MaxWaitMinutes) * time.Minute
 		}
 		if sp, ok := policy.Sources[srcKey]; ok && sp.MaxWaitMinutes != nil && *sp.MaxWaitMinutes > 0 {
@@ -247,9 +251,15 @@ func DefaultQueuePolicy() QueuePolicyConfig {
 			"live":        {Rank: 2, MaxWaitMinutes: &maxWait30},
 		},
 		Services: map[string]ServicePolicy{
-			"letters":  {MaxWaitMinutes: 20},
-			"parcels":  {MaxWaitMinutes: 30},
-			"payments": {MaxWaitMinutes: 15},
+			"letters":                              {MaxWaitMinutes: 20},
+			"parcels":                              {MaxWaitMinutes: 30},
+			"payments":                             {MaxWaitMinutes: 15},
+			"send":                                 {MaxWaitMinutes: 30},
+			"retail":                               {MaxWaitMinutes: 15},
+			"22222222-2222-2222-2222-222222222222": {MaxWaitMinutes: 30}, // Parcels
+			"55555555-5555-5555-5555-555555555555": {MaxWaitMinutes: 15}, // Payments
+			"33333333-2222-2222-2222-222222222222": {MaxWaitMinutes: 30}, // Send
+			"44444444-2222-2222-2222-222222222222": {MaxWaitMinutes: 15}, // Retail
 		},
 		Call: CallPolicy{
 			ClientTimeoutSeconds: 90,

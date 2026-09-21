@@ -3,9 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -95,7 +97,70 @@ func (a *API) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 
 const sessionCookie = "session"
 
+type loginLimiter struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
+}
+
+var defaultLoginLimiter = &loginLimiter{
+	attempts: make(map[string][]time.Time),
+}
+
+func (l *loginLimiter) allow(key string, maxAttempts int, window time.Duration) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-window)
+
+	times := l.attempts[key]
+	valid := times[:0]
+	for _, t := range times {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+
+	if len(valid) >= maxAttempts {
+		l.attempts[key] = valid
+		return false
+	}
+
+	valid = append(valid, now)
+	l.attempts[key] = valid
+
+	if len(l.attempts) > 10000 {
+		for k, v := range l.attempts {
+			if len(v) == 0 || v[len(v)-1].Before(cutoff) {
+				delete(l.attempts, k)
+			}
+		}
+	}
+	return true
+}
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return ip
+	}
+	return r.RemoteAddr
+}
+
 func (a *API) Login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !defaultLoginLimiter.allow(ip, 20, time.Minute) {
+		writeJSONError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many login attempts, please try again later")
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
@@ -113,12 +178,14 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    sess.Token,
 		Path:     "/",
 		Expires:  sess.ExpiresAt,
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -136,12 +203,16 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
-		Name:    sessionCookie,
-		Value:   "",
-		Path:    "/",
-		Expires: time.Unix(0, 0),
-		MaxAge:  -1,
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
 	})
 	writeJSONResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeDB struct {
@@ -89,3 +90,50 @@ func TestCORS(t *testing.T) {
 		}
 	}
 }
+
+func TestCORSStrictExactMatching(t *testing.T) {
+	router := NewRouter(&fakeDB{}, nil, slog.Default(), "https://pointers-team.tech")
+
+	// 1. Evil duckdns suffix must be BLOCKED
+	for _, evil := range []string{"http://evil-duckdns.org", "http://maliciousduckdns.com", "http://attacker.duckdns.org.evil.com"} {
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req.Header.Set("Origin", evil)
+		router.ServeHTTP(resp, req)
+		if resp.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("evil origin %s should be blocked, got: %s", evil, resp.Header().Get("Access-Control-Allow-Origin"))
+		}
+	}
+
+	// 2. Genuine production domains must be ALLOWED
+	for _, good := range []string{"https://pointers-team.tech", "https://post-queue.duckdns.org"} {
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req.Header.Set("Origin", good)
+		router.ServeHTTP(resp, req)
+		if resp.Header().Get("Access-Control-Allow-Origin") != good {
+			t.Fatalf("valid origin %s should be allowed, got: %s", good, resp.Header().Get("Access-Control-Allow-Origin"))
+		}
+	}
+}
+
+func TestLoginRateLimiter(t *testing.T) {
+	limiter := &loginLimiter{attempts: make(map[string][]time.Time)}
+	ip := "192.0.2.1"
+
+	for i := 0; i < 20; i++ {
+		if !limiter.allow(ip, 20, time.Minute) {
+			t.Fatalf("request %d should have been allowed", i+1)
+		}
+	}
+	// 21st attempt should be rejected
+	if limiter.allow(ip, 20, time.Minute) {
+		t.Fatal("request 21 should have been rate limited")
+	}
+
+	// Different IP should still be allowed
+	if !limiter.allow("192.0.2.2", 20, time.Minute) {
+		t.Fatal("different IP should have been allowed")
+	}
+}
+

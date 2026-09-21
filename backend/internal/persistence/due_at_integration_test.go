@@ -463,3 +463,65 @@ func TestCallSpecificTicket(t *testing.T) {
 	}
 }
 
+// Test 12: Admin UI QueuePolicy update dynamically reorders waiting tickets in CallNext
+func TestQueuePolicyUpdateDynamicallyReordersCallNext(t *testing.T) {
+	ctx, p, _ := integration(t)
+	baseTime := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+
+	// Fetch current policy version
+	curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+	if err != nil {
+		t.Fatalf("failed to get queue policy: %v", err)
+	}
+
+	// 1. Create a LIVE ticket and a QR ticket with the same due_at and checkin_at
+	tLive := live(t, ctx, p, "dyn-live", parcels)
+	tQR := create(t, ctx, p, parcels, "dyn-qr")
+
+	// Set exact identical due_at and checkin_at
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, checkin_at=$2, source_rank=2 WHERE id=$1::uuid`,
+		tLive.ID, baseTime)
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, checkin_at=$2, source_rank=1 WHERE id=$1::uuid`,
+		tQR.ID, baseTime)
+
+	// 2. Admin elevates LIVE priority above QR priority via UpdateQueuePolicy
+	cmd := application.UpdateQueuePolicyCommand{
+		BranchID:                        demoBranch,
+		ExpectedVersion:                 curPolicy.Version,
+		AppointmentDuePriority:          200,
+		QRPriority:                      20,
+		LivePriority:                    50, // Live > QR!
+		AntiStarvationThresholdMinutes:  curPolicy.AntiStarvationThresholdMinutes,
+		AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+		AppointmentGraceMinutes:         curPolicy.AppointmentGraceMinutes,
+		AppointmentLatePenaltyPerMinute: curPolicy.AppointmentLatePenaltyPerMinute,
+		AppointmentLatePenaltyMaxPoints: curPolicy.AppointmentLatePenaltyMaxPoints,
+	}
+	updated, err := p.UpdateQueuePolicy(ctx, cmd)
+	if err != nil {
+		t.Fatalf("UpdateQueuePolicy failed: %v", err)
+	}
+	if updated.LivePriority != 50 || updated.QRPriority != 20 {
+		t.Fatalf("expected updated priorities Live=50, QR=20, got: %+v", updated)
+	}
+
+	// 3. CallNextAt must now return tLive FIRST because Live has higher priority than QR!
+	first, err := p.CallNextAt(ctx, window1, baseTime)
+	if err != nil {
+		t.Fatalf("CallNextAt failed: %v", err)
+	}
+	if first.ID != tLive.ID {
+		t.Fatalf("expected LIVE ticket %s to be called first after policy update, but got %s (source=%s)", tLive.ID, first.ID, first.Source)
+	}
+
+	// 4. Create new LIVE ticket and verify it gets source_rank = 1 (higher than QR)
+	tLive2 := live(t, ctx, p, "dyn-live-2", parcels)
+	chk, err := p.GetTicket(ctx, tLive2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chk.SourceRank != 1 {
+		t.Fatalf("expected new LIVE ticket to receive source_rank=1, got %d", chk.SourceRank)
+	}
+}
+
