@@ -15,6 +15,7 @@ node_modules/
 Thumbs.db
 *.log
 *.swp
+*.bak
 *.docx
 .superpowers/
 TZ_2.txt
