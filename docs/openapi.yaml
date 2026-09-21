@@ -6,6 +6,79 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /branches/{branchId}/windows:
+    $ref: '#/paths/~1admin~1branches~1{branchId}~1windows'
+  /windows/{windowId}:
+    $ref: '#/paths/~1admin~1windows~1{windowId}'
+  /admin/branches/{branchId}/windows:
+    post:
+      summary: Создать закрытое окно отделения
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: branchId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: Окно создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Window' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /admin/windows/{windowId}:
+    delete:
+      summary: Удалить окно без активного талона
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: windowId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Окно удалено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: WINDOW_BUSY — в окне есть активный талон
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /admin/branches/{branchId}/queue:
+    get:
+      summary: Получить первые 25 ожидающих талонов и общее количество
+      description: Только WAITING, порядок queue_entered_at, id; это список интерфейса, не порядок CallNext.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: branchId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Очередь отделения
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    maxItems: 25
+                    items:
+                      type: object
+                      required: [id, publicNumber, source, serviceId, serviceName, queueEnteredAt, waitTimeMinutes, status]
+                      properties:
+                        id: { type: string, format: uuid }
+                        publicNumber: { type: string }
+                        source: { type: string, enum: [QR, LIVE, APPOINTMENT] }
+                        serviceId: { type: string, format: uuid }
+                        serviceName: { type: string }
+                        queueEnteredAt: { type: string, format: date-time }
+                        waitTimeMinutes: { type: integer }
+                        status: { type: string, enum: [WAITING] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /branches/{branchId}/tv:
     get:
       summary: Public hall view from backend overview
@@ -16,7 +89,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
-          description: Active windows and up to 10 waiting tickets
+          description: Незакрытые окна и до 15 ожидающих талонов
           content:
             application/json:
               schema:
@@ -98,7 +171,14 @@ paths:
   /tickets/{ticketId}/eta:
     get:
       summary: Approximate backend waiting estimate using canonical QueuePosition
-      description: Uses the last 20 positive COMPLETED service durations in the same branch/service. With fewer than 3 samples uses 300 seconds; otherwise floors the mean. Wait is clamp((position-1)*average,60,1800). Non-AVAILABLE reasons return null estimates, sampleSize 0 and usedFallback false. This is not a call-time guarantee.
+      description: >-
+        Используются до 20 последних положительных длительностей COMPLETED той же услуги
+        в отделении. Взвешенное среднее имеет веса N..1 от нового к старому; при менее
+        трёх измерениях используется 300 секунд. Моделируются position−1 обслуживаний
+        длительностью max(30,floor(duration)) на открытых совместимых окнах с ближайшим
+        освобождением. Для занятого окна остаток max(30,duration−elapsed), для свободного 0.
+        Итоговая оценка ограничена 60–1800 секундами. При reason != AVAILABLE оценки null,
+        sampleSize=0, usedFallback=false. Это оценка, не гарантия времени вызова.
       parameters:
         - name: ticketId
           in: path
@@ -184,7 +264,11 @@ paths:
           description: Confirmed
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/StatusOK' }
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [confirmed] }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -448,13 +532,32 @@ paths:
   /operator/windows/{windowId}/call-next:
     post:
       security: [{ sessionCookie: [] }]
-      summary: Call the next waiting ticket
+      summary: Автоматический или ручной вызов талона
+      description: >-
+        Без цели вызывает CallNext с порядком due_at ASC, source_rank ASC, checkin_at ASC,
+        id ASC, фильтром ready_at и блокировками FOR UPDATE SKIP LOCKED.
+        Непустая цель переключает на CallSpecificTicket без ranking и проверки ready_at.
+        Приоритет цели после TrimSpace — ticketId в JSON, publicNumber в JSON,
+        затем query ticketId, publicNumber, ticket. Оба режима проверяют OPEN,
+        отсутствие активного талона и совместимость услуги.
       parameters:
         - name: windowId
           in: path
           required: true
           schema:
             type: string
+        - { name: ticketId, in: query, schema: { type: string } }
+        - { name: publicNumber, in: query, schema: { type: string } }
+        - { name: ticket, in: query, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticketId: { type: string }
+                publicNumber: { type: string }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1159,6 +1262,7 @@ paths:
   /appointments/{ticketId}/arrive:
     post:
       summary: Record appointment arrival without changing SCHEDULED status
+      description: Сохраняет первое прибытие и пересчитывает сроки по YAML; повтор в SCHEDULED не меняет первое время. Для воспроизводимого запроса используйте UUID талона.
       operationId: arriveAppointment
       parameters:
       - name: ticketId
@@ -1296,6 +1400,17 @@ components:
               message: "Version mismatch"
               requestId: "req-123"
   schemas:
+    AnomalyTicket:
+      type: object
+      description: Аномалия талона из domain.AnomalyTicket.
+      required: [id, publicNumber, type, description, time, durationMinutes]
+      properties:
+        id: { type: string, format: uuid }
+        publicNumber: { type: string }
+        type: { type: string, enum: [EXCEEDED_WAIT, UNFINISHED, NO_SHOW, TECH_ISSUE] }
+        description: { type: string }
+        time: { type: string, format: date-time }
+        durationMinutes: { type: integer }
     TicketETA:
       type: object
       additionalProperties: false
@@ -1318,12 +1433,15 @@ components:
             number: { type: integer }
         sampleSize: { type: integer, minimum: 0, maximum: 20 }
         usedFallback: { type: boolean }
-        weightedWaitSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
-        medianSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
-        p90WaitSeconds: { type: integer, minimum: 0, maximum: 1800, nullable: true }
+        weightedWaitSeconds:
+          type: integer
+          minimum: 0
+          description: Взвешенная длительность обслуживания (300 при недостатке истории), не итоговая ETA; поле отсутствует при reason != AVAILABLE.
+        medianSeconds: { type: integer, minimum: 0, description: Медиана длительностей; поле отсутствует при reason != AVAILABLE. }
+        p90WaitSeconds: { type: integer, minimum: 0, description: P90 длительностей; поле отсутствует при reason != AVAILABLE. }
         distribution:
           type: object
-          nullable: true
+          description: Распределение длительностей обслуживания; отсутствует при reason != AVAILABLE.
           properties:
             avg: { type: integer, minimum: 0 }
             weightedAvg: { type: integer, minimum: 0 }
@@ -1359,6 +1477,7 @@ components:
         status: { type: string, enum: [ok] }
     QueuePolicy:
       type: object
+      description: Legacy-баллы и параметры аудита; автоматический CallNext сортирует по сохранённым due_at, source_rank, checkin_at, id из YAML-планирования.
       additionalProperties: false
       required:
       - branchId
@@ -1528,6 +1647,7 @@ components:
           type: integer
           format: int64
           nullable: true
+          description: Базовый legacy-приоритет источника; при ошибке чтения политики source_rank. Не ключ сортировки CallNext.
         effectiveQueueTime:
           type: string
           format: date-time
@@ -1560,8 +1680,9 @@ components:
           - RETURNED
           - REDIRECTED
         fromStatus:
-          $ref: '#/components/schemas/TicketStatus'
+          type: string
           nullable: true
+          enum: [SCHEDULED, WAITING, CALLED, SERVING, COMPLETED, CANCELLED, NO_SHOW, null]
         toStatus:
           $ref: '#/components/schemas/TicketStatus'
         windowId:
@@ -1576,7 +1697,7 @@ components:
           type: integer
           format: int64
           nullable: true
-          description: Final canonical effective priority at CALLED, without a maximum cap; null for other events
+          description: Legacy-баллы автоматического/ручного вызова; при повторном вызове recovery worker — source_rank. Не ключ сортировки CallNext; для остальных типов событий null.
         occurredAt:
           type: string
           format: date-time
@@ -1846,10 +1967,21 @@ components:
             format: uuid
     RedirectTicketRequest:
       type: object
-      required:
-        - newServiceId
+      description: Нужна непустая newServiceId или newWindowId; targetWindowId — алиас newWindowId. APPOINTMENT не поддерживается.
+      anyOf:
+        - required: [newServiceId]
+          properties:
+            newServiceId: { type: string, minLength: 1 }
+        - required: [newWindowId]
+          properties:
+            newWindowId: { type: string, minLength: 1 }
+        - required: [targetWindowId]
+          properties:
+            targetWindowId: { type: string, minLength: 1 }
       properties:
         newServiceId:
           type: string
         newWindowId:
+          type: string
+        targetWindowId:
           type: string

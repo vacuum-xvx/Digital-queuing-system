@@ -22,6 +22,18 @@
 предварительная запись, управление окнами и наблюдаемость. React 19 + TypeScript
 на клиенте, Go + PostgreSQL на сервере.
 
+## 🔍 Что сдаётся на проверку
+
+- 💻 Исходный код: [Go backend](backend/) · [React frontend](frontend/)
+- 🚀 [Инструкция по запуску](#запуск)
+- 📡 [OpenAPI-контракт](docs/openapi.yaml)
+- 🏗️ [Архитектура](#архитектура)
+- 🧠 [Алгоритм электронной очереди](#как-рассчитывается-очередь)
+- 🧪 [Материалы проверки: тесты, QA и demo-сценарий](docs/testing.md)
+
+[Быстрый запуск и URL](#запуск) · [Команды тестов](#проверки) ·
+[Demo по шагам](docs/testing.md#демонстрационный-сценарий)
+
 ## Сценарии проекта
 
 | Роль / экран | Реализовано |
@@ -54,6 +66,9 @@
 
 ## Как рассчитывается очередь
 
+Описание ниже сверено с текущим кодом. Документы Sprint 1–3 сохраняют историю
+реализации; описанный там выбор по `effectivePriority` больше не определяет `CallNext`.
+
 ### Путь посетителя
 
 ```text
@@ -68,8 +83,8 @@ QR / терминал / сайт → Отделение и услуга → Та
 
 - **На телефоне:** быстрый выбор даты и времени, время справа от даты,
   адаптивный блок ожидания без разрывов слов.
-- **В кабинете начальника:** серверная пагинация пользователей и аномалий —
-  10, 25 или 50 записей, по умолчанию 25; размер страницы рядом с диапазоном записей.
+- **В кабинете начальника:** UI предлагает страницы пользователей и аномалий по
+  10, 25 или 50 записей, по умолчанию 25; API допускает `limit` 1–50 и без параметра использует 50.
 - **У оператора:** первые 25 талонов очереди вместо загрузки всего списка;
   обновление списка по мере работы с талонами.
 - **В зале:** светлое табло, крупные номера и голосовой вызов;
@@ -77,8 +92,8 @@ QR / терминал / сайт → Отделение и услуга → Та
 
 ### Срок обслуживания и готовность к вызову
 
-Реализация: `backend/internal/domain/queue_schedule.go`,
-`backend/internal/persistence/postgres.go`. Настройки: [queue_policy.yaml](queue_policy.yaml).
+Реализация: [ComputeSchedule](backend/internal/domain/queue_schedule.go),
+[CallNext](backend/internal/persistence/postgres.go). Настройки: [queue_policy.yaml](queue_policy.yaml).
 
 Для QR и живой очереди:
 
@@ -95,20 +110,94 @@ ready_at = max(checkin_at, scheduled_at - early_window_minutes)
 ```
 
 При опоздании за пределы grace-периода применяется срок живой очереди.
-Талон допускается к вызову только при совместимости услуги с окном и наступившем
-`ready_at`. Порядок выбора:
+При автоматическом `CallNext` талон допускается к вызову только при совместимости
+услуги с окном и наступившем `ready_at`. Порядок выбора:
 
 ```text
 due_at ASC → source_rank ASC → checkin_at ASC → id ASC
 ```
 
+Меньший `source_rank` выигрывает только при равном `due_at`: в текущем YAML
+APPOINTMENT = 0, QR = 1, LIVE = 2. FIFO по `checkin_at` действует при равных
+`due_at` и `source_rank`; окончательное равенство разрешается по UUID.
+`max_wait_minutes` сначала берётся по UUID услуги, затем по источнику, иначе 30 минут.
+Каждые 5 секунд проверяется время изменения YAML; файл перечитывается, если оно
+увеличилось, и применяется только после успешной валидации. Уже сохранённые сроки
+при этом автоматически не пересчитываются.
+
+QR (`Q-*`) и LIVE (`L-*`) создаются в `WAITING` с check-in в момент создания.
+Новая предварительная запись (`A-*`) создаётся на будущее в `SCHEDULED`;
+до подтверждения прибытия её `ready_at` установлен на дату записи + 365 дней.
+Вызов [arrive](backend/internal/persistence/sprint3.go) сохраняет `arrived_at`/`checkin_at`
+и пересчитывает сроки, оставляя статус `SCHEDULED`. Повторный arrive в этом состоянии
+сохраняет первое время прибытия. Далее возможен прямой переход в `CALLED`.
+По YAML ранний вызов разрешён за 10 минут, допустимое опоздание — 15 минут.
+При большем опоздании источник остаётся APPOINTMENT, но срок и ранг рассчитываются как LIVE.
+
+Границы этого правила: [миграция 14](backend/migrations/000014_due_at_queue_engine.up.sql)
+заполняет старые `SCHEDULED` без `due_at` значением `ready_at = scheduled_at − 10 минут`,
+не требуя arrive. Новые записи используют описанный выше срок +365 дней;
+это отложенный срок, а не отдельный бессрочный запрет вызова без прибытия.
+[Ручной вызов](backend/internal/httpapi/operator_handlers.go) через тот же HTTP
+`call-next` с `ticketId`/`publicNumber` выбирает `CallSpecificTicket`: проверяет окно,
+занятость, состояние и совместимость, но не проверяет `ready_at` и не применяет ranking.
+Он может вызвать запись без arrive и устанавливает `arrived_at`, если его ещё нет.
+
 Срок — ориентир планирования, **не гарантия отсутствия ожидания**.
 В коде также сохранён legacy-расчёт эффективного приоритета для диагностики/аудита;
 его не следует путать с основным порядком `CallNext`.
 
+Настраиваемые баллы источников, anti-starvation (рост баллов после порога ожидания)
+и штраф опоздания находятся в [queue_policies](backend/internal/persistence/queue_policy.go).
+Они используются в `calculateLegacyPriority` для `decisionPriority` события вызова,
+но не сортируют кандидатов. Текущий механизм против вытеснения новыми талонами —
+сохранённый срок `due_at`; отдельного повышения ранга по времени ожидания в `CallNext` нет.
+
+### Атомарный вызов и состояния
+
+`CallNext` в транзакции READ COMMITTED блокирует строку окна (`FOR UPDATE`),
+проверяет `OPEN` и отсутствие `CALLED`/`SERVING`. Кандидаты должны принадлежать
+отделению, поддерживаться через `window_services`, быть готовы по `ready_at`
+и не быть закреплены за другим окном. Блокируются до трёх первых кандидатов
+через `FOR UPDATE SKIP LOCKED`; первый получает окно и `CALLED`.
+Обновление и событие аудита фиксируются одним commit. Блокировки талона защищают
+от double assignment, а частичный уникальный индекс `tickets_one_active_per_window`
+запрещает два активных талона на окно. Порядок commit конкурентных окон не гарантируется.
+
+Основной цикл: `WAITING → CALLED → SERVING → COMPLETED`.
+Отмена ожидающего талона/записи переводит его в `CANCELLED`;
+неявка после вызова — в `NO_SHOW`. Действия `return` и `redirect` возвращают QR/LIVE
+из `CALLED`/`SERVING` в `WAITING`; для APPOINTMENT эти действия запрещены.
+См. [переходы FSM](backend/internal/domain/fsm.go) и
+[обработку действий оператора](backend/internal/persistence/postgres.go).
+[Recovery worker](backend/internal/persistence/recovery.go) проверяет вызовы каждые
+5 секунд: по текущему YAML таймаут 90 секунд, до двух повторных вызовов, затем `NO_SHOW`.
+[Журнал ticket_events](backend/internal/persistence/sprint2.go) содержит создание,
+прибытие, вызов, начало/конец обслуживания, отмену, неявку, возврат и перенаправление;
+для автоматического/ручного вызова сохраняются объяснение выбора, срок и legacy-баллы.
+Повторный вызов recovery worker записывает `source_rank` вместо legacy-баллов.
+События записываются в той же транзакции, что и изменение талона; SQL-триггер
+запрещает UPDATE/DELETE журнала. Поля `reason`, `due_at`, `actor`, `request_id`, `at`
+хранятся в БД, но текущий [HTTP DTO событий](backend/internal/httpapi/admin_handlers.go)
+их не возвращает: API отдаёт только id, тип, статусы, окно, версию политики, баллы и время.
+
+### Позиция в очереди
+
+[QueuePosition](backend/internal/persistence/queue_ranking.go) читает снимок
+REPEATABLE READ. Опорное окно — первое открытое совместимое по `number, id`,
+с учётом закрепления талона. Позиция равна числу готовых кандидатов перед талоном
+по тому же кортежу `due_at, source_rank, checkin_at, id` плюс один.
+Возможные причины: `AVAILABLE`, `NOT_ELIGIBLE_YET`, `NO_OPEN_COMPATIBLE_WINDOW`,
+`NOT_QUEUED`. Поле `effectivePriority` здесь содержит базовый legacy-приоритет
+(при ошибке чтения политики — `source_rank`), а не ключ сортировки.
+Для старых строк без `due_at`/`checkin_at` код использует резервные значения;
+сравнение с кандидатами, содержащими SQL NULL, не эквивалентно обычному полному кортежу.
+Позиция — снимок для опорного окна, а не бронь следующего вызова:
+занятость окна и конкурентные блокировки могут изменить фактический результат.
+
 ### Прогноз ожидания (ETA)
 
-Реализация: `backend/internal/persistence/eta.go`.
+Реализация: [eta.go](backend/internal/persistence/eta.go).
 Берутся до 20 последних завершённых обслуживаний той же услуги в отделении.
 Новые измерения имеют больший вес (`i = 0` — самое свежее):
 
@@ -118,40 +207,82 @@ duration = Σ(durationᵢ × (N − i)) / Σ(N − i)
 
 Если измерений меньше трёх, используется 300 секунд. Для свободного окна время
 доступности равно нулю; для занятого — `max(30, duration − elapsed)` секунд.
-Каждый предшествующий талон распределяется на окно с ближайшим освобождением.
+Моделируются `position − 1` обслуживаний длительностью `max(30, floor(duration))`:
+каждое распределяется на окно с ближайшим освобождением. Модель использует окна,
+совместимые с услугой клиента, и не моделирует отдельно услуги предшествующих талонов.
 Прогноз для клиента — минимальное время доступности после распределения,
 ограниченное диапазоном 60–1800 секунд. Это оценка, а не обещанное время приёма.
-При отсутствии совместимых окон применяется резервная оценка из реализации.
+Если QueuePosition не `AVAILABLE` (в том числе нет открытого совместимого окна),
+API возвращает `estimatedWaitSeconds=null` и `estimatedCallAt=null`, `sampleSize=0`,
+`usedFallback=false`. Внутренняя резервная формула `clamp((position−1)×duration,60,1800)`
+используется только после `AVAILABLE`, если список окон для моделирования оказался пуст.
 
 ## Запуск
 
-Нужны Docker Engine/Desktop и Compose v2.
+Нужны Docker Engine/Desktop, Compose v2 и доступ к реестрам образов/npm/Go при сборке.
+Команды выполняются из корня репозитория. Конфигурация: [docker-compose.yml](docker-compose.yml),
+[.env.example](.env.example), [валидация backend env](backend/internal/config/config.go).
 
 ```bash
-cp .env.example .env
-# Задайте собственные пароли и публичный URL в .env
+test -f .env || cp .env.example .env
+# Для локального запуска оставьте порты и адреса из .env.example.
+# При наличии .env проверьте его значения; команда выше его не перезаписывает.
+docker compose config --quiet
 docker compose up --build -d
 docker compose ps
+curl --fail http://localhost:8080/health
+curl --fail http://localhost:8080/ready
+docker compose exec backend /app/api migrate version
 ```
 
 | Сервис | Адрес по умолчанию |
 |---|---|
-| Приложение | http://localhost:5173 |
+| Клиент | http://localhost:5173/ |
+| Оператор / начальник | http://localhost:5173/operator · http://localhost:5173/admin |
+| QR демо-отделения | http://localhost:5173/q/11111111-1111-1111-1111-111111111111 |
+| Терминал | http://localhost:5173/kiosk/11111111-1111-1111-1111-111111111111 |
+| Табло | http://localhost:5173/tv?branchId=11111111-1111-1111-1111-111111111111 |
 | Swagger UI | http://localhost:8081 |
-| API health / readiness | http://localhost:8080/health · /ready |
-| Grafana | http://localhost:3001 |
+| REST API / health / readiness | http://localhost:8080/api/v1/branches · http://localhost:8080/health · http://localhost:8080/ready |
+| Grafana через Vite | http://localhost:5173/grafana/ |
+
+В `.env` обязательны `APP_ENV`, `LOG_LEVEL`, `HTTP_PORT`, `POSTGRES_HOST`,
+`POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`CORS_ALLOWED_ORIGIN`, `FRONTEND_PORT`, `GRAFANA_PASSWORD`; пример содержит все значения.
+Оставьте `POSTGRES_HOST=postgres`, `POSTGRES_PORT=5432`, `HTTP_PORT=8080`:
+Vite и мониторинг используют внутренний адрес `backend:8080`.
+`VITE_API_BASE_URL` оставьте пустым. Для локальной Grafana замените в `.env`
+`SERVER_DOMAIN=post-queue.duckdns.org` на `SERVER_DOMAIN=localhost`.
+Telegram-переменные опциональны. Пароли в примере предназначены для локального стенда.
+
+В [seed](postgres/init.sql) заданы входы: оператор `operator@pochta.local` /
+`operator1234`, начальник `admin@pochta.local` / `admin1234`.
+На существующей БД пароли могли быть изменены: seed не перезаписывает пользователей.
+Демо-цикл описан в [материалах проверки](docs/testing.md#демонстрационный-сценарий).
 
 Для QR на телефонах укажите `PUBLIC_APP_BASE_URL`, доступный посетителям:
 `localhost` телефона не ведёт на компьютер с приложением.
+Frontend опубликован на `127.0.0.1`; одной настройки URL недостаточно для доступа
+с телефона — нужен доступный reverse proxy/туннель к порту 5173 и разрешённый Vite host.
 Vite проксирует `/api` в backend внутри Compose-сети. Не задавайте Docker hostname
 как публичный URL браузера. `.env` и учётные данные не коммитятся.
 
-PostgreSQL при первом запуске инициализируется через `postgres/init.sql`.
-Существующий volume не переинициализируется: изменения схемы требуют осознанного
-обновления с резервной копией. `docker compose down` сохраняет данные;
+PostgreSQL при первом запуске инициализируется через [postgres/init.sql](postgres/init.sql).
+Backend автоматически запускает [миграции](backend/migrations/) при старте
+([main.go](backend/cmd/api/main.go)); текущая последняя версия — 15.
+Проверьте `migrate version`: ожидаются `version=15`, `dirty=false`.
+Ошибка автомиграции логируется как предупреждение и сама по себе не останавливает API,
+поэтому одного `/ready` недостаточно для проверки схемы.
+Для ручного применения на подготовленной БД: `docker compose exec backend /app/api migrate up`.
+Отдельного Compose-сервиса `migrate` сейчас нет. Существующий volume не переинициализируется;
+перед обновлением сохраняйте резервную копию. `docker compose down` сохраняет данные;
 **`docker compose down -v` удаляет их**.
 
 ## Проверки
+
+Полный перечень, требования к интеграционным проверкам и демонстрационный цикл:
+[docs/testing.md](docs/testing.md). Старые QA-наборы содержат ожидания предыдущих
+версий алгоритма; их наличие не означает успешного прохождения на текущем коде.
 
 Для локальных проверок нужны Go 1.25+ и Node 22.12+:
 
@@ -165,9 +296,9 @@ go test ./...
 go vet ./...
 ```
 
-Browser smoke-тесты: `qa/sprint4/browser.mjs` (живой backend и тестовые учётные
+Browser smoke-тесты: [browser.mjs](qa/sprint4/browser.mjs) (живой backend и тестовые учётные
 данные `QA_OPERATOR_PASSWORD`/другие переменные сценария),
-`qa/sprint4/visual-regression.mjs` (цвета, доступность, однострочный номер ТВ).
+[visual-regression.mjs](qa/sprint4/visual-regression.mjs) (цвета, доступность, однострочный номер ТВ).
 Playwright можно установить вне репозитория:
 
 ```bash
@@ -181,6 +312,35 @@ CHROMIUM_PATH=/usr/bin/google-chrome node qa/sprint4/visual-regression.mjs
 ## Структура
 
 ### Архитектура
+
+Один [React SPA](frontend/src/App.tsx) содержит Client UI, QR/терминал, табло,
+Operator UI и Admin UI. Рабочие экраны получают JSON через REST и периодический
+опрос; маршрут `/demo` отдельно содержит моделируемые показатели.
+[Vite](frontend/vite.config.ts) проксирует `/api` в Go backend.
+
+[Go API](backend/cmd/api/main.go): [маршруты и handlers](backend/internal/httpapi/handlers.go)
+→ [интерфейс use cases](backend/internal/application/contracts.go)
+→ [PostgreSQL persistence](backend/internal/persistence/) и [domain](backend/internal/domain/).
+PostgreSQL 17 хранит отделения, услуги и совместимость окон, талоны,
+настройки, пользователей, сессии и аудит. Очередь реализована SQL-запросами и
+транзакциями над `tickets`; отдельного брокера нет.
+
+[Авторизация](backend/internal/httpapi/middleware.go) использует cookie `session`
+(HttpOnly, SameSite=Lax) и серверную таблицу `sessions`; пароли хранятся как bcrypt.
+Клиентские маршруты талонов публичны. Операторские и основные административные
+маршруты допускают роли `employee`/`opc_chief`, управление пользователями — `opc_chief`,
+терминальные — проверку `is_terminal`. Точные ограничения см. в регистрации маршрутов.
+
+Основной поток: клиент создаёт талон → API сохраняет талон и событие в БД →
+оператор вызывает совместимый талон атомарно → клиент и табло получают обновления →
+оператор начинает и завершает обслуживание. Для автоматического вызова новой записи
+в обычный срок нужно подтверждение прибытия; исключения для ручного вызова и старых
+записей описаны в разделе алгоритма. QueuePosition/ETA читают состояние без назначения талона.
+
+[Compose](docker-compose.yml) поднимает PostgreSQL, backend, Vite и Swagger UI,
+а также Prometheus, postgres-exporter, Grafana, Loki/Promtail, Alertmanager и
+postgres-backup (каждые 6 часов в `backups/`). Конфигурация — в [monitoring/](monitoring/).
+В backend работают периодическое чтение политики и обработчик просроченных вызовов.
 
 ```text
 React + TypeScript
