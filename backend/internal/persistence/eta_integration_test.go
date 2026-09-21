@@ -81,3 +81,40 @@ func TestETAClamp(t *testing.T) {
 		}
 	}
 }
+
+func TestETAOutlierExclusion(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// Clean any previous tickets for payments service
+	execSQL(t, ctx, p, `DELETE FROM ticket_events WHERE ticket_id IN (SELECT id FROM tickets WHERE service_id=$1::uuid)`, payments)
+	execSQL(t, ctx, p, `DELETE FROM tickets WHERE service_id=$1::uuid`, payments)
+
+	// 1. Create and complete 3 tickets with normal duration 120s
+	for i := 0; i < 3; i++ {
+		tkt := create(t, ctx, p, payments, fmt.Sprintf("normal-%d", i))
+		execSQL(t, ctx, p, `UPDATE tickets SET status='COMPLETED', window_id=$2::uuid, called_at=clock_timestamp()-interval '125 seconds', service_started_at=clock_timestamp()-interval '120 seconds', completed_at=clock_timestamp() WHERE id=$1::uuid`, tkt.ID, window2)
+	}
+
+	// 2. Create and complete 1 outlier ticket with duration 36000s (10 hours > 7200s limit)
+	outlier := create(t, ctx, p, payments, "outlier-10h")
+	execSQL(t, ctx, p, `UPDATE tickets SET status='COMPLETED', window_id=$2::uuid, called_at=clock_timestamp()-interval '36005 seconds', service_started_at=clock_timestamp()-interval '36000 seconds', completed_at=clock_timestamp() WHERE id=$1::uuid`, outlier.ID, window2)
+
+	// 3. Create a waiting ticket to inspect ETA
+	waiting := create(t, ctx, p, payments, "waiting-eta")
+
+	eta, err := p.GetTicketETA(ctx, waiting.ID)
+	if err != nil {
+		t.Fatalf("GetTicketETA failed: %v", err)
+	}
+
+	// Sample size must be 3, the outlier must NOT be included!
+	if eta.SampleSize != 3 {
+		t.Fatalf("expected SampleSize=3 (outlier excluded), got: %d", eta.SampleSize)
+	}
+
+	// Average should be ~120s, NOT > 1000s
+	if eta.Distribution == nil || eta.Distribution.Avg > 200 {
+		t.Fatalf("expected distribution average around 120s, got: %+v", eta.Distribution)
+	}
+}
+

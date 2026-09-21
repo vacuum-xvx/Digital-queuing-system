@@ -37,6 +37,7 @@ func (p *Postgres) GetTicketETA(ctx context.Context, ticketID string) (domain.Ti
  FROM tickets h JOIN tickets t ON t.id=$1::uuid
  WHERE h.branch_id=t.branch_id AND h.service_id=t.service_id AND h.status='COMPLETED'
  AND h.completed_at>h.service_started_at
+ AND extract(epoch FROM (h.completed_at-h.service_started_at)) <= 7200
  ORDER BY h.completed_at DESC,h.id DESC LIMIT 20
 	 ) history`, ticketID).Scan(&out.SampleSize, &average, &durations)
 	if err != nil {
@@ -66,7 +67,7 @@ func (p *Postgres) GetTicketETA(ctx context.Context, ticketID string) (domain.Ti
 		SELECT
 			EXISTS(SELECT 1 FROM tickets cur WHERE cur.window_id = w.id AND cur.status IN ('CALLED', 'SERVING')) AS is_busy,
 			COALESCE((
-				SELECT EXTRACT(EPOCH FROM (clock_timestamp() - cur.service_started_at))
+				SELECT LEAST(EXTRACT(EPOCH FROM (clock_timestamp() - cur.service_started_at)), 7200)
 				FROM tickets cur
 				WHERE cur.window_id = w.id AND cur.status = 'SERVING' AND cur.service_started_at IS NOT NULL
 				LIMIT 1
