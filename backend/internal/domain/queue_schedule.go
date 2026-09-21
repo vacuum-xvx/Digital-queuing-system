@@ -166,9 +166,9 @@ func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, check
 		}
 
 		if checkinAt.IsZero() {
-			// Not checked in yet
+			// Not checked in yet: eligible exactly at scheduled slot time
 			dueAt = slot
-			readyAt = slot.Add(365 * 24 * time.Hour) // Far future until check-in
+			readyAt = slot
 			sourceRank = aptRank
 			return dueAt, readyAt, sourceRank
 		}

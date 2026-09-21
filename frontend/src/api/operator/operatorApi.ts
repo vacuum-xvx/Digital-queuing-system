@@ -267,3 +267,30 @@ export async function redirectTicket(ticketId: string, newServiceId?: string, ta
   });
   return await handleResponse<Ticket>(res);
 }
+
+export interface ReportIncidentParams {
+  windowId?: string;
+  category: string;
+  description: string;
+}
+
+export interface OperatorIncidentRecord {
+  id: string;
+  branchId: string;
+  windowId?: string;
+  operatorId?: string;
+  category: string;
+  description: string;
+  createdAt: string;
+}
+
+export async function reportIncident(branchId: string, params: ReportIncidentParams): Promise<OperatorIncidentRecord> {
+  const res = await fetch(`${getApiBaseUrl()}/operator/branches/${encodeURIComponent(branchId)}/incidents`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return await handleResponse<OperatorIncidentRecord>(res);
+}
+

@@ -176,10 +176,11 @@ function appointmentsKeyFor(scope: string): string {
 }
 
 // Талоны храним строго по владельцу: ключ `client_active_ticket_ids:<userId|anon>`.
-// Общий (legacy) ключ больше не читаем, чтобы чужие талоны не подхватывались.
+// Используем sessionStorage и localStorage для надёжного восстановления сессии
+// после перезагрузки страницы, обрыва связи или закрытия вкладки (Требование 14 ТЗ).
 function getSavedTicketIds(scope: string): string[] {
   try {
-    const val = sessionStorage.getItem(ticketsKeyFor(scope));
+    const val = sessionStorage.getItem(ticketsKeyFor(scope)) || localStorage.getItem(ticketsKeyFor(scope));
     if (!val) return [];
     const parsed = JSON.parse(val);
     if (!Array.isArray(parsed)) return [];
@@ -192,7 +193,9 @@ function getSavedTicketIds(scope: string): string[] {
 function addSavedTicketId(id: string, scope: string) {
   const ids = getSavedTicketIds(scope);
   if (!ids.includes(id)) {
-    sessionStorage.setItem(ticketsKeyFor(scope), JSON.stringify([...ids, id]));
+    const updated = JSON.stringify([...ids, id]);
+    try { sessionStorage.setItem(ticketsKeyFor(scope), updated); } catch {}
+    try { localStorage.setItem(ticketsKeyFor(scope), updated); } catch {}
   }
 }
 
@@ -200,9 +203,12 @@ function removeSavedTicketId(id: string, scope: string) {
   const ids = getSavedTicketIds(scope);
   const newIds = ids.filter(i => i !== id);
   if (newIds.length === 0) {
-    sessionStorage.removeItem(ticketsKeyFor(scope));
+    try { sessionStorage.removeItem(ticketsKeyFor(scope)); } catch {}
+    try { localStorage.removeItem(ticketsKeyFor(scope)); } catch {}
   } else {
-    sessionStorage.setItem(ticketsKeyFor(scope), JSON.stringify(newIds));
+    const updated = JSON.stringify(newIds);
+    try { sessionStorage.setItem(ticketsKeyFor(scope), updated); } catch {}
+    try { localStorage.setItem(ticketsKeyFor(scope), updated); } catch {}
   }
 }
 
@@ -262,13 +268,14 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   useEffect(() => {
     appointmentsScopeRef.current = null;
     let loaded: Record<string, Appointment> = {};
-    try { loaded = JSON.parse(sessionStorage.getItem(appointmentsKeyFor(ownerScope)) || '{}'); } catch { loaded = {}; }
+    try { loaded = JSON.parse(sessionStorage.getItem(appointmentsKeyFor(ownerScope)) || localStorage.getItem(appointmentsKeyFor(ownerScope)) || '{}'); } catch { loaded = {}; }
     appointmentsScopeRef.current = ownerScope;
     setAppointments(loaded);
   }, [ownerScope]);
   useEffect(() => {
     if (appointmentsScopeRef.current !== ownerScope) return;
     try { sessionStorage.setItem(appointmentsKeyFor(ownerScope), JSON.stringify(appointments)); } catch { /* ignore */ }
+    try { localStorage.setItem(appointmentsKeyFor(ownerScope), JSON.stringify(appointments)); } catch { /* ignore */ }
   }, [appointments, ownerScope]);
 
   const [positions, setPositions] = useState<Record<string, QueuePosition>>({});

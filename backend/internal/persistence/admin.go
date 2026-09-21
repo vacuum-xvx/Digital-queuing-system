@@ -270,6 +270,35 @@ func (p *Postgres) GetAdminOverview(ctx context.Context, branchID string) (domai
 		}
 	}
 
+	// 8c. Load operator reported incidents
+	incRows, err := p.pool.Query(ctx, `
+		SELECT oi.id::text, COALESCE('Окно ' || w.number::text, 'СБОЙ'), oi.category || ': ' || oi.description, oi.created_at,
+		       GREATEST(0, EXTRACT(EPOCH FROM (NOW() - oi.created_at)) / 60)::int
+		FROM operator_incidents oi
+		LEFT JOIN windows w ON w.id = oi.window_id
+		WHERE oi.branch_id = $1
+		ORDER BY oi.created_at DESC
+		LIMIT 10
+	`, id)
+	if err == nil {
+		defer incRows.Close()
+		for incRows.Next() {
+			var iid, pub, desc string
+			var iTime time.Time
+			var dur int
+			if scanErr := incRows.Scan(&iid, &pub, &desc, &iTime, &dur); scanErr == nil {
+				overview.Anomalies = append(overview.Anomalies, domain.AnomalyTicket{
+					ID:              iid,
+					PublicNumber:    pub,
+					Type:            domain.AnomalyTechIssue,
+					Description:     desc,
+					Time:            iTime,
+					DurationMinutes: dur,
+				})
+			}
+		}
+	}
+
 	// 9. Priority rules from DB
 	overview.Priorities, err = p.loadPriorityRules(ctx, id)
 	if err != nil {
@@ -284,43 +313,57 @@ func (p *Postgres) ListAnomalies(ctx context.Context, branchID string, limit, of
 	id, err := p.branch(ctx, branchID)
 	if err != nil { return page, err }
 
+	var ticketCount, incidentCount int
 	const anomalyFilter = `branch_id = $1 AND (
 		(status = 'WAITING' AND queue_entered_at < NOW() - INTERVAL '15 minutes')
 		OR (status = 'NO_SHOW' AND (queue_entered_at AT TIME ZONE 'Europe/Moscow')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
 	)`
-	err = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE `+anomalyFilter, id).Scan(&page.Total)
+	err = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE `+anomalyFilter, id).Scan(&ticketCount)
 	if err != nil { return page, dbError(err) }
 
+	_ = p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM operator_incidents WHERE branch_id = $1`, id).Scan(&incidentCount)
+	page.Total = ticketCount + incidentCount
+
 	rows, err := p.pool.Query(ctx, `
-		SELECT id::text, public_number, status, queue_entered_at, no_show_at,
-			GREATEST(0, EXTRACT(EPOCH FROM (NOW() - queue_entered_at)) / 60)::int
-		FROM tickets WHERE `+anomalyFilter+`
-		ORDER BY COALESCE(no_show_at, queue_entered_at) DESC, id DESC
+		SELECT id, public_number, type, description, event_time, duration_minutes FROM (
+			SELECT 
+				t.id::text AS id,
+				t.public_number AS public_number,
+				CASE WHEN t.status = 'NO_SHOW' THEN 'NO_SHOW' ELSE 'EXCEEDED_WAIT' END AS type,
+				CASE WHEN t.status = 'NO_SHOW' THEN 'Клиент не явился к окну оператора' ELSE 'Превышено максимальное время ожидания' END AS description,
+				COALESCE(t.no_show_at, t.queue_entered_at) AS event_time,
+				CASE WHEN t.status = 'NO_SHOW' THEN 0 ELSE GREATEST(0, EXTRACT(EPOCH FROM (NOW() - t.queue_entered_at)) / 60)::int END AS duration_minutes
+			FROM tickets t
+			WHERE `+anomalyFilter+`
+			UNION ALL
+			SELECT 
+				oi.id::text AS id,
+				COALESCE('Окно ' || w.number::text, 'СБОЙ') AS public_number,
+				'TECH_ISSUE' AS type,
+				oi.category || ': ' || oi.description AS description,
+				oi.created_at AS event_time,
+				GREATEST(0, EXTRACT(EPOCH FROM (NOW() - oi.created_at)) / 60)::int AS duration_minutes
+			FROM operator_incidents oi
+			LEFT JOIN windows w ON w.id = oi.window_id
+			WHERE oi.branch_id = $1
+		) combined
+		ORDER BY event_time DESC, id DESC
 		LIMIT $2 OFFSET $3`, id, limit, offset)
 	if err != nil { return page, dbError(err) }
 	defer rows.Close()
 	page.Items = make([]domain.AnomalyTicket, 0, limit)
 	for rows.Next() {
 		var item domain.AnomalyTicket
-		var status domain.TicketStatus
-		var enteredAt time.Time
-		var noShowAt *time.Time
-		if err = rows.Scan(&item.ID, &item.PublicNumber, &status, &enteredAt, &noShowAt, &item.DurationMinutes); err != nil {
+		var anomType string
+		if err = rows.Scan(&item.ID, &item.PublicNumber, &anomType, &item.Description, &item.Time, &item.DurationMinutes); err != nil {
 			return page, dbError(err)
 		}
-		item.Time = enteredAt
-		item.Type = domain.AnomalyExceededWait
-		item.Description = "Превышено максимальное время ожидания"
-		if status == domain.TicketStatusNoShow {
-			item.Type = domain.AnomalyNoShow
-			item.Description = "Клиент не явился к окну оператора"
-			item.DurationMinutes = 0
-			if noShowAt != nil { item.Time = *noShowAt }
-		}
+		item.Type = domain.AnomalyType(anomType)
 		page.Items = append(page.Items, item)
 	}
 	return page, dbError(rows.Err())
 }
+
 
 // loadPriorityRules reads persisted rules; falls back to defaults if none exist.
 func (p *Postgres) loadPriorityRules(ctx context.Context, id pgtype.UUID) ([]domain.PriorityRule, error) {
@@ -498,4 +541,54 @@ func (p *Postgres) DeleteWindow(ctx context.Context, windowID string) error {
 
 	return dbError(tx.Commit(ctx))
 }
+
+func (p *Postgres) ReportIncident(ctx context.Context, cmd application.ReportIncidentCommand) (domain.OperatorIncident, error) {
+	var res domain.OperatorIncident
+	branchID, err := uuid(cmd.BranchID)
+	if err != nil {
+		return res, application.ErrNotFound
+	}
+	if cmd.Category == "" || cmd.Description == "" {
+		return res, application.ErrInvalidState
+	}
+
+	var winID *pgtype.UUID
+	if cmd.WindowID != nil && *cmd.WindowID != "" {
+		w, err := uuid(*cmd.WindowID)
+		if err == nil {
+			winID = &w
+		}
+	}
+
+	var opID *pgtype.UUID
+	if cmd.OperatorID != nil && *cmd.OperatorID != "" {
+		o, err := uuid(*cmd.OperatorID)
+		if err == nil {
+			opID = &o
+		}
+	}
+
+	var id string
+	var createdAt time.Time
+	err = p.pool.QueryRow(ctx, `
+		INSERT INTO operator_incidents (branch_id, window_id, operator_id, category, description, created_at)
+		VALUES ($1, $2, $3, $4, $5, clock_timestamp())
+		RETURNING id::text, created_at
+	`, branchID, winID, opID, cmd.Category, cmd.Description).Scan(&id, &createdAt)
+	if err != nil {
+		return res, dbError(err)
+	}
+
+	res = domain.OperatorIncident{
+		ID:          id,
+		BranchID:    cmd.BranchID,
+		WindowID:    cmd.WindowID,
+		OperatorID:  cmd.OperatorID,
+		Category:    cmd.Category,
+		Description: cmd.Description,
+		CreatedAt:   createdAt,
+	}
+	return res, nil
+}
+
 

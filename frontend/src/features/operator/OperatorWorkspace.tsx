@@ -19,7 +19,9 @@ import {
   AlertCircle,
   Users,
   Layers,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 export function OperatorWorkspace() {
@@ -48,6 +50,13 @@ export function OperatorWorkspace() {
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [redirectServiceId, setRedirectServiceId] = useState('');
   const [redirectWindowId, setRedirectWindowId] = useState('');
+
+  // Incident modal state
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [incidentCategory, setIncidentCategory] = useState('Сбой оборудования');
+  const [incidentDescription, setIncidentDescription] = useState('');
+  const [incidentSubmitting, setIncidentSubmitting] = useState(false);
+
 
   const epoch = useRef(0);
   const busy = useRef(false);
@@ -514,7 +523,7 @@ export function OperatorWorkspace() {
             </div>
 
             {/* Secondary Service Operations Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Issue LIVE Ticket Card */}
               <div className="p-4 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-3">
                 <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
@@ -566,10 +575,10 @@ export function OperatorWorkspace() {
                 <div>
                   <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
                     <ArrowRightLeft className="w-4 h-4 text-[#003B73]" />
-                    <span>Перенаправление и возврат</span>
+                    <span>Перенаправление</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Возврат клиента в общую очередь или перевод к другому специалисту
+                    Возврат в общую очередь или перевод к другому специалисту
                   </p>
                 </div>
                 <div className="space-y-2 pt-2">
@@ -603,7 +612,32 @@ export function OperatorWorkspace() {
                   </button>
                 </div>
               </div>
+
+              {/* Incident / Problem Logging Card */}
+              <div className="p-4 rounded-3xl bg-white border border-[#D2D8E2] shadow-sm space-y-3 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
+                    <AlertTriangle className="w-4 h-4 text-[#D92534]" />
+                    <span>Инцидент / Сбой</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Фиксация технических неполадок оборудования или сбоев смены
+                  </p>
+                </div>
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={pending || !selected}
+                    onClick={() => setShowIncidentModal(true)}
+                    className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-[#D92534] hover:bg-red-100 font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Зафиксировать сбой</span>
+                  </button>
+                </div>
+              </div>
             </div>
+
           </div>
 
           {/* Right Column: 5 cols - Queue Side Panel */}
@@ -791,6 +825,96 @@ export function OperatorWorkspace() {
           </div>
         </div>
       )}
+
+      {/* Incident Modal */}
+      {showIncidentModal && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-sm text-[#D92534] flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Регистрация инцидента / проблемы</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowIncidentModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Информация будет сохранена в журнале начальника ОПС и привязана к текущему окну и отделению.
+            </p>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700">
+                Категория проблемы
+                <select
+                  value={incidentCategory}
+                  onChange={e => setIncidentCategory(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 bg-white font-medium shadow-2xs"
+                >
+                  <option value="Сбой оборудования">Сбой оборудования (сканер / принтер / весы)</option>
+                  <option value="Сбой сети / ПО">Зависание ПО / локальной сети ОПС</option>
+                  <option value="Расходные материалы">Закончились коробки / упаковка / бумага</option>
+                  <option value="Конфликтная ситуация">Конфликтная ситуация / вызов старшего</option>
+                  <option value="Другое">Другое операционное отклонение</option>
+                </select>
+              </label>
+
+              <label className="block text-xs font-bold text-slate-700">
+                Описание неполадки
+                <textarea
+                  rows={3}
+                  value={incidentDescription}
+                  onChange={e => setIncidentDescription(e.target.value)}
+                  placeholder="Опишите симптомы проблемы (например: сканер ШПИ не отвечает, переподключение не помогло)..."
+                  className="mt-1 block w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-medium shadow-2xs"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={incidentSubmitting}
+                onClick={() => setShowIncidentModal(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={incidentSubmitting || !incidentDescription.trim()}
+                onClick={async () => {
+                  if (!incidentDescription.trim() || !branchId) return;
+                  setIncidentSubmitting(true);
+                  try {
+                    await api.reportIncident(branchId, {
+                      windowId: windowId || undefined,
+                      category: incidentCategory,
+                      description: incidentDescription.trim(),
+                    });
+                    setNotice('Инцидент успешно зафиксирован и передан в журнал начальника ОПС');
+                    setShowIncidentModal(false);
+                    setIncidentDescription('');
+                  } catch (e: any) {
+                    setError('Не удалось сохранить инцидент: ' + (e.message || 'Ошибка сети'));
+                  } finally {
+                    setIncidentSubmitting(false);
+                  }
+                }}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-[#D92534] hover:bg-red-700 text-white shadow-sm transition-colors disabled:opacity-50"
+              >
+                {incidentSubmitting ? 'Отправка...' : 'Отправить в журнал'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

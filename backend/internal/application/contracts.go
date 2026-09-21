@@ -113,7 +113,19 @@ type UseCases interface {
 
 	// Notifications
 	ListNotificationOutbox(ctx context.Context, limit, offset int, status string) ([]domain.NotificationOutboxItem, int, error)
+
+	// Operator Incidents
+	ReportIncident(ctx context.Context, cmd ReportIncidentCommand) (domain.OperatorIncident, error)
 }
+
+type ReportIncidentCommand struct {
+	BranchID    string
+	WindowID    *string
+	OperatorID  *string
+	Category    string
+	Description string
+}
+
 
 var ErrPolicyVersionConflict = errors.New("queue policy version conflict")
 

@@ -1345,6 +1345,39 @@ paths:
           $ref: '#/components/responses/InvalidState'
         '500':
           $ref: '#/components/responses/InternalError'
+  /operator/branches/{branchId}/incidents:
+    post:
+      security: [{ sessionCookie: [] }]
+      summary: Report operational or technical problem from operator window
+      operationId: reportOperatorIncident
+      parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportIncidentRequest'
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '201':
+          description: Incident successfully recorded and persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorIncident'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /tickets/{ticketId}/position:
     get:
       summary: Get the Core queue rank snapshot for a deterministic OPEN compatible window
@@ -2032,3 +2065,49 @@ components:
           type: string
         targetWindowId:
           type: string
+    ReportIncidentRequest:
+      type: object
+      required:
+        - category
+        - description
+      properties:
+        windowId:
+          type: string
+          format: uuid
+        category:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+    OperatorIncident:
+      type: object
+      required:
+        - id
+        - branchId
+        - category
+        - description
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        windowId:
+          type: string
+          format: uuid
+          nullable: true
+        operatorId:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+

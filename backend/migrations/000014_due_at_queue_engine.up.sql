@@ -99,9 +99,9 @@ BEGIN
         IF NEW.scheduled_at IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.scheduled_at IS DISTINCT FROM OLD.scheduled_at) THEN
             NEW.due_at := NEW.scheduled_at;
             IF NEW.checkin_at IS NULL THEN
-                NEW.ready_at := NEW.scheduled_at - INTERVAL '10 minutes';
+                NEW.ready_at := NEW.scheduled_at;
             ELSE
-                NEW.ready_at := LEAST(NEW.checkin_at, NEW.scheduled_at - INTERVAL '10 minutes');
+                NEW.ready_at := GREATEST(NEW.checkin_at, NEW.scheduled_at - INTERVAL '10 minutes');
             END IF;
         END IF;
     ELSE
