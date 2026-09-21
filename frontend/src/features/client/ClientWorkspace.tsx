@@ -60,62 +60,6 @@ function StatusBadge({ status, source }: { status: TicketStatus; source?: Ticket
   return <span className={`cx-badge cx-badge-${status.toLowerCase()}`}>{statusMessage(status, source)}</span>;
 }
 
-function getBezierPath(pts: { x: number; y: number }[]): string {
-  if (pts.length === 0) return '';
-  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
-  if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i === 0 ? 0 : i - 1];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
-
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
-}
-
-function ETASparkline({ eta }: { eta: TicketETA }) {
-  const distribution = eta.distribution;
-  const estimatedSeconds = eta.estimatedWaitSeconds ?? eta.weightedWaitSeconds ?? eta.medianSeconds ?? 0;
-  const historySamples = distribution?.samples ?? [];
-  // Новые/малозагруженные отделения могут не иметь истории обслуживания.
-  // В этом случае не убираем график, а показываем короткий оценочный диапазон.
-  const samples = historySamples.length > 0
-    ? historySamples
-    : [Math.max(0, estimatedSeconds * 0.85), estimatedSeconds, estimatedSeconds * 1.15];
-  const min = Math.min(...samples);
-  const range = Math.max(Math.max(...samples) - min, 1);
-  const pts = samples.map((value, index) => ({
-    x: (index / Math.max(samples.length - 1, 1)) * 100,
-    y: 28 - ((value - min) / range) * 24,
-  }));
-  const pathD = getBezierPath(pts);
-  return (
-    <span
-      className="cx-eta-chart"
-      title={distribution
-        ? `Среднее ${distribution.avg}с / Взвешенное ${distribution.weightedAvg}с / Медиана ${distribution.median}с`
-        : 'Оценочный диапазон ожидания: история обслуживания пока недоступна'}
-    >
-      <svg viewBox="0 0 100 32" className="w-24 h-8 text-[#0055A5] overflow-visible" role="img" aria-label="Распределение времени обслуживания">
-        <path d={pathD} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      </svg>
-      {distribution && distribution.p90 - distribution.median > 0.5 * distribution.median && (
-        <span className="cx-eta-load text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-          Повышенная нагрузка
-        </span>
-      )}
-    </span>
-  );
-}
-
 function ErrorBanner({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div
@@ -1187,7 +1131,11 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                         eta.estimatedWaitSeconds !== null && (
                           <div className="cx-ticket-position cx-ticket-eta font-mono text-xs font-bold text-[#054FA6]">
                             <span className="cx-eta-label">Ожидание примерно{' '}<span className="cx-eta-duration">{Math.ceil(eta.estimatedWaitSeconds / 60)} мин</span></span>
-                            <ETASparkline eta={eta} />
+                            {eta.distribution && eta.distribution.p90 - eta.distribution.median > 0.5 * eta.distribution.median && (
+                              <span className="cx-eta-load text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                Повышенная нагрузка
+                              </span>
+                            )}
                           </div>
                         )}
                       {!terminalStatuses.has(ticket.status) && (
