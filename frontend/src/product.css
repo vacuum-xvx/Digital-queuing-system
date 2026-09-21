@@ -475,7 +475,7 @@ html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-redu
     background: #ffffff !important;
     color: #000000 !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -493,13 +493,16 @@ html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-redu
   }
 
   #print-ticket-slip {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
+    max-width: none !important;
+    height: 100% !important;
+    min-height: 275mm !important;
     box-sizing: border-box !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -508,6 +511,20 @@ html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-redu
     border: none !important;
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
+  }
+
+  #print-ticket-slip .a4-sheet-card {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    min-height: 270mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    border: 3px solid #003B73 !important;
+    padding: 8mm 10mm !important;
+    box-sizing: border-box !important;
+    border-radius: 6mm !important;
   }
 }
 
