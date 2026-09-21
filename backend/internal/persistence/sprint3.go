@@ -58,7 +58,7 @@ func (p *Postgres) CreateLiveTicket(ctx context.Context, c application.CreateLiv
 	}
 	var tid string
 	now := time.Now().UTC()
-	policy := p.GetPolicy()
+	policy := p.getBranchPolicyTx(ctx, tx, b)
 	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
 		Source:    domain.TicketSourceLive,
 		ServiceID: c.ServiceID,
@@ -121,7 +121,8 @@ func (p *Postgres) ArriveAppointment(ctx context.Context, ticketID string) (appl
 		return appointmentView(t), nil
 	}
 	checkin := time.Now().UTC()
-	policy := p.GetPolicy()
+	bId, _ := uuid(t.BranchID)
+	policy := p.getBranchPolicyTx(ctx, tx, bId)
 	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
 		Source:      t.Source,
 		ScheduledAt: t.ScheduledAt,

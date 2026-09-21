@@ -268,7 +268,7 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 	}
 	var tid string
 	now := time.Now().UTC()
-	policy := p.GetPolicy()
+	policy := p.getBranchPolicyTx(ctx, tx, b)
 	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
 		Source:    domain.TicketSourceQR,
 		ServiceID: cmd.ServiceID,

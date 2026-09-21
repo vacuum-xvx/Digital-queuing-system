@@ -80,7 +80,7 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 	if !future {
 		return empty, application.ErrInvalidState
 	}
-	policy := p.GetPolicy()
+	policy := p.getBranchPolicyTx(ctx, tx, b)
 	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
 		Source:      domain.TicketSourceAppointment,
 		ScheduledAt: &scheduled,
