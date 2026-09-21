@@ -26,14 +26,7 @@ export default defineConfig(({ mode }) => ({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    allowedHosts: [
-      'post-queue.duckdns.org',
-      'post-queue.duckdns.com',
-      '.duckdns.org',
-      '.duckdns.com',
-      'localhost',
-      '127.0.0.1',
-    ],
+    allowedHosts: true,
     watch: {
       usePolling: true,
       interval: 300,
