@@ -343,3 +343,25 @@ func (a *API) UpdateBranchSchedule(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, branch)
 }
 
+func (a *API) ListNotificationOutbox(w http.ResponseWriter, r *http.Request) {
+	limit, offset, ok := paginationParams(w, r)
+	if !ok {
+		return
+	}
+	status := r.URL.Query().Get("status")
+	items, total, err := a.usecases.ListNotificationOutbox(r.Context(), limit, offset, status)
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+	if items == nil {
+		items = []domain.NotificationOutboxItem{}
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+

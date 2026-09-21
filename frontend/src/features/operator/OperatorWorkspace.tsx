@@ -53,6 +53,13 @@ export function OperatorWorkspace() {
   const busy = useRef(false);
   const liveKey = useRef<{ selection: string; key: string } | null>(null);
   const lastAnnouncedTicketId = useRef<string | null>(null);
+  const activeWindowRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (activeWindowRef.current) {
+      activeWindowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [windowId]);
 
   useEffect(() => {
     getMe().then(setCurrentUser).catch(() => {});
@@ -247,6 +254,9 @@ export function OperatorWorkspace() {
     });
   }
 
+  const isMultiRow = windows.length > 10;
+  const containerHeightClass = isMultiRow ? 'min-h-[82px]' : 'min-h-[48px]';
+
   return (
     <div className="max-w-7xl mx-auto space-y-4">
       {/* 1. TOP WORKSTATION CARD */}
@@ -284,38 +294,49 @@ export function OperatorWorkspace() {
           </div>
 
           {/* Branch and Window Selectors + Shift Toggle */}
-          <div className="flex flex-wrap items-end justify-start gap-3 w-full">
+          <div className="flex flex-wrap items-start justify-start gap-3 w-full">
             {/* Branch Selector */}
             <div className="flex flex-col shrink-0">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Отделение</span>
-              <select
-                aria-label="Отделение"
-                value={branchId}
-                disabled={pending}
-                onChange={e => {
-                  if (e.target.value === branchId) return;
-                  ++epoch.current;
-                  setReady(false);
-                  setCurrent(null);
-                  setBranchId(e.target.value);
-                }}
-                className="px-3 h-12 rounded-xl border border-slate-300 text-sm font-medium bg-white text-slate-800 shadow-sm min-w-[200px] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-              >
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <div className={`${containerHeightClass} flex items-center`}>
+                <select
+                  aria-label="Отделение"
+                  value={branchId}
+                  disabled={pending}
+                  onChange={e => {
+                    if (e.target.value === branchId) return;
+                    ++epoch.current;
+                    setReady(false);
+                    setCurrent(null);
+                    setBranchId(e.target.value);
+                  }}
+                  className="px-3 h-12 rounded-xl border border-slate-300 text-sm font-medium bg-white text-slate-800 shadow-sm min-w-[200px] outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+                >
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Quick Window Buttons */}
-            <div className="flex flex-col shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">Окно</span>
-              <div className="flex items-center gap-2 h-12">
-              {windows.map(w => (
+            {/* Quick Window Buttons (1 строка до 10 окон включительно, 2 строки если >10 окон: 1 3 5... / 2 4 6...) */}
+            <div className="flex flex-col min-w-0 flex-1 max-w-full">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 pl-1">
+                Окно {windows.length > 5 ? `(${windows.length})` : ''}
+              </span>
+              <div
+                className={
+                  isMultiRow
+                    ? 'grid grid-rows-[repeat(2,36px)] grid-flow-col auto-cols-max gap-1.5 overflow-x-auto max-w-full py-1 px-0.5 scrollbar-thin'
+                    : 'flex items-center gap-1.5 overflow-x-auto max-w-full min-h-[48px] py-1 px-0.5 scrollbar-thin'
+                }
+              >
+              {windows.slice().sort((a, b) => a.number - b.number).map(w => (
                 <button
                   key={w.id}
+                  ref={windowId === w.id ? activeWindowRef : null}
                   type="button"
                   onClick={() => {
                     if (w.id === windowId) return;
@@ -324,24 +345,30 @@ export function OperatorWorkspace() {
                     setCurrent(null);
                     setWindowId(w.id);
                   }}
-                  className={`h-full px-3 rounded-xl border text-sm font-medium shadow-sm transition-all flex items-center justify-center gap-1.5 whitespace-nowrap overflow-visible shrink-0 ${
+                  className={`rounded-xl border shadow-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 h-9 px-3 text-xs font-semibold ${
                     windowId === w.id
-                      ? 'bg-[#003B73] text-white border-[#003B73] ring-2 ring-[#003B73]/20 shadow-[#003B73]/20'
+                      ? 'bg-[#003B73] text-white border-[#003B73] ring-2 ring-[#003B73]/20 shadow-xs font-bold'
                       : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
                   }`}
                 >
                   Окно {w.number}
-                  <span className={`w-2.5 h-2.5 rounded-full ${w.status === 'OPEN' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-slate-300'}`}></span>
+                  <span
+                    className={`rounded-full shrink-0 w-2 h-2 ${
+                      w.status === 'OPEN'
+                        ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+                        : 'bg-slate-300'
+                    }`}
+                  ></span>
                 </button>
               ))}
               </div>
             </div>
 
-            {/* Shift Open/Close Button */}
+            {/* Shift Open/Close Button (полноразмерная кнопка) */}
             {selected && (
               <div className="flex flex-col shrink-0">
                 <span aria-hidden="true" className="text-[10px] font-bold uppercase tracking-wider mb-1 pl-1 invisible select-none">Смена</span>
-                <div className="h-12 flex items-center">
+                <div className={`${containerHeightClass} flex items-center`}>
                   <button
                     type="button"
                     disabled={pending || !ready}
@@ -350,7 +377,7 @@ export function OperatorWorkspace() {
                         changeWindowStatus(windowId, selected.status === 'OPEN' ? 'CLOSED' : 'OPEN')
                       )
                     }
-                    className={`h-full px-4 rounded-xl border shadow-sm text-sm font-semibold flex items-center justify-center whitespace-nowrap overflow-visible shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                    className={`h-12 px-5 rounded-xl border shadow-sm text-sm font-semibold flex items-center justify-center whitespace-nowrap overflow-visible shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                       selected.status === 'OPEN'
                         ? 'text-red-700 border-red-200 bg-red-50 hover:bg-red-100 focus:ring-red-500'
                         : 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 focus:ring-emerald-500'

@@ -110,6 +110,9 @@ type UseCases interface {
 	ListUsers(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error)
 	ListAnomalies(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error)
 	ChangeUserRole(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
+
+	// Notifications
+	ListNotificationOutbox(ctx context.Context, limit, offset int, status string) ([]domain.NotificationOutboxItem, int, error)
 }
 
 var ErrPolicyVersionConflict = errors.New("queue policy version conflict")

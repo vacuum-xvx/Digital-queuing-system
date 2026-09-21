@@ -364,9 +364,9 @@ export const AdminWorkspace: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin rounded-2xl border border-slate-100">
                   <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px]">
+                    <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px] sticky top-0 z-10 shadow-2xs">
                       <tr>
                         <th className="p-3">Окно</th>
                         <th className="p-3">Статус</th>
@@ -376,7 +376,7 @@ export const AdminWorkspace: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {overview?.windows.map((win) => (
+                      {(overview?.windows ?? []).slice().sort((a, b) => a.number - b.number).map((win) => (
                         <tr key={win.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-3 font-bold text-slate-900">Окно №{win.number}</td>
                           <td className="p-3">

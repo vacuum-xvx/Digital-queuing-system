@@ -15,6 +15,7 @@ import (
 	"postcode/backend/internal/database"
 	"postcode/backend/internal/domain"
 	"postcode/backend/internal/httpapi"
+	"postcode/backend/internal/notification"
 	"postcode/backend/internal/observability"
 	"postcode/backend/internal/persistence"
 )
@@ -23,6 +24,35 @@ func main() { os.Exit(run()) }
 
 func run() int {
 	logger := observability.New(slog.LevelInfo)
+
+	if len(os.Args) > 1 && os.Args[1] == "notify-demo" {
+		demoPort := "8082"
+		if p := os.Getenv("NOTIFICATION_DEMO_PORT"); p != "" {
+			demoPort = p
+		}
+		demoServer := notification.NewDemoServer(logger)
+		srv := &http.Server{
+			Addr:         ":" + demoPort,
+			Handler:      demoServer.Handler(),
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 15 * time.Second,
+		}
+		logger.Info("Starting notification demo server", "port", demoPort)
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		go func() {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutdownCtx)
+		}()
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Demo server error", "error", err.Error())
+			return 1
+		}
+		return 0
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("Invalid configuration", "error", err.Error())
@@ -31,7 +61,7 @@ func run() int {
 	logger = observability.New(cfg.LogLevel)
 	if len(os.Args) > 1 {
 		if len(os.Args) != 3 || os.Args[1] != "migrate" || (os.Args[2] != "up" && os.Args[2] != "version") {
-			logger.Error("Usage: api [migrate up|version]")
+			logger.Error("Usage: api [migrate up|version | notify-demo]")
 			return 1
 		}
 		version, dirty, err := database.Migrate(cfg.DatabaseURL, os.Args[2])
@@ -119,6 +149,27 @@ func run() int {
 			}
 		}
 	}()
+
+	// Background notification outbox worker
+	if cfg.NotificationProviderURL != "" {
+		sender := notification.NewHTTPSender(cfg.NotificationProviderURL, cfg.NotificationTimeout)
+		workerCfg := notification.WorkerConfig{
+			PollInterval:   cfg.NotificationRetryInterval,
+			InitialBackoff: cfg.NotificationRetryInterval,
+			MaxAttempts:    cfg.NotificationMaxAttempts,
+			BatchSize:      10,
+		}
+		worker := notification.NewOutboxWorker(usecases, sender, logger, workerCfg)
+		go worker.Start(ctx)
+		logger.Info("Notification outbox worker started",
+			"provider_url", cfg.NotificationProviderURL,
+			"timeout", cfg.NotificationTimeout,
+			"poll_interval", cfg.NotificationRetryInterval,
+			"max_attempts", cfg.NotificationMaxAttempts,
+		)
+	} else {
+		logger.Info("Notification subsystem disabled (NOTIFICATION_PROVIDER_URL empty)")
+	}
 
 	server := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: httpapi.NewRouter(pool, usecases, logger, cfg.AllowedOrigin), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	serverErr := make(chan error, 1)

@@ -26,11 +26,11 @@ func TestDueAtTieBreakDeterminism(t *testing.T) {
 	tQR2 := create(t, ctx, p, parcels, "det-qr2")
 
 	// Set exact deterministic timestamps
-	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=2, checkin_at=$3 WHERE id=$1::uuid`,
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=2, checkin_at=$3, ready_at=$3 WHERE id=$1::uuid`,
 		tLive.ID, baseTime, baseTime.Add(-10*time.Minute))
-	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=1, checkin_at=$3 WHERE id=$1::uuid`,
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=1, checkin_at=$3, ready_at=$3 WHERE id=$1::uuid`,
 		tQR1.ID, baseTime, baseTime.Add(-5*time.Minute))
-	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=1, checkin_at=$3 WHERE id=$1::uuid`,
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, source_rank=1, checkin_at=$3, ready_at=$3 WHERE id=$1::uuid`,
 		tQR2.ID, baseTime, baseTime.Add(-15*time.Minute)) // earlier checkin than tQR1
 
 	// Call next: tQR2 has smaller checkin than tQR1, and both QR have rank 1 < rank 2
@@ -313,7 +313,7 @@ func TestRecoveryWorkerReconcilesStaleTickets(t *testing.T) {
 func TestAppointmentNotCalledBeforeEarlyWindow(t *testing.T) {
 	ctx, p, _ := integration(t)
 
-	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
 	// Slot is 12:30. Early window is 10 min -> ready_at is 12:20.
 	slot := now.Add(30 * time.Minute)
 
