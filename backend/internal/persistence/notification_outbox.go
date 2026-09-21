@@ -18,8 +18,18 @@ func (p *Postgres) enqueueCallNotification(ctx context.Context, tx pgx.Tx, t dom
 		winNumber = t.Window.Number
 	}
 
+	var outboxID string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
+		VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+		RETURNING id::text
+	`, t.ID, t.BranchID, string(domain.NotificationTicketCalled)).Scan(&outboxID)
+	if err != nil {
+		return dbError(err)
+	}
+
 	msg := domain.NotificationMessage{
-		ID:           t.ID + "-call",
+		ID:           outboxID,
 		TicketID:     t.ID,
 		BranchID:     t.BranchID,
 		PublicNumber: t.PublicNumber,
@@ -33,30 +43,34 @@ func (p *Postgres) enqueueCallNotification(ctx context.Context, tx pgx.Tx, t dom
 		return fmt.Errorf("marshal outbox payload: %w", err)
 	}
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
-		VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
-	`, t.ID, t.BranchID, string(domain.NotificationTicketCalled), payload)
+	_, err = tx.Exec(ctx, `UPDATE notification_outbox SET payload=$1::jsonb WHERE id=$2::uuid`, payload, outboxID)
 	if err != nil {
 		return dbError(err)
 	}
 	return nil
 }
 
-// FetchPendingNotifications queries unassigned/due outbox items with FOR UPDATE SKIP LOCKED.
+// FetchPendingNotifications atomically claims unassigned/due outbox items with a lease.
 func (p *Postgres) FetchPendingNotifications(ctx context.Context, limit int, now time.Time) ([]domain.NotificationOutboxItem, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
 	rows, err := p.pool.Query(ctx, `
-		SELECT id::text, ticket_id::text, branch_id::text, event_type, payload::text,
-		       status, attempts, max_attempts, next_attempt_at, created_at, sent_at, last_error
-		FROM notification_outbox
-		WHERE status = 'PENDING' AND next_attempt_at <= $1::timestamptz
-		ORDER BY next_attempt_at ASC, id ASC
-		LIMIT $2
-		FOR UPDATE SKIP LOCKED
+		WITH claimable AS (
+			SELECT id
+			FROM notification_outbox
+			WHERE status = 'PENDING' AND next_attempt_at <= $1::timestamptz
+			ORDER BY next_attempt_at ASC, id ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE notification_outbox o
+		SET next_attempt_at = $1::timestamptz + interval '30 seconds'
+		FROM claimable
+		WHERE o.id = claimable.id
+		RETURNING o.id::text, o.ticket_id::text, o.branch_id::text, o.event_type, o.payload::text,
+		          o.status, o.attempts, o.max_attempts, o.next_attempt_at, o.created_at, o.sent_at, o.last_error
 	`, now, limit)
 	if err != nil {
 		return nil, dbError(err)
@@ -195,4 +209,139 @@ func (p *Postgres) ListNotificationOutbox(ctx context.Context, limit, offset int
 		items = append(items, item)
 	}
 	return items, total, nil
+}
+
+// enqueueNearTurnForTopCandidates finds top waiting tickets that have reached position <= 2 and enqueues near-turn notifications.
+func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.Tx, branch string, decisionTime time.Time) error {
+	rows, err := tx.Query(ctx, `
+		SELECT t.id::text, t.branch_id::text, t.public_number
+		FROM tickets t
+		WHERE t.branch_id = $1::uuid
+		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
+		  AND t.ready_at <= $2::timestamptz
+		  AND NOT EXISTS (
+		      SELECT 1 FROM notification_outbox no
+		      WHERE no.ticket_id = t.id AND no.event_type = 'TICKET_NEAR_TURN'
+		  )
+		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
+		LIMIT 2
+		FOR SHARE OF t SKIP LOCKED
+	`, branch, decisionTime)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type candInfo struct {
+		id, branchID, publicNum string
+	}
+	var cands []candInfo
+	for rows.Next() {
+		var c candInfo
+		if err := rows.Scan(&c.id, &c.branchID, &c.publicNum); err == nil {
+			cands = append(cands, c)
+		}
+	}
+	rows.Close()
+
+	for _, c := range cands {
+		var outboxID string
+		err := tx.QueryRow(ctx, `
+			INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
+			VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+			RETURNING id::text
+		`, c.id, c.branchID, string(domain.NotificationTicketNearTurn)).Scan(&outboxID)
+		if err != nil {
+			continue
+		}
+
+		msg := domain.NotificationMessage{
+			ID:           outboxID,
+			TicketID:     c.id,
+			BranchID:     c.branchID,
+			PublicNumber: c.publicNum,
+			WindowNumber: 0,
+			EventType:    domain.NotificationTicketNearTurn,
+			CreatedAt:    time.Now().UTC(),
+		}
+		if payload, pErr := json.Marshal(msg); pErr == nil {
+			_, _ = tx.Exec(ctx, `UPDATE notification_outbox SET payload=$1::jsonb WHERE id=$2::uuid`, payload, outboxID)
+		}
+	}
+	return nil
+}
+
+// EnqueueNearTurnIfEligible idempotently enqueues a TICKET_NEAR_TURN notification if eligible.
+func (p *Postgres) EnqueueNearTurnIfEligible(ctx context.Context, ticketID string) error {
+	tID, err := uuid(ticketID)
+	if err != nil {
+		return err
+	}
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return dbError(err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Fetch ticket to verify status and get public_number, branch_id
+	var tIDStr, branchID, publicNum string
+	var status domain.TicketStatus
+	err = tx.QueryRow(ctx, `
+		SELECT id::text, branch_id::text, status, public_number
+		FROM tickets WHERE id = $1
+	`, tID).Scan(&tIDStr, &branchID, &status, &publicNum)
+	if err != nil {
+		return dbError(err)
+	}
+
+	if status != domain.TicketStatusWaiting && status != domain.TicketStatusScheduled {
+		return nil
+	}
+
+	// 2. Atomically check and insert if not already enqueued
+	var alreadyExists bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM notification_outbox
+			WHERE ticket_id = $1::uuid AND event_type = $2
+		)
+	`, tID, string(domain.NotificationTicketNearTurn)).Scan(&alreadyExists)
+	if err != nil {
+		return dbError(err)
+	}
+	if alreadyExists {
+		return nil
+	}
+
+	var outboxID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
+		VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+		RETURNING id::text
+	`, tID, branchID, string(domain.NotificationTicketNearTurn)).Scan(&outboxID)
+	if err != nil {
+		return dbError(err)
+	}
+
+	msg := domain.NotificationMessage{
+		ID:           outboxID,
+		TicketID:     tIDStr,
+		BranchID:     branchID,
+		PublicNumber: publicNum,
+		WindowNumber: 0,
+		EventType:    domain.NotificationTicketNearTurn,
+		CreatedAt:    time.Now().UTC(),
+	}
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal near-turn payload: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `UPDATE notification_outbox SET payload=$1::jsonb WHERE id=$2::uuid`, payload, outboxID)
+	if err != nil {
+		return dbError(err)
+	}
+
+	return tx.Commit(ctx)
 }

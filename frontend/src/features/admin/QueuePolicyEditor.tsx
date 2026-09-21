@@ -175,8 +175,9 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
   };
 
   // Determine active levels
-  const appointmentPriorityLevel =
-    values.appointmentDuePriority <= 50 ? 'low' : values.appointmentDuePriority <= 150 ? 'medium' : 'high';
+  const channelPriorityLevel =
+    values.livePriority > values.qrPriority ? 'high' : values.qrPriority > values.livePriority ? 'medium' : 'low';
+  const appointmentPriorityLevel = channelPriorityLevel;
 
   const starvationGuardLevel =
     values.antiStarvationThresholdMinutes >= 20 ? 'low' : values.antiStarvationThresholdMinutes >= 12 ? 'medium' : 'high';
@@ -381,49 +382,49 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
 
             {/* 2. Понятные переключатели: Низкий / Средний / Высокий */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Параметр 1: Приоритет предварительной записи */}
+              {/* Параметр 1: Приоритет каналов зала */}
               <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900">Преимущество предварительной записи</h3>
+                    <h3 className="text-xs font-bold text-slate-900">Приоритет каналов зала (QR vs Терминал)</h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Насколько быстрее вызываются клиенты, записавшиеся через приложение
+                      Запись имеет фиксированный Ранг 0. Выбор преимущества между QR-стойкой и талонами зала при равном дедлайне
                     </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, appointmentDuePriority: 40 }))}
+                    onClick={() => setValues(v => ({ ...v, qrPriority: 10, livePriority: 10 }))}
                     className={`py-1.5 rounded-lg transition-all ${
-                      appointmentPriorityLevel === 'low'
+                      channelPriorityLevel === 'low'
                         ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Низкое
+                    Низкий (Паритет)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, appointmentDuePriority: 100 }))}
+                    onClick={() => setValues(v => ({ ...v, qrPriority: 20, livePriority: 10 }))}
                     className={`py-1.5 rounded-lg transition-all ${
-                      appointmentPriorityLevel === 'medium'
+                      channelPriorityLevel === 'medium'
                         ? 'bg-white text-[#003B73] shadow-sm font-black'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Среднее ★
+                    Средний (QR) ★
                   </button>
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, appointmentDuePriority: 250 }))}
+                    onClick={() => setValues(v => ({ ...v, qrPriority: 10, livePriority: 20 }))}
                     className={`py-1.5 rounded-lg transition-all ${
-                      appointmentPriorityLevel === 'high'
+                      channelPriorityLevel === 'high'
                         ? 'bg-white text-emerald-700 shadow-sm font-black'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Высокое
+                    Высокий (Зал)
                   </button>
                 </div>
               </div>
@@ -441,7 +442,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
                 <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 25, antiStarvationPointsPerMinute: 5 }))}
+                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 25 }))}
                     className={`py-1.5 rounded-lg transition-all ${
                       starvationGuardLevel === 'low'
                         ? 'bg-white text-slate-900 shadow-sm'
@@ -452,7 +453,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 15, antiStarvationPointsPerMinute: 10 }))}
+                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 15 }))}
                     className={`py-1.5 rounded-lg transition-all ${
                       starvationGuardLevel === 'medium'
                         ? 'bg-white text-[#003B73] shadow-sm font-black'
@@ -463,7 +464,7 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 10, antiStarvationPointsPerMinute: 20 }))}
+                    onClick={() => setValues(v => ({ ...v, antiStarvationThresholdMinutes: 10 }))}
                     className={`py-1.5 rounded-lg transition-all ${
                       starvationGuardLevel === 'high'
                         ? 'bg-white text-amber-700 shadow-sm font-black'
@@ -586,104 +587,123 @@ export const QueuePolicyEditor: React.FC<QueuePolicyEditorProps> = ({
 
               {showExpertMode && (
                 <div className="p-4 border-t border-slate-200 bg-white space-y-4">
-                  <p className="text-[11px] text-slate-500 font-mono bg-slate-100 p-2.5 rounded-xl">
-                    Score = W_channel + (T_wait - T_threshold) * K_starv + Bonus_time - Penalty_late
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Вес записи (W_apt)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={values.appointmentDuePriority}
-                        onChange={e => setValues(v => ({ ...v, appointmentDuePriority: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
+                  <div className="p-3 bg-slate-100 rounded-xl space-y-1 font-mono text-[11px] text-slate-700">
+                    <div className="font-bold text-[#003B73]">
+                      Канонический порядок вызова (Queue Engine):
                     </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Вес QR-кода (W_qr)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={values.qrPriority}
-                        onChange={e => setValues(v => ({ ...v, qrPriority: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
+                    <div>ORDER BY due_at ASC, source_rank ASC, checkin_at ASC, id ASC</div>
+                    <div className="text-[10px] text-slate-500 font-sans mt-0.5">
+                      Талоны упорядочиваются по целевому сроку обслуживания (дедлайну due_at). Защита от стагнации сдвигает расчетный дедлайн ожидания.
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Вес живой очереди (W_live)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={values.livePriority}
-                        onChange={e => setValues(v => ({ ...v, livePriority: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                      Управляющие параметры очереди (влияют на дедлайн и выбор CallNext)
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Порог стагнации (мин, due_at)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="240"
+                          value={values.antiStarvationThresholdMinutes}
+                          onChange={e => setValues(v => ({ ...v, antiStarvationThresholdMinutes: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Льготный период (мин, grace)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          value={values.appointmentGraceMinutes}
+                          onChange={e => setValues(v => ({ ...v, appointmentGraceMinutes: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Штраф/мин опоздания (мин)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="600"
+                          value={values.appointmentLatePenaltyPerMinute}
+                          onChange={e => setValues(v => ({ ...v, appointmentLatePenaltyPerMinute: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Макс. штраф опоздания (мин)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          value={values.appointmentLatePenaltyMaxPoints}
+                          onChange={e => setValues(v => ({ ...v, appointmentLatePenaltyMaxPoints: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Вес QR-кода (W_qr, source_rank)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          value={values.qrPriority}
+                          onChange={e => setValues(v => ({ ...v, qrPriority: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Вес талона зала (W_live, source_rank)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          value={values.livePriority}
+                          onChange={e => setValues(v => ({ ...v, livePriority: Number(e.target.value) || 0 }))}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
+                        />
+                      </div>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Порог голодания (мин)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="240"
-                        value={values.antiStarvationThresholdMinutes}
-                        onChange={e => setValues(v => ({ ...v, antiStarvationThresholdMinutes: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
-                    </div>
+                  <div className="space-y-1 pt-2 border-t border-slate-100">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Метаданные аудита и обратной совместимости (не влияют на выбор CallNext)
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Вес записи (W_apt, аудит-лог)</label>
+                        <input
+                          type="number"
+                          readOnly
+                          disabled
+                          value={values.appointmentDuePriority}
+                          className="w-full px-3 py-1.5 border border-slate-200 bg-slate-100 text-slate-400 rounded-xl text-xs font-mono cursor-not-allowed"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">Фиксированный Ранг 0 в очереди. Значение пишется в аудит-лог</p>
+                      </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Баллов/мин голодания</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="600"
-                        value={values.antiStarvationPointsPerMinute}
-                        onChange={e => setValues(v => ({ ...v, antiStarvationPointsPerMinute: Number(e.target.value) || 1 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Льготный период (мин)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="120"
-                        value={values.appointmentGraceMinutes}
-                        onChange={e => setValues(v => ({ ...v, appointmentGraceMinutes: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Штраф/мин опоздания</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="600"
-                        value={values.appointmentLatePenaltyPerMinute}
-                        onChange={e => setValues(v => ({ ...v, appointmentLatePenaltyPerMinute: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Макс. штраф опоздания</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={values.appointmentLatePenaltyMaxPoints}
-                        onChange={e => setValues(v => ({ ...v, appointmentLatePenaltyMaxPoints: Number(e.target.value) || 0 }))}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-mono"
-                      />
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">Баллов/мин стагнации (аудит-лог)</label>
+                        <input
+                          type="number"
+                          readOnly
+                          disabled
+                          value={values.antiStarvationPointsPerMinute}
+                          className="w-full px-3 py-1.5 border border-slate-200 bg-slate-100 text-slate-400 rounded-xl text-xs font-mono cursor-not-allowed"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-0.5">Используется для поля decision_priority в аудит-логе ticket_events</p>
+                      </div>
                     </div>
                   </div>
                 </div>

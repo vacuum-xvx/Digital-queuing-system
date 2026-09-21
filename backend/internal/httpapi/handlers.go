@@ -48,8 +48,8 @@ func (a *API) RegisterRoutes(r chi.Router) {
 		r.Get("/tickets/{ticketId}/eta", a.GetTicketETA)
 		r.Get("/branches/{branchId}/tv", a.GetTVQueue)
 		r.Get("/branches/{branchId}/workload", a.GetBranchWorkload)
-		r.With(requireRole(domain.RoleEmployee, domain.RoleOPCChief)).Post("/branches/{branchId}/windows", a.CreateWindow)
-		r.With(requireRole(domain.RoleEmployee, domain.RoleOPCChief)).Delete("/windows/{windowId}", a.DeleteWindow)
+		r.With(requireRole(domain.RoleOPCChief)).Post("/branches/{branchId}/windows", a.CreateWindow)
+		r.With(requireRole(domain.RoleOPCChief)).Delete("/windows/{windowId}", a.DeleteWindow)
 
 		// ── Оператор (employee + opc_chief) ──────────────────────────────
 		r.Route("/operator", func(r chi.Router) {
@@ -66,27 +66,29 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/branches/{branchId}/incidents", a.ReportIncident)
 		})
 
-		// ── Администратор (employee + opc_chief) ─────────────────────────
+		// ── Администратор (opc_chief; отдельные точки чтения/статуса окна доступны employee) ──
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(requireRole(domain.RoleEmployee, domain.RoleOPCChief))
-			r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
+
+			// Операции, доступные оператору окна (просмотр очереди отделения, чтение политики, статус окна, услуги окна)
 			r.Get("/branches/{branchId}/queue", a.GetOperatorQueue)
-			r.Get("/branches/{branchId}/anomalies", a.ListAnomalies)
-			r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
 			r.Get("/branches/{branchId}/queue-policy", a.GetQueuePolicy)
-			r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
-			r.Post("/branches/{branchId}/close-shift", a.CloseShift)
-			r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
-			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
-			r.Get("/notifications/outbox", a.ListNotificationOutbox)
-			r.Post("/branches/{branchId}/windows", a.CreateWindow)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
-			r.Delete("/windows/{windowId}", a.DeleteWindow)
 
-			// Управление пользователями — только начальник ОПС
+			// Операции управления отделением — строго начальник ОПС (opc_chief)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(domain.RoleOPCChief))
+				r.Get("/branches/{branchId}/overview", a.GetAdminOverview)
+				r.Get("/branches/{branchId}/anomalies", a.ListAnomalies)
+				r.Put("/branches/{branchId}/priorities", a.SavePriorityRules)
+				r.Put("/branches/{branchId}/queue-policy", a.UpdateQueuePolicy)
+				r.Post("/branches/{branchId}/close-shift", a.CloseShift)
+				r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
+				r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
+				r.Get("/notifications/outbox", a.ListNotificationOutbox)
+				r.Post("/branches/{branchId}/windows", a.CreateWindow)
+				r.Delete("/windows/{windowId}", a.DeleteWindow)
 				r.Get("/users", a.ListUsers)
 				r.Put("/users/{userID}/role", a.ChangeUserRole)
 			})

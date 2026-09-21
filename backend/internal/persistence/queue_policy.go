@@ -44,8 +44,13 @@ func validPolicy(c application.UpdateQueuePolicyCommand) bool {
 
 func (p *Postgres) getBranchPolicyTx(ctx context.Context, tx pgx.Tx, branchID pgtype.UUID) domain.QueuePolicyConfig {
 	base := p.GetPolicy()
-	var qrPri, livePri, graceMin int
-	err := tx.QueryRow(ctx, `SELECT qr_priority, live_priority, appointment_grace_minutes FROM queue_policies WHERE branch_id=$1`, branchID).Scan(&qrPri, &livePri, &graceMin)
+	var qrPri, livePri, graceMin, starveMin, latePenaltyMin, latePenaltyMax int
+	var err error
+	if tx != nil {
+		err = tx.QueryRow(ctx, `SELECT qr_priority, live_priority, appointment_grace_minutes, anti_starvation_threshold_minutes, appointment_late_penalty_per_minute, appointment_late_penalty_max_points FROM queue_policies WHERE branch_id=$1`, branchID).Scan(&qrPri, &livePri, &graceMin, &starveMin, &latePenaltyMin, &latePenaltyMax)
+	} else {
+		err = p.pool.QueryRow(ctx, `SELECT qr_priority, live_priority, appointment_grace_minutes, anti_starvation_threshold_minutes, appointment_late_penalty_per_minute, appointment_late_penalty_max_points FROM queue_policies WHERE branch_id=$1`, branchID).Scan(&qrPri, &livePri, &graceMin, &starveMin, &latePenaltyMin, &latePenaltyMax)
+	}
 	if err == nil {
 		qrRank := 1
 		liveRank := 2
@@ -56,16 +61,28 @@ func (p *Postgres) getBranchPolicyTx(ctx context.Context, tx pgx.Tx, branchID pg
 		if graceMin > 0 {
 			base.Appointment.GraceMinutes = graceMin
 		}
+		if latePenaltyMin >= 0 {
+			base.Appointment.LatePenaltyPerMinute = latePenaltyMin
+		}
+		if latePenaltyMax >= 0 {
+			base.Appointment.LatePenaltyMaxPoints = latePenaltyMax
+		}
 		newSources := make(map[string]domain.SourcePolicy, len(base.Sources))
 		for k, v := range base.Sources {
 			newSources[k] = v
 		}
 		if qr, ok := newSources["qr"]; ok {
 			qr.Rank = qrRank
+			if starveMin >= 0 {
+				qr.MaxWaitMinutes = &starveMin
+			}
 			newSources["qr"] = qr
 		}
 		if live, ok := newSources["live"]; ok {
 			live.Rank = liveRank
+			if starveMin >= 0 {
+				live.MaxWaitMinutes = &starveMin
+			}
 			newSources["live"] = live
 		}
 		base.Sources = newSources
@@ -117,18 +134,27 @@ func (p *Postgres) UpdateQueuePolicy(ctx context.Context, c application.UpdateQu
 
 	// Re-rank all waiting tickets in this branch so CallNext immediately reflects new priority
 	_, err = tx.Exec(ctx, `UPDATE tickets t
-	SET source_rank = CASE t.source
-		WHEN 'APPOINTMENT' THEN 0
-		WHEN 'QR' THEN $2
-		WHEN 'LIVE' THEN $3
+	SET source_rank = CASE
+		WHEN t.source = 'APPOINTMENT' AND (t.checkin_at IS NULL OR t.checkin_at <= t.scheduled_at + ($5::int * interval '1 minute')) THEN 0
+		WHEN t.source = 'APPOINTMENT' AND t.checkin_at > t.scheduled_at + ($5::int * interval '1 minute') THEN $3
+		WHEN t.source = 'QR' THEN $2
+		WHEN t.source = 'LIVE' THEN $3
 		ELSE t.source_rank
+	END,
+	due_at = CASE
+		WHEN t.source IN ('QR', 'LIVE') AND $4::int >= 0 THEN t.checkin_at + ($4::int * interval '1 minute')
+		WHEN t.source = 'APPOINTMENT' AND t.checkin_at IS NOT NULL AND t.checkin_at > t.scheduled_at + ($5::int * interval '1 minute') THEN
+			t.checkin_at + ($4::int * interval '1 minute') + (LEAST(FLOOR(EXTRACT(EPOCH FROM (t.checkin_at - (t.scheduled_at + ($5::int * interval '1 minute')))) / 60)::int * $6::int, $7::int) * interval '1 minute')
+		WHEN t.source = 'APPOINTMENT' AND (t.checkin_at IS NULL OR t.checkin_at <= t.scheduled_at + ($5::int * interval '1 minute')) THEN
+			t.scheduled_at
+		ELSE t.due_at
 	END
 	FROM (
 		SELECT id FROM tickets
-		WHERE branch_id = $1 AND status = 'WAITING'
+		WHERE branch_id = $1 AND (status = 'WAITING' OR (source = 'APPOINTMENT' AND status = 'SCHEDULED'))
 		FOR UPDATE SKIP LOCKED
 	) locked
-	WHERE t.id = locked.id`, id, qrRank, liveRank)
+	WHERE t.id = locked.id`, id, qrRank, liveRank, c.AntiStarvationThresholdMinutes, c.AppointmentGraceMinutes, c.AppointmentLatePenaltyPerMinute, c.AppointmentLatePenaltyMaxPoints)
 	if err != nil {
 		return empty, dbError(err)
 	}
@@ -141,12 +167,20 @@ func (p *Postgres) UpdateQueuePolicy(ctx context.Context, c application.UpdateQu
 	p.policyMu.Lock()
 	if p.policy.Sources != nil {
 		p.policy.Appointment.GraceMinutes = c.AppointmentGraceMinutes
+		p.policy.Appointment.LatePenaltyPerMinute = c.AppointmentLatePenaltyPerMinute
+		p.policy.Appointment.LatePenaltyMaxPoints = c.AppointmentLatePenaltyMaxPoints
 		if qr, ok := p.policy.Sources["qr"]; ok {
 			qr.Rank = qrRank
+			if c.AntiStarvationThresholdMinutes > 0 {
+				qr.MaxWaitMinutes = &c.AntiStarvationThresholdMinutes
+			}
 			p.policy.Sources["qr"] = qr
 		}
 		if live, ok := p.policy.Sources["live"]; ok {
 			live.Rank = liveRank
+			if c.AntiStarvationThresholdMinutes > 0 {
+				live.MaxWaitMinutes = &c.AntiStarvationThresholdMinutes
+			}
 			p.policy.Sources["live"] = live
 		}
 	}

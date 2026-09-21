@@ -262,10 +262,33 @@ def main():
     # -------------------------------------------------------------
     print("\n--- JURY-08: Notification service unavailable ---")
     # Verify Go integration test TestT8_NotificationProviderOutageVerifiesQueueReliability
+    # Dynamically resolve DB URL: env override -> localhost:5432 -> docker container inspection
+    db_url = os.environ.get('CORE_TEST_DATABASE_URL')
+    if not db_url:
+        pg_user = os.environ.get('POSTGRES_USER', 'postcode')
+        pg_pass = os.environ.get('POSTGRES_PASSWORD', 'local-development-only')
+        pg_db = os.environ.get('POSTGRES_DB', 'postcode')
+        pg_port = os.environ.get('POSTGRES_PORT', '5432')
+        db_url = f'postgres://{pg_user}:{pg_pass}@127.0.0.1:{pg_port}/{pg_db}?sslmode=disable'
+        try:
+            import socket
+            with socket.create_connection(('127.0.0.1', int(pg_port)), timeout=1):
+                pass
+        except Exception:
+            try:
+                out = subprocess.check_output(
+                    ['docker', 'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', 'tsifrovaya-ochered-novogo-pokoleniya-postgres-1'],
+                    text=True
+                ).strip()
+                if out:
+                    db_url = f'postgres://{pg_user}:{pg_pass}@{out}:5432/{pg_db}?sslmode=disable'
+            except Exception:
+                pass
+
     res_t8 = subprocess.run(
         ['go', 'test', '-v', '-run', 'TestT8_NotificationProviderOutageVerifiesQueueReliability', './internal/persistence/...'],
         cwd='backend',
-        env=dict(os.environ, CORE_TEST_DATABASE_URL='postgres://postcode:local-development-only@172.19.0.4:5432/postcode?sslmode=disable'),
+        env=dict(os.environ, CORE_TEST_DATABASE_URL=db_url),
         capture_output=True,
         text=True
     )
