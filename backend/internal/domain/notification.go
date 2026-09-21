@@ -5,7 +5,8 @@ import "time"
 type NotificationEventType string
 
 const (
-	NotificationTicketCalled NotificationEventType = "TICKET_CALLED"
+	NotificationTicketCalled   NotificationEventType = "TICKET_CALLED"
+	NotificationTicketNearTurn NotificationEventType = "TICKET_NEAR_TURN"
 )
 
 type NotificationStatus string

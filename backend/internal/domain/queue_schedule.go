@@ -21,8 +21,10 @@ const (
 )
 
 type AppointmentPolicy struct {
-	GraceMinutes       int `yaml:"grace_minutes"`
-	EarlyWindowMinutes int `yaml:"early_window_minutes"`
+	GraceMinutes         int `yaml:"grace_minutes"`
+	EarlyWindowMinutes   int `yaml:"early_window_minutes"`
+	LatePenaltyPerMinute int `yaml:"late_penalty_per_minute,omitempty"`
+	LatePenaltyMaxPoints int `yaml:"late_penalty_max_points,omitempty"`
 }
 
 type SourcePolicy struct {
@@ -132,17 +134,21 @@ type ScheduleTicketInput struct {
 // No DB access and no time.Now inside!
 func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, checkinAt time.Time) (dueAt time.Time, readyAt time.Time, sourceRank int) {
 	getMaxWait := func(srcKey string) time.Duration {
+		maxWait := 30 * time.Minute
 		svcKey := strings.ToLower(ticket.ServiceID)
 		if srv, ok := policy.Services[ticket.ServiceID]; ok && srv.MaxWaitMinutes > 0 {
-			return time.Duration(srv.MaxWaitMinutes) * time.Minute
+			maxWait = time.Duration(srv.MaxWaitMinutes) * time.Minute
+		} else if srv, ok := policy.Services[svcKey]; ok && srv.MaxWaitMinutes > 0 {
+			maxWait = time.Duration(srv.MaxWaitMinutes) * time.Minute
 		}
-		if srv, ok := policy.Services[svcKey]; ok && srv.MaxWaitMinutes > 0 {
-			return time.Duration(srv.MaxWaitMinutes) * time.Minute
+
+		if sp, ok := policy.Sources[srcKey]; ok && sp.MaxWaitMinutes != nil && *sp.MaxWaitMinutes >= 0 {
+			starveWait := time.Duration(*sp.MaxWaitMinutes) * time.Minute
+			if starveWait < maxWait {
+				maxWait = starveWait
+			}
 		}
-		if sp, ok := policy.Sources[srcKey]; ok && sp.MaxWaitMinutes != nil && *sp.MaxWaitMinutes > 0 {
-			return time.Duration(*sp.MaxWaitMinutes) * time.Minute
-		}
-		return 30 * time.Minute
+		return maxWait
 	}
 
 	srcLower := strings.ToLower(string(ticket.Source))
@@ -186,9 +192,20 @@ func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, check
 			sourceRank = aptRank
 		} else {
 			// APPOINTMENT, опоздал: checkin > slot + grace
-			// Талон не теряется, клиент идёт как живая очередь: due_at = checkin + max_wait, ready_at = checkin
+			// Талон не теряется, клиент идёт как живая очередь: due_at = checkin + max_wait + penalty, ready_at = checkin
 			maxWait := getMaxWait("live")
-			dueAt = checkin.Add(maxWait)
+			penalty := time.Duration(0)
+			if policy.Appointment.LatePenaltyPerMinute > 0 {
+				lateMinutes := int(checkin.Sub(slot.Add(grace)).Minutes())
+				if lateMinutes > 0 {
+					pts := lateMinutes * policy.Appointment.LatePenaltyPerMinute
+					if policy.Appointment.LatePenaltyMaxPoints > 0 && pts > policy.Appointment.LatePenaltyMaxPoints {
+						pts = policy.Appointment.LatePenaltyMaxPoints
+					}
+					penalty = time.Duration(pts) * time.Minute
+				}
+			}
+			dueAt = checkin.Add(maxWait + penalty)
 			readyAt = checkin
 			sourceRank = liveRank
 		}

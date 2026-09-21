@@ -382,7 +382,7 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
 		  AND t.ready_at <= $3::timestamptz
 		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
-		LIMIT 3
+		LIMIT 1
 		FOR UPDATE OF t SKIP LOCKED
 	`, branch, windowID, decisionTime)
 	if err != nil {
@@ -449,8 +449,7 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	// Update winning ticket to CALLED
 	_, err = tx.Exec(ctx, `
 		UPDATE tickets
-		SET status = 'CALLED', window_id = $1::uuid, called_at = $2::timestamptz,
-		    arrived_at = CASE WHEN source = 'APPOINTMENT' THEN COALESCE(arrived_at, $2::timestamptz) ELSE NULL END
+		SET status = 'CALLED', window_id = $1::uuid, called_at = $2::timestamptz
 		WHERE id = $3::uuid
 	`, windowID, decisionTime, winner.ID)
 	if err != nil {
@@ -464,8 +463,8 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	}
 
 	// Format top-candidate explanation for ticket_events audit log
-	explanation := fmt.Sprintf("chosen due_at=%v source_rank=%d checkin_at=%v; candidates_count=%d",
-		winner.DueAt, winner.SourceRank, winner.CheckinAt, len(candidates))
+	explanation := fmt.Sprintf("chosen due_at=%v source_rank=%d checkin_at=%v",
+		winner.DueAt, winner.SourceRank, winner.CheckinAt)
 
 	policyVersion := legacyPolicy.Version
 	priority := calculateLegacyPriority(winner, decisionTime, legacyPolicy)
@@ -484,6 +483,9 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 
 	// Enqueue notification in outbox; failure must not abort successful CallNext
 	_ = p.enqueueCallNotification(ctx, tx, t)
+
+	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
+	_ = p.enqueueNearTurnForTopCandidates(ctx, tx, branch, decisionTime)
 
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)
@@ -599,8 +601,7 @@ func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ti
 		UPDATE tickets
 		SET status = 'CALLED',
 		    window_id = $1::uuid,
-		    called_at = $2::timestamptz,
-		    arrived_at = CASE WHEN source = 'APPOINTMENT' THEN COALESCE(arrived_at, $2::timestamptz) ELSE NULL END
+		    called_at = $2::timestamptz
 		WHERE id = $3::uuid
 	`, windowID, decisionTime, target.ID)
 	if err != nil {
@@ -629,6 +630,9 @@ func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ti
 
 	// Enqueue notification in outbox; failure must not abort successful call
 	_ = p.enqueueCallNotification(ctx, tx, t)
+
+	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
+	_ = p.enqueueNearTurnForTopCandidates(ctx, tx, t.BranchID, decisionTime)
 
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)

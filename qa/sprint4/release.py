@@ -186,7 +186,7 @@ def main():
     assert request('GET','/health')[0] == 200
     assert request('GET','/ready')[0] == 200
     if args.legacy:
-        token = login('OPERATOR')
+        token = login('CHIEF')
         try:
             env = dict(os.environ, QA_SESSION_TOKEN=token, BASE_URL=BASE)
             for sprint in ['sprint1','sprint2','sprint3']:
