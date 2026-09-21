@@ -23,6 +23,10 @@ func TestLoad(t *testing.T) {
 	if password != values["POSTGRES_PASSWORD"] {
 		t.Fatal("password not safely encoded")
 	}
+	t.Setenv("CORS_ALLOWED_ORIGIN", "https://pointers-team.tech, http://pointers-team.tech, http://144.31.181.192")
+	if _, err := Load(); err != nil {
+		t.Fatalf("expected multiple CORS origins to load, got: %v", err)
+	}
 	for _, tc := range []struct{ key, value string }{{"POSTGRES_PASSWORD", ""}, {"HTTP_PORT", "invalid-secret"}, {"LOG_LEVEL", "invalid-secret"}, {"CORS_ALLOWED_ORIGIN", "*"}} {
 		t.Run(tc.key, func(t *testing.T) {
 			t.Setenv(tc.key, tc.value)
