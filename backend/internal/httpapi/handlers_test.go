@@ -62,6 +62,10 @@ func (f *FakeUseCases) GetTicketETA(ctx context.Context, id string) (domain.Tick
 	return f.GetTicketETAFunc(ctx, id)
 }
 
+func (f *FakeUseCases) ListNotificationOutbox(ctx context.Context, limit, offset int, status string) ([]domain.NotificationOutboxItem, int, error) {
+	return nil, 0, nil
+}
+
 var _ application.UseCases = (*FakeUseCases)(nil)
 
 func (f *FakeUseCases) ArriveAppointment(ctx context.Context, id string) (application.AppointmentView, error) {

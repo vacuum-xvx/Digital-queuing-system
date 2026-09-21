@@ -8,14 +8,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	AppEnv        string
-	LogLevel      slog.Level
-	HTTPPort      string
-	DatabaseURL   string
-	AllowedOrigin string
+	AppEnv                    string
+	LogLevel                  slog.Level
+	HTTPPort                  string
+	DatabaseURL               string
+	AllowedOrigin             string
+	NotificationProviderURL   string
+	NotificationTimeout       time.Duration
+	NotificationRetryInterval time.Duration
+	NotificationMaxAttempts   int
 }
 
 func Load() (Config, error) {
@@ -46,5 +51,31 @@ func Load() (Config, error) {
 	// The Foundation Compose network is local development only.
 	dsn.RawQuery = "sslmode=disable&connect_timeout=3"
 	c.DatabaseURL = dsn.String()
+
+	c.NotificationProviderURL = strings.TrimSpace(os.Getenv("NOTIFICATION_PROVIDER_URL"))
+	timeoutSec := 2
+	if tStr := os.Getenv("NOTIFICATION_TIMEOUT_SECONDS"); tStr != "" {
+		if tVal, err := strconv.Atoi(tStr); err == nil && tVal > 0 {
+			timeoutSec = tVal
+		}
+	}
+	c.NotificationTimeout = time.Duration(timeoutSec) * time.Second
+
+	retryMs := 1000
+	if rStr := os.Getenv("NOTIFICATION_RETRY_INTERVAL_MS"); rStr != "" {
+		if rVal, err := strconv.Atoi(rStr); err == nil && rVal > 0 {
+			retryMs = rVal
+		}
+	}
+	c.NotificationRetryInterval = time.Duration(retryMs) * time.Millisecond
+
+	maxAttempts := 3
+	if mStr := os.Getenv("NOTIFICATION_MAX_ATTEMPTS"); mStr != "" {
+		if mVal, err := strconv.Atoi(mStr); err == nil && mVal > 0 {
+			maxAttempts = mVal
+		}
+	}
+	c.NotificationMaxAttempts = maxAttempts
+
 	return c, nil
 }

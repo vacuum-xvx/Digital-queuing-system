@@ -482,6 +482,9 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		return empty, err
 	}
 
+	// Enqueue notification in outbox; failure must not abort successful CallNext
+	_ = p.enqueueCallNotification(ctx, tx, t)
+
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)
 	}
@@ -623,6 +626,9 @@ func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ti
 	if err = insertEvent(ctx, tx, t, domain.TicketEventCalled, &from, &policyVersion, &priority, extra); err != nil {
 		return empty, err
 	}
+
+	// Enqueue notification in outbox; failure must not abort successful call
+	_ = p.enqueueCallNotification(ctx, tx, t)
 
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)

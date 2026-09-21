@@ -77,6 +77,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/branches/{branchId}/close-shift", a.CloseShift)
 			r.Put("/branches/{branchId}/schedule", a.UpdateBranchSchedule)
 			r.Get("/tickets/{ticketId}/events", a.ListTicketEvents)
+			r.Get("/notifications/outbox", a.ListNotificationOutbox)
 			r.Post("/branches/{branchId}/windows", a.CreateWindow)
 			r.Put("/windows/{windowId}/status", a.ChangeWindowStatus)
 			r.Put("/windows/{windowId}/services", a.UpdateWindowServices)
