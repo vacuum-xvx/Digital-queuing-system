@@ -143,3 +143,65 @@ func (a *API) RedirectTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSONResponse(w, http.StatusOK, mapTicket(ticket))
 }
+
+type ReportIncidentRequest struct {
+	WindowID    *string `json:"windowId,omitempty"`
+	Category    string  `json:"category"`
+	Description string  `json:"description"`
+}
+
+type OperatorIncidentDTO struct {
+	ID          string  `json:"id"`
+	BranchID    string  `json:"branchId"`
+	WindowID    *string `json:"windowId,omitempty"`
+	OperatorID  *string `json:"operatorId,omitempty"`
+	Category    string  `json:"category"`
+	Description string  `json:"description"`
+	CreatedAt   string  `json:"createdAt"`
+}
+
+func (a *API) ReportIncident(w http.ResponseWriter, r *http.Request) {
+	branchID := chi.URLParam(r, "branchId")
+	if branchID == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Branch ID is required")
+		return
+	}
+
+	var req ReportIncidentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if req.Category == "" || req.Description == "" {
+		writeJSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "category and description are required")
+		return
+	}
+
+	var operatorID *string
+	if user, ok := userFromContext(r.Context()); ok && user.ID != "" {
+		operatorID = &user.ID
+	}
+
+	incident, err := a.usecases.ReportIncident(r.Context(), application.ReportIncidentCommand{
+		BranchID:    branchID,
+		WindowID:    req.WindowID,
+		OperatorID:  operatorID,
+		Category:    req.Category,
+		Description: req.Description,
+	})
+	if err != nil {
+		a.respondError(w, r, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusCreated, OperatorIncidentDTO{
+		ID:          incident.ID,
+		BranchID:    incident.BranchID,
+		WindowID:    incident.WindowID,
+		OperatorID:  incident.OperatorID,
+		Category:    incident.Category,
+		Description: incident.Description,
+		CreatedAt:   incident.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+

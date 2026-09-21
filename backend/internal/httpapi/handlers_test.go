@@ -56,6 +56,7 @@ type FakeUseCases struct {
 	ListUsersFunc      func(ctx context.Context, limit, offset int, search, role string) (domain.UserPage, error)
 	ListAnomaliesFunc  func(ctx context.Context, branchID string, limit, offset int) (domain.AnomalyPage, error)
 	ChangeUserRoleFunc func(ctx context.Context, userID string, role domain.UserRole) (domain.User, error)
+	ReportIncidentFunc func(ctx context.Context, cmd application.ReportIncidentCommand) (domain.OperatorIncident, error)
 }
 
 func (f *FakeUseCases) GetTicketETA(ctx context.Context, id string) (domain.TicketETA, error) {
@@ -66,7 +67,23 @@ func (f *FakeUseCases) ListNotificationOutbox(ctx context.Context, limit, offset
 	return nil, 0, nil
 }
 
+func (f *FakeUseCases) ReportIncident(ctx context.Context, cmd application.ReportIncidentCommand) (domain.OperatorIncident, error) {
+	if f.ReportIncidentFunc != nil {
+		return f.ReportIncidentFunc(ctx, cmd)
+	}
+	return domain.OperatorIncident{
+		ID:          "inc-test-1",
+		BranchID:    cmd.BranchID,
+		WindowID:    cmd.WindowID,
+		OperatorID:  cmd.OperatorID,
+		Category:    cmd.Category,
+		Description: cmd.Description,
+		CreatedAt:   time.Now().UTC(),
+	}, nil
+}
+
 var _ application.UseCases = (*FakeUseCases)(nil)
+
 
 func (f *FakeUseCases) ArriveAppointment(ctx context.Context, id string) (application.AppointmentView, error) {
 	return f.ArriveAppointmentFunc(ctx, id)

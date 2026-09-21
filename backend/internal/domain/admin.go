@@ -87,3 +87,14 @@ type WindowRecommendation struct {
 	Severity string `json:"severity"`
 	P90WaitMinutes float64 `json:"p90WaitMinutes"`
 }
+
+type OperatorIncident struct {
+	ID          string     `json:"id"`
+	BranchID    string     `json:"branchId"`
+	WindowID    *string    `json:"windowId,omitempty"`
+	OperatorID  *string    `json:"operatorId,omitempty"`
+	Category    string     `json:"category"`
+	Description string     `json:"description"`
+	CreatedAt   time.Time  `json:"createdAt"`
+}
+

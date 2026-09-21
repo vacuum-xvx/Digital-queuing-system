@@ -450,9 +450,9 @@ BEGIN
         IF NEW.scheduled_at IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.scheduled_at IS DISTINCT FROM OLD.scheduled_at) THEN
             NEW.due_at := NEW.scheduled_at;
             IF NEW.checkin_at IS NULL THEN
-                NEW.ready_at := NEW.scheduled_at - INTERVAL '10 minutes';
+                NEW.ready_at := NEW.scheduled_at;
             ELSE
-                NEW.ready_at := LEAST(NEW.checkin_at, NEW.scheduled_at - INTERVAL '10 minutes');
+                NEW.ready_at := GREATEST(NEW.checkin_at, NEW.scheduled_at - INTERVAL '10 minutes');
             END IF;
         END IF;
     ELSE
@@ -524,10 +524,25 @@ CREATE INDEX IF NOT EXISTS notification_outbox_ticket_idx
     ON notification_outbox(ticket_id);
 
 
+-- === 000017_operator_incidents.up.sql ===
+CREATE TABLE IF NOT EXISTS operator_incidents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    window_id UUID REFERENCES windows(id) ON DELETE SET NULL,
+    operator_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_incidents_branch ON operator_incidents(branch_id, created_at DESC);
+
+
 -- === schema_migrations (golang-migrate compatibility) ===
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version bigint NOT NULL PRIMARY KEY,
   dirty boolean NOT NULL
 );
 DELETE FROM schema_migrations;
-INSERT INTO schema_migrations (version, dirty) VALUES (16, false);
+INSERT INTO schema_migrations (version, dirty) VALUES (17, false);
+

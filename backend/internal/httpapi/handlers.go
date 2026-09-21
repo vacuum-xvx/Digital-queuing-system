@@ -63,6 +63,7 @@ func (a *API) RegisterRoutes(r chi.Router) {
 			r.Post("/tickets/{ticketId}/no-show", a.MarkNoShow)
 			r.Post("/tickets/{ticketId}/return", a.ReturnTicket)
 			r.Post("/tickets/{ticketId}/redirect", a.RedirectTicket)
+			r.Post("/branches/{branchId}/incidents", a.ReportIncident)
 		})
 
 		// ── Администратор (employee + opc_chief) ─────────────────────────

@@ -42,8 +42,11 @@ func TestT8_NotificationProviderOutageVerifiesQueueReliability(t *testing.T) {
 		BatchSize:      10,
 	})
 
+	// Clean outbox before test run so historical items don't interfere
+	_, _ = p.pool.Exec(ctx, "DELETE FROM notification_outbox")
+
 	// Step 1: Create a WAITING ticket
-	tkt := create(t, ctx, p, parcels, "t8-ticket-1")
+	tkt := create(t, ctx, p, parcels, "t8-ticket-"+time.Now().Format("150405.000000"))
 	if tkt.Status != domain.TicketStatusWaiting {
 		t.Fatalf("expected initial ticket status WAITING, got: %s", tkt.Status)
 	}
