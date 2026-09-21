@@ -971,6 +971,36 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /admin/notifications/outbox:
+    get:
+      security: [{ sessionCookie: [] }]
+      summary: List notification outbox items
+      operationId: listNotificationOutbox
+      tags:
+        - Admin
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, SENT, FAILED] } }
+      responses:
+        '200':
+          description: List of notification outbox items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationOutboxItem'
+                  total: { type: integer, minimum: 0 }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /appointments:
     post:
       summary: Create an appointment
@@ -1400,6 +1430,23 @@ components:
               message: "Version mismatch"
               requestId: "req-123"
   schemas:
+    NotificationOutboxItem:
+      type: object
+      description: Элемент transactional outbox уведомлений.
+      required: [id, ticketId, branchId, eventType, payload, status, attempts, maxAttempts, nextAttemptAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        eventType: { type: string }
+        payload: { type: string }
+        status: { type: string, enum: [PENDING, SENT, FAILED] }
+        attempts: { type: integer }
+        maxAttempts: { type: integer }
+        nextAttemptAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        sentAt: { type: string, format: date-time, nullable: true }
+        lastError: { type: string, nullable: true }
     AnomalyTicket:
       type: object
       description: Аномалия талона из domain.AnomalyTicket.

@@ -181,6 +181,31 @@ QR (`Q-*`) и LIVE (`L-*`) создаются в `WAITING` с check-in в мом
 хранятся в БД, но текущий [HTTP DTO событий](backend/internal/httpapi/admin_handlers.go)
 их не возвращает: API отдаёт только id, тип, статусы, окно, версию политики, баллы и время.
 
+### Подсистема уведомлений (Transactional Outbox)
+
+Реализация: [internal/notification](backend/internal/notification/),
+[notification_outbox.go](backend/internal/persistence/notification_outbox.go),
+миграция [000016_notification_outbox.up.sql](backend/migrations/000016_notification_outbox.up.sql).
+
+- **Архитектурная изоляция:** Вызовы талонов (`CallNextAt`, `CallSpecificTicketAt`) атомарно
+  сохраняют событие уведомления в таблицу `notification_outbox` внутри транзакции `CallNext`.
+  Сетевые HTTP-вызовы сервиса уведомлений вынесены в асинхронный фоновый воркер `OutboxWorker`
+  и никогда не выполняются внутри транзакции PostgreSQL.
+- **Отказоустойчивость очереди (сценарий T8):** При сетевом таймауте, недоступности или ошибке
+  HTTP 5xx провайдера уведомлений вызов талона не откатывается, окно остаётся назначенным,
+  а талон сохраняет статус `CALLED`. Воркер осуществляет ограниченные повторные попытки
+  с экспоненциальной задержкой (по умолчанию 3 попытки с шагом 1с, 2с, 4с) и переводит запись
+  в `FAILED` при исчерпании лимита, сохраняя текст ошибки в `last_error`.
+- **Идемпотентность доставки:** Каждое сообщение содержит детерминированный `id` (например, `<ticketId>-call`)
+  и передаётся с заголовком `Idempotency-Key: <id>`. Демо-сервер отслеживает дубликаты
+  и гарантирует корректность при повторной отправке.
+- **Демо-адаптер и замена на реального провайдера:** Демо-сервис `notification-demo`
+  работает в Docker Compose на порту `:8082` с эндпоинтами управления `/mode` (`SUCCESS`, `FAIL`, `TIMEOUT`),
+  `/history` и `/reset`. Для интеграции с реальным шлюзом уведомлений (SMS/Push/Webhook)
+  достаточно переопределить в `.env` переменную `NOTIFICATION_PROVIDER_URL` и параметры таймаутов/попыток.
+- **Мониторинг Outbox:** Авторизованным сотрудникам доступен эндпоинт
+  `GET /api/v1/admin/notifications/outbox` с пагинацией и фильтрацией по статусу (`PENDING`, `SENT`, `FAILED`).
+
 ### Позиция в очереди
 
 [QueuePosition](backend/internal/persistence/queue_ranking.go) читает снимок
@@ -242,6 +267,7 @@ docker compose exec backend /app/api migrate version
 | QR демо-отделения | http://localhost:5173/q/11111111-1111-1111-1111-111111111111 |
 | Терминал | http://localhost:5173/kiosk/11111111-1111-1111-1111-111111111111 |
 | Табло | http://localhost:5173/tv?branchId=11111111-1111-1111-1111-111111111111 |
+| Демо-сервис уведомлений | http://localhost:8082/health · http://localhost:8082/history |
 | Swagger UI | http://localhost:8081 |
 | REST API / health / readiness | http://localhost:8080/api/v1/branches · http://localhost:8080/health · http://localhost:8080/ready |
 | Grafana через Vite | http://localhost:5173/grafana/ |

@@ -56,6 +56,79 @@ docker stop queue-qa-postgres
 [ETA](../backend/internal/persistence/eta_integration_test.go),
 [совместимость услуг](../backend/internal/persistence/window_services_integration_test.go).
 
+## Подсистема уведомлений и сценарий T8 (отказ демо-сервиса)
+
+Подсистема уведомлений использует паттерн **Transactional Outbox**:
+1. При вызове талона (`CallNextAt` / `CallSpecificTicketAt`) запись о событии вызова атомарно сохраняется в таблицу `notification_outbox` в рамках той же транзакции PostgreSQL.
+2. Сетевой вызов провайдера уведомлений никогда не выполняется внутри транзакции БД очереди.
+3. Фоновый worker (`OutboxWorker`) периодически считывает неотправленные сообщения (`FOR UPDATE SKIP LOCKED`) и отправляет их на настроенный `NOTIFICATION_PROVIDER_URL`.
+4. При недоступности сервиса уведомлений, сетевых таймаутах или HTTP 5xx ошибках:
+   - Вызов талона оператором **НЕ откатывается** и остаётся в статусе `CALLED`;
+   - Окно оператора **НЕ блокируется** и продолжает нормальное обслуживание;
+   - Запись в outbox остаётся в статусе `PENDING` с инкрементом `attempts` и экспоненциальным backoff (`next_attempt_at`);
+   - После исчерпания максимального числа попыток (`NOTIFICATION_MAX_ATTEMPTS`, по умолчанию 3) статус фиксируется как `FAILED` с сохранением `last_error` для аудита;
+   - При восстановлении сервиса новые события доставляются в штатном режиме (`SENT`).
+
+### Автоматические тесты подсистемы уведомлений
+
+```bash
+# 1. Модульные тесты транспортов, воркера, таймаутов, ретраев и идемпотентности
+(cd backend && go test -v -race ./internal/notification/...)
+
+# 2. Интеграционный тест сценария T8 с реальной БД PostgreSQL
+(cd backend && CORE_TEST_DATABASE_URL='postgres://postcode:local-development-only@172.19.0.2:5432/postcode?sslmode=disable' \
+  go test -v -race -run TestT8_NotificationProviderOutageVerifiesQueueReliability ./internal/persistence/...)
+```
+
+### Воспроизведение сценария T8 на стенде Docker Compose
+
+Сервис `notification-demo` поднимается в составе `docker compose up -d` на порту `8082` и поддерживает управление режимами через HTTP API:
+- `POST /mode` с телом `{"mode":"SUCCESS"|"FAIL"|"TIMEOUT"}`
+- `GET /health` — статус сервиса и текущий режим
+- `GET /history` — журнал доставленных сообщений с подсчётом дубликатов
+- `POST /reset` — сброс журнала и возврат в режим `SUCCESS`
+
+**Шаги проверки T8:**
+
+1. **Проверка доступности сервисов:**
+   ```bash
+   curl -s http://localhost:8080/ready
+   # Ответ: {"database":"ok","status":"ready"}
+   curl -s http://localhost:8082/health
+   # Ответ: {"mode":"SUCCESS","status":"ok"}
+   ```
+
+2. **Имитация аварии сервиса уведомлений (режим FAIL):**
+   ```bash
+   curl -s -X POST http://localhost:8082/mode \
+     -H "Content-Type: application/json" \
+     -d '{"mode":"FAIL"}'
+   # Ответ: {"mode":"FAIL","status":"ok"}
+   ```
+
+3. **Вызов талона оператором:**
+   Вызовите следующий талон через UI `/operator` или API:
+   ```bash
+   curl -s -X POST http://localhost:8080/api/v1/operator/windows/33333333-3333-3333-3333-333333333333/call-next \
+     -H "Cookie: session=<OPERATOR_SESSION_COOKIE>"
+   ```
+   **Результат:** Талон успешно переходит в статус `CALLED`, окно №1 закрепляется за талоном, номер отображается на табло `/tv`. Сбой провайдера уведомлений **не привёл** к ошибке оператора или откату очереди.
+
+4. **Проверка состояния Outbox:**
+   ```bash
+   curl -s http://localhost:8080/api/v1/admin/notifications/outbox?status=FAILED \
+     -H "Cookie: session=<OPERATOR_OR_CHIEF_COOKIE>"
+   ```
+   Запись о вызове фиксирует `attempts: 3`, `status: "FAILED"`, `lastError: "notification provider returned HTTP 503"`.
+
+5. **Восстановление доступности провайдера (режим SUCCESS):**
+   ```bash
+   curl -s -X POST http://localhost:8082/mode \
+     -H "Content-Type: application/json" \
+     -d '{"mode":"SUCCESS"}'
+   ```
+   Последующие вызовы талонов успешно доставляют уведомления (`status: "SENT"`, `duplicate_count: 1` в `/history`).
+
 ## HTTP QA и release
 
 Существующие наборы: [Sprint 1](../qa/sprint1/README.md),
