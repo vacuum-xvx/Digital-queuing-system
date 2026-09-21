@@ -85,6 +85,14 @@ test('ClientWorkspace retains or reloads services when re-selecting the same bra
   assert.match(content, /Взять новый талон/);
 });
 
+test('client ticket keeps ETA details without rendering a sparkline', async () => {
+  const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(content, /Ожидание примерно/);
+  assert.match(content, /Позиция в очереди/);
+  assert.match(content, /Повышенная нагрузка/);
+  assert.doesNotMatch(content, /ETASparkline|cx-eta-chart|Распределение времени обслуживания/);
+});
+
 
 test('clientApi exports cancelTicket endpoint and performs POST /tickets/{id}/cancel', async () => {
   const clientApi = await loadTS('../src/api/client/clientApi.ts');

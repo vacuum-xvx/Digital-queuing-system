@@ -515,36 +515,22 @@
 
 .cx-ticket-position.cx-ticket-eta {
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-  text-align: center;
+  gap: 0.5rem;
   overflow-wrap: normal;
   word-break: normal;
 }
 
 .cx-eta-label {
-  flex: 1 1 10rem;
+  flex: 1 1 12rem;
+  min-width: 0;
   line-height: 1.5;
 }
 
-.cx-eta-chart {
-  display: flex;
-  flex: 1 1 12rem;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.cx-eta-chart > svg {
-  width: 6rem;
-  height: 2rem;
-  flex-shrink: 0;
-}
-
 .cx-eta-load {
-  white-space: nowrap;
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin-left: auto;
+  text-align: center;
   line-height: 1.5;
 }
 
