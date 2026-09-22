@@ -62,6 +62,10 @@ cd tsifrovaya-ochered-novogo-pokoleniya
 
 # 2. Создание файла конфигурации окружения
 cp .env.example .env
+# отредактируйте POSTGRES_PASSWORD / GRAFANA_PASSWORD для production (см. scripts/validate_env.sh)
+
+# 2.1 Проверка конфигурации (рекомендуется)
+bash scripts/validate_env.sh
 
 # 3. Сборка и запуск контейнеров
 docker compose up --build -d
