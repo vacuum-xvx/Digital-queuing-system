@@ -190,7 +190,7 @@ ALTER TABLE queue_policies
  ADD COLUMN live_priority integer NOT NULL DEFAULT 10,
  ADD COLUMN anti_starvation_threshold_minutes integer NOT NULL DEFAULT 15,
  ADD COLUMN anti_starvation_points_per_minute integer NOT NULL DEFAULT 10,
- ADD COLUMN appointment_grace_minutes integer NOT NULL DEFAULT 15,
+ ADD COLUMN appointment_grace_minutes integer NOT NULL DEFAULT 30,
  ADD COLUMN appointment_late_penalty_per_minute integer NOT NULL DEFAULT 5,
  ADD COLUMN appointment_late_penalty_max_points integer NOT NULL DEFAULT 90;
 -- Install the frozen Sprint 3 defaults as one versioned policy change per branch.

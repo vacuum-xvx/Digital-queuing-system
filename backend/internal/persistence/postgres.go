@@ -389,7 +389,13 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
 		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
 		  AND t.ready_at <= $3::timestamptz
-		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
+		ORDER BY t.due_at ASC,
+		         CASE
+		           WHEN t.source = 'APPOINTMENT' AND t.arrived_at IS NULL AND t.scheduled_at < $3::timestamptz - INTERVAL '30 minutes'
+		             THEN 2
+		           ELSE t.source_rank
+		         END ASC,
+		         t.checkin_at ASC, t.id ASC
 		LIMIT 1
 		FOR NO KEY UPDATE OF t SKIP LOCKED
 	`, branch, windowID, decisionTime)

@@ -1,8 +1,8 @@
 policy_version: 1
 
 appointment:
-  grace_minutes: 15
-  early_window_minutes: 10
+  grace_minutes: 30
+  early_window_minutes: 15
 
 sources:
   appointment:

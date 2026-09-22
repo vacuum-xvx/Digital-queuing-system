@@ -12,8 +12,8 @@ func defaultTestPolicy() QueuePolicyConfig {
 	return QueuePolicyConfig{
 		PolicyVersion: 1,
 		Appointment: AppointmentPolicy{
-			GraceMinutes:       15,
-			EarlyWindowMinutes: 10,
+			GraceMinutes:       30,
+			EarlyWindowMinutes: 15,
 		},
 		Sources: map[string]SourcePolicy{
 			"appointment": {Rank: 0},
@@ -57,40 +57,51 @@ func TestComputeScheduleTableDriven(t *testing.T) {
 			},
 			checkinAt:   baseSlot,
 			wantDueAt:   baseSlot,
-			wantReadyAt: baseSlot, // max(checkin, slot - early_window) = max(15:00, 14:50) = 15:00
+			wantReadyAt: baseSlot,
 			wantRank:    0,
 		},
 		{
-			name: "APPOINTMENT ранний приход (check-in 14:30, slot 15:00, early=10m -> ready 14:50)",
+			name: "APPOINTMENT ранний приход до 15-мин окна (check-in 14:30, slot 15:00, early=15m -> live очередь, rank=2, ready=checkin)",
 			ticket: ScheduleTicketInput{
 				Source:      TicketSourceAppointment,
 				ScheduledAt: &baseSlot,
 			},
 			checkinAt:   baseSlot.Add(-30 * time.Minute),
-			wantDueAt:   baseSlot,
-			wantReadyAt: baseSlot.Add(-10 * time.Minute), // max(14:30, 14:50) = 14:50
-			wantRank:    0,
+			wantDueAt:   baseSlot.Add(-30 * time.Minute).Add(30 * time.Minute), // 15:00
+			wantReadyAt: baseSlot.Add(-30 * time.Minute),                       // 14:30
+			wantRank:    2,                                                     // live rank
 		},
 		{
-			name: "APPOINTMENT ровно на границе grace (check-in 15:15, grace=15m)",
+			name: "APPOINTMENT приход в раннем 15-мин окне (check-in 14:50, slot 15:00, early=15m -> вовремя, rank=0, ready=checkin)",
 			ticket: ScheduleTicketInput{
 				Source:      TicketSourceAppointment,
 				ScheduledAt: &baseSlot,
 			},
-			checkinAt:   baseSlot.Add(15 * time.Minute),
+			checkinAt:   baseSlot.Add(-10 * time.Minute),
 			wantDueAt:   baseSlot,
-			wantReadyAt: baseSlot.Add(15 * time.Minute), // max(15:15, 14:50) = 15:15
-			wantRank:    0,
+			wantReadyAt: baseSlot.Add(-10 * time.Minute), // 14:50
+			wantRank:    0,                              // appointment rank
 		},
 		{
-			name: "APPOINTMENT опоздал (check-in 15:16, grace=15m, max_wait=30m -> live очередь)",
+			name: "APPOINTMENT ровно на границе grace (check-in 15:30, grace=30m)",
 			ticket: ScheduleTicketInput{
 				Source:      TicketSourceAppointment,
 				ScheduledAt: &baseSlot,
 			},
-			checkinAt:   baseSlot.Add(16 * time.Minute),
-			wantDueAt:   baseSlot.Add(16 * time.Minute).Add(30 * time.Minute), // 15:46
-			wantReadyAt: baseSlot.Add(16 * time.Minute),                       // 15:16
+			checkinAt:   baseSlot.Add(30 * time.Minute),
+			wantDueAt:   baseSlot,
+			wantReadyAt: baseSlot.Add(30 * time.Minute), // 15:30
+			wantRank:    0,
+		},
+		{
+			name: "APPOINTMENT опоздал свыше 30 мин (check-in 15:31, grace=30m, max_wait=30m -> live очередь)",
+			ticket: ScheduleTicketInput{
+				Source:      TicketSourceAppointment,
+				ScheduledAt: &baseSlot,
+			},
+			checkinAt:   baseSlot.Add(31 * time.Minute),
+			wantDueAt:   baseSlot.Add(31 * time.Minute).Add(30 * time.Minute), // 16:01
+			wantReadyAt: baseSlot.Add(31 * time.Minute),                       // 15:31
 			wantRank:    2,                                                    // live rank
 		},
 		{
@@ -100,9 +111,9 @@ func TestComputeScheduleTableDriven(t *testing.T) {
 				ScheduledAt: &baseSlot,
 				ServiceID:   "svc-fast",
 			},
-			checkinAt:   baseSlot.Add(20 * time.Minute),
-			wantDueAt:   baseSlot.Add(20 * time.Minute).Add(10 * time.Minute), // 15:30
-			wantReadyAt: baseSlot.Add(20 * time.Minute),                       // 15:20
+			checkinAt:   baseSlot.Add(35 * time.Minute),
+			wantDueAt:   baseSlot.Add(35 * time.Minute).Add(10 * time.Minute), // 15:45
+			wantReadyAt: baseSlot.Add(35 * time.Minute),                       // 15:35
 			wantRank:    2,
 		},
 		{

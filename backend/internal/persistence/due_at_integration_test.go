@@ -309,12 +309,12 @@ func TestRecoveryWorkerReconcilesStaleTickets(t *testing.T) {
 	}
 }
 
-// Test 7: Appointment not called before slot - early_window
+// Test 7: Appointment not called before slot when client has not arrived
 func TestAppointmentNotCalledBeforeEarlyWindow(t *testing.T) {
 	ctx, p, _ := integration(t)
 
 	now := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
-	// Slot is 12:30. Early window is 10 min -> ready_at is 12:20.
+	// Slot is 12:30. Client does not check in -> ready_at is 12:30.
 	slot := now.Add(30 * time.Minute)
 
 	aptCmd := application.CreateAppointmentCommand{
@@ -328,31 +328,38 @@ func TestAppointmentNotCalledBeforeEarlyWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Client checks in at 12:05 (25 min before slot)
-	checkinAt := now.Add(5 * time.Minute)
-	policy := p.GetPolicy()
-	dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
-		Source:      domain.TicketSourceAppointment,
-		ScheduledAt: &slot,
-		ServiceID:   parcels,
-	}, checkinAt)
-
-	execSQL(t, ctx, p, `UPDATE tickets SET checkin_at=$2, arrived_at=$2, due_at=$3, ready_at=$4, source_rank=$5, status='WAITING' WHERE id=$1::uuid`,
-		res.Appointment.Ticket.ID, checkinAt, dueAt, readyAt, sourceRank)
-
-	// Decision time at 12:15 (before ready_at 12:20) -> must return ErrNotEligibleYet
+	// Decision time at 12:15 (before slot 12:30, unarrived) -> must return ErrNotEligibleYet
 	_, err = p.CallNextAt(ctx, window1, now.Add(15*time.Minute))
 	if err != application.ErrNotEligibleYet {
 		t.Fatalf("expected ErrNotEligibleYet at 12:15, got: %v", err)
 	}
 
-	// Decision time at 12:21 (after ready_at 12:20) -> called successfully!
-	called, err := p.CallNextAt(ctx, window1, now.Add(21*time.Minute))
+	// Decision time at 12:31 (after slot 12:30) -> called successfully!
+	called, err := p.CallNextAt(ctx, window1, now.Add(31*time.Minute))
 	if err != nil {
-		t.Fatalf("expected successful call at 12:21, got: %v", err)
+		t.Fatalf("expected successful call at 12:31, got: %v", err)
 	}
 	if called.ID != res.Appointment.Ticket.ID {
 		t.Fatalf("expected appointment called, got: %s", called.ID)
+	}
+
+	// Early arrival (before 15m early window, e.g. at 12:05 for slot 12:30)
+	checkinEarly := now.Add(5 * time.Minute)
+	policy := p.GetPolicy()
+	dueEarly, readyEarly, rankEarly := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+		Source:      domain.TicketSourceAppointment,
+		ScheduledAt: &slot,
+		ServiceID:   parcels,
+	}, checkinEarly)
+
+	if rankEarly != 2 {
+		t.Fatalf("expected rank 2 (live queue) for early arrival before 15m window, got: %d", rankEarly)
+	}
+	if !readyEarly.Equal(checkinEarly) {
+		t.Fatalf("expected ready_at = checkin (%v) for early arrival, got: %v", checkinEarly, readyEarly)
+	}
+	if !dueEarly.Equal(checkinEarly.Add(30 * time.Minute)) {
+		t.Fatalf("expected due_at = checkin + 30m for early arrival, got: %v", dueEarly)
 	}
 }
 

@@ -14,10 +14,12 @@ $$\mathcal{V}(t) = \Big(\text{due\_at}(t), \; \text{source\_rank}(t), \; \text{c
 
 ### Правила расчета целевого времени (`due_at`)
 1. **Предварительная запись (`APPOINTMENT`):**
-   * При своевременном визите (в пределах допустимого окна прибытия $\Delta t_{\text{lead}}$):
-     $$\text{due\_at} = t_{\text{scheduled}}$$
-   * При опоздании свыше льготного периода (grace period, 15 минут) талон деградирует до живой очереди:
-     $$\text{due\_at} = t_{\text{checkin}} + \Delta t_{\text{max\_wait}}$$
+   * При своевременном визите (в пределах допустимого окна прибытия от 15 минут до слота и до +30 минут):
+     $$\text{due\_at} = t_{\text{scheduled}}, \quad \text{source\_rank} = 0$$
+   * При раннем визите до допустимого 15-минутного окна клиент отмечается в отделении, но приоритет записи снимается (клиент переходит в живую очередь):
+     $$\text{due\_at} = t_{\text{checkin}} + \Delta t_{\text{max\_wait}}, \quad \text{source\_rank} = 2$$
+   * При опоздании свыше льготного периода (grace period, 30 минут) талон деградирует до живой очереди:
+     $$\text{due\_at} = t_{\text{checkin}} + \Delta t_{\text{max\_wait}}, \quad \text{source\_rank} = 2$$
 2. **Льготные категории и возврат в очередь (`PRIORITY` / `RETURNED`):**
    $$\text{due\_at} = t_{\text{checkin}} - \Delta t_{\text{bonus}}$$
 3. **Живая очередь (`LIVE` и `QR`):**

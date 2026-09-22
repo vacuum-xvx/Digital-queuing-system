@@ -190,23 +190,30 @@ func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, check
 		}
 
 		checkin := checkinAt.UTC()
-		// APPOINTMENT, пришёл вовремя: checkin <= slot + grace
-		if !checkin.After(slot.Add(grace)) {
+		earliestCall := slot.Add(-earlyWindow)
+		latestCall := slot.Add(grace)
+
+		if checkin.Before(earliestCall) {
+			// APPOINTMENT, пришёл раньше допустимого 15-минутного окна:
+			// Клиент уже в отделении (нажал кнопку), поэтому ready_at = checkin.
+			// Однако приоритет онлайн-записи перед живой очередью пропадает (становится в живую очередь):
+			maxWait := getMaxWait("live")
+			dueAt = checkin.Add(maxWait)
+			readyAt = checkin
+			sourceRank = liveRank
+		} else if !checkin.After(latestCall) {
+			// APPOINTMENT, пришёл вовремя (в окне [slot - earlyWindow, slot + grace]):
+			// Сохраняет приоритет предварительной записи, готов к вызову сразу по прибытии.
 			dueAt = slot
-			earliestCall := slot.Add(-earlyWindow)
-			if checkin.After(earliestCall) {
-				readyAt = checkin
-			} else {
-				readyAt = earliestCall
-			}
+			readyAt = checkin
 			sourceRank = aptRank
 		} else {
-			// APPOINTMENT, опоздал: checkin > slot + grace
-			// Талон не теряется, клиент идёт как живая очередь: due_at = checkin + max_wait + penalty, ready_at = checkin
+			// APPOINTMENT, опоздал свыше 30 минут (checkin > slot + grace):
+			// Приоритет пропадает, талон становится в живую очередь с возможным пенальти:
 			maxWait := getMaxWait("live")
 			penalty := time.Duration(0)
 			if policy.Appointment.LatePenaltyPerMinute > 0 {
-				lateMinutes := int(checkin.Sub(slot.Add(grace)).Minutes())
+				lateMinutes := int(checkin.Sub(latestCall).Minutes())
 				if lateMinutes > 0 {
 					pts := lateMinutes * policy.Appointment.LatePenaltyPerMinute
 					if policy.Appointment.LatePenaltyMaxPoints > 0 && pts > policy.Appointment.LatePenaltyMaxPoints {
