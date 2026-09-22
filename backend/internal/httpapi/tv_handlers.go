@@ -59,7 +59,7 @@ func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 	// For the TV, we only need top waiting tickets
 	queue := make([]TVQueueTicketDTO, 0, len(overview.Queue))
 	for _, t := range overview.Queue {
-		if t.Status != domain.TicketStatusWaiting {
+		if t.Status != domain.TicketStatusWaiting && t.Status != domain.TicketStatusScheduled {
 			continue
 		}
 		if len(queue) >= 15 {
@@ -69,7 +69,7 @@ func (a *API) GetTVQueue(w http.ResponseWriter, r *http.Request) {
 			PublicNumber: t.PublicNumber,
 			Source:       string(t.Source),
 			ServiceName:  t.ServiceName,
-			Status:       string(t.Status),
+			Status:       "WAITING",
 		})
 	}
 

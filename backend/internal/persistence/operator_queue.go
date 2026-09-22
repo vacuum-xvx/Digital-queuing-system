@@ -16,8 +16,14 @@ func (p *Postgres) GetOperatorQueue(ctx context.Context, branchID string) (domai
 		SELECT t.id::text, t.public_number, t.source, t.service_id::text,
 		       s.name, t.queue_entered_at, t.status, COUNT(*) OVER ()
 		FROM tickets t JOIN services s ON s.id = t.service_id
-		WHERE t.branch_id = $1 AND t.status = 'WAITING'
-		ORDER BY t.queue_entered_at ASC, t.id ASC
+		WHERE t.branch_id = $1 AND (
+			t.status = 'WAITING'
+			OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED' AND (
+				t.arrived_at IS NOT NULL
+				OR t.scheduled_at <= clock_timestamp() + INTERVAL '15 minutes'
+			))
+		)
+		ORDER BY t.due_at ASC, t.source_rank ASC, COALESCE(t.checkin_at, t.queue_entered_at) ASC, t.id ASC
 		LIMIT 25
 	`, id)
 	if err != nil {
