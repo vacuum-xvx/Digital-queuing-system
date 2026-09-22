@@ -1759,6 +1759,7 @@ components:
           - NO_SHOW
           - RETURNED
           - REDIRECTED
+          - QUEUE_RECALCULATED
         fromStatus:
           type: string
           nullable: true

@@ -557,3 +557,553 @@ func mustUUID(s string) pgtype.UUID {
 	id, _ := uuid(s)
 	return id
 }
+
+// TestScheduleCreationEqualsPolicyRecalculation proves the invariant:
+// For identical business inputs, due_at and source_rank must match identically
+// between ticket creation and QueuePolicy recalculation.
+func TestScheduleCreationEqualsPolicyRecalculation(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	// Case A: service normative = 15 min, policy threshold = 30 min
+	t.Run("CaseA_ServiceNormativeBelowThreshold", func(t *testing.T) {
+		policy := p.GetPolicy()
+		if policy.Services == nil {
+			policy.Services = make(map[string]domain.ServicePolicy)
+		}
+		policy.Services[parcels] = domain.ServicePolicy{MaxWaitMinutes: 15}
+		p.SetPolicy(policy)
+
+		curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+		if err != nil {
+			t.Fatalf("GetQueuePolicy: %v", err)
+		}
+
+		// Ensure policy threshold is 30 min
+		curPolicy, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  30,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         curPolicy.AppointmentGraceMinutes,
+			AppointmentLatePenaltyPerMinute: curPolicy.AppointmentLatePenaltyPerMinute,
+			AppointmentLatePenaltyMaxPoints: curPolicy.AppointmentLatePenaltyMaxPoints,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy pre-setup: %v", err)
+		}
+
+		qrTicket := create(t, ctx, p, parcels, "case-a-ticket")
+
+		var dueBefore time.Time
+		var rankBefore int
+		err = p.pool.QueryRow(ctx, `SELECT due_at, source_rank FROM tickets WHERE id=$1::uuid`, qrTicket.ID).Scan(&dueBefore, &rankBefore)
+		if err != nil {
+			t.Fatalf("query dueBefore: %v", err)
+		}
+
+		// Force equivalent recalculation through normal QueuePolicy update (same threshold = 30)
+		_, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  30,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         curPolicy.AppointmentGraceMinutes,
+			AppointmentLatePenaltyPerMinute: curPolicy.AppointmentLatePenaltyPerMinute,
+			AppointmentLatePenaltyMaxPoints: curPolicy.AppointmentLatePenaltyMaxPoints,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy: %v", err)
+		}
+
+		var dueAfter time.Time
+		var rankAfter int
+		err = p.pool.QueryRow(ctx, `SELECT due_at, source_rank FROM tickets WHERE id=$1::uuid`, qrTicket.ID).Scan(&dueAfter, &rankAfter)
+		if err != nil {
+			t.Fatalf("query dueAfter: %v", err)
+		}
+
+		if !dueBefore.Equal(dueAfter) {
+			t.Fatalf("MISMATCH in Case A: due_at changed from %v to %v after policy update without business input change", dueBefore, dueAfter)
+		}
+		if rankBefore != rankAfter {
+			t.Fatalf("MISMATCH in Case A: source_rank changed from %d to %d", rankBefore, rankAfter)
+		}
+	})
+
+	// Case B: grace = 0
+	t.Run("CaseB_GraceZero", func(t *testing.T) {
+		curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+		if err != nil {
+			t.Fatalf("GetQueuePolicy: %v", err)
+		}
+
+		curPolicy, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  curPolicy.AntiStarvationThresholdMinutes,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         0, // grace = 0
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 90,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy setup: %v", err)
+		}
+
+		baseTime := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
+		slot := baseTime.Add(10 * time.Minute)
+		res, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+			BranchID:       demoBranch,
+			ServiceID:      parcels,
+			IdempotencyKey: "case-b-apt",
+			ScheduledAt:    slot,
+		})
+		if err != nil {
+			t.Fatalf("CreateAppointment: %v", err)
+		}
+
+		checkin := slot.Add(5 * time.Minute) // 5 min late when grace = 0
+		branchPolicy := p.getBranchPolicyTx(ctx, nil, mustUUID(demoBranch))
+		dueExpected, readyExpected, rankExpected := domain.ComputeSchedule(branchPolicy, domain.ScheduleTicketInput{
+			Source:      domain.TicketSourceAppointment,
+			ScheduledAt: &slot,
+			ServiceID:   parcels,
+		}, checkin)
+
+		execSQL(t, ctx, p, `UPDATE tickets SET checkin_at=$2, arrived_at=$2, ready_at=$3, due_at=$4, source_rank=$5, status='WAITING' WHERE id=$1::uuid`,
+			res.Appointment.Ticket.ID, checkin, readyExpected, dueExpected, rankExpected)
+
+		// Force equivalent recalculation through normal QueuePolicy update
+		_, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  curPolicy.AntiStarvationThresholdMinutes,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         0,
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 90,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy: %v", err)
+		}
+
+		var dueAfter time.Time
+		var rankAfter int
+		err = p.pool.QueryRow(ctx, `SELECT due_at, source_rank FROM tickets WHERE id=$1::uuid`, res.Appointment.Ticket.ID).Scan(&dueAfter, &rankAfter)
+		if err != nil {
+			t.Fatalf("query dueAfter: %v", err)
+		}
+
+		if !dueExpected.Equal(dueAfter) {
+			t.Fatalf("MISMATCH in Case B (grace=0): due_at before (%v) != due_at after (%v)", dueExpected, dueAfter)
+		}
+		if rankExpected != rankAfter {
+			t.Fatalf("MISMATCH in Case B (grace=0): source_rank before (%d) != after (%d)", rankExpected, rankAfter)
+		}
+	})
+
+	// Case C: late penalty max = 0
+	t.Run("CaseC_LatePenaltyMaxZero", func(t *testing.T) {
+		curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+		if err != nil {
+			t.Fatalf("GetQueuePolicy: %v", err)
+		}
+
+		curPolicy, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  curPolicy.AntiStarvationThresholdMinutes,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         5,
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 0, // penalty max = 0
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy setup: %v", err)
+		}
+
+		baseTime := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
+		slot := baseTime.Add(10 * time.Minute)
+		res, err := p.CreateAppointment(ctx, application.CreateAppointmentCommand{
+			BranchID:       demoBranch,
+			ServiceID:      parcels,
+			IdempotencyKey: "case-c-apt",
+			ScheduledAt:    slot,
+		})
+		if err != nil {
+			t.Fatalf("CreateAppointment: %v", err)
+		}
+
+		checkin := slot.Add(30 * time.Minute) // 25 min late
+		branchPolicy := p.getBranchPolicyTx(ctx, nil, mustUUID(demoBranch))
+		dueExpected, readyExpected, rankExpected := domain.ComputeSchedule(branchPolicy, domain.ScheduleTicketInput{
+			Source:      domain.TicketSourceAppointment,
+			ScheduledAt: &slot,
+			ServiceID:   parcels,
+		}, checkin)
+
+		execSQL(t, ctx, p, `UPDATE tickets SET checkin_at=$2, arrived_at=$2, ready_at=$3, due_at=$4, source_rank=$5, status='WAITING' WHERE id=$1::uuid`,
+			res.Appointment.Ticket.ID, checkin, readyExpected, dueExpected, rankExpected)
+
+		_, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+			QRPriority:                      curPolicy.QRPriority,
+			LivePriority:                    curPolicy.LivePriority,
+			AntiStarvationThresholdMinutes:  curPolicy.AntiStarvationThresholdMinutes,
+			AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+			AppointmentGraceMinutes:         5,
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 0,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy: %v", err)
+		}
+
+		var dueAfter time.Time
+		var rankAfter int
+		err = p.pool.QueryRow(ctx, `SELECT due_at, source_rank FROM tickets WHERE id=$1::uuid`, res.Appointment.Ticket.ID).Scan(&dueAfter, &rankAfter)
+		if err != nil {
+			t.Fatalf("query dueAfter: %v", err)
+		}
+
+		if !dueExpected.Equal(dueAfter) {
+			t.Fatalf("MISMATCH in Case C (late penalty max=0): due_at before (%v) != due_at after (%v)", dueExpected, dueAfter)
+		}
+		if rankExpected != rankAfter {
+			t.Fatalf("MISMATCH in Case C: source_rank before (%d) != after (%d)", rankExpected, rankAfter)
+		}
+	})
+
+	// Case D: QR and LIVE source-rank parity/priorities
+	t.Run("CaseD_QRAndLiveSourceRankParity", func(t *testing.T) {
+		curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+		if err != nil {
+			t.Fatalf("GetQueuePolicy: %v", err)
+		}
+
+		// Priority where LIVE > QR
+		curPolicy, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          500,
+			QRPriority:                      100,
+			LivePriority:                    200, // LIVE > QR
+			AntiStarvationThresholdMinutes:  30,
+			AntiStarvationPointsPerMinute:   10,
+			AppointmentGraceMinutes:         15,
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 90,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy setup: %v", err)
+		}
+
+		tQR := create(t, ctx, p, parcels, "case-d-qr")
+		tLive := live(t, ctx, p, "case-d-live", parcels)
+
+		var qrRankBefore, liveRankBefore int
+		_ = p.pool.QueryRow(ctx, `SELECT source_rank FROM tickets WHERE id=$1::uuid`, tQR.ID).Scan(&qrRankBefore)
+		_ = p.pool.QueryRow(ctx, `SELECT source_rank FROM tickets WHERE id=$1::uuid`, tLive.ID).Scan(&liveRankBefore)
+
+		if qrRankBefore != 2 || liveRankBefore != 1 {
+			t.Fatalf("expected QR rank 2, LIVE rank 1 when LIVE > QR, got QR=%d, LIVE=%d", qrRankBefore, liveRankBefore)
+		}
+
+		// Equivalent policy update
+		_, err = p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+			BranchID:                        demoBranch,
+			ExpectedVersion:                 curPolicy.Version,
+			AppointmentDuePriority:          500,
+			QRPriority:                      100,
+			LivePriority:                    200,
+			AntiStarvationThresholdMinutes:  30,
+			AntiStarvationPointsPerMinute:   10,
+			AppointmentGraceMinutes:         15,
+			AppointmentLatePenaltyPerMinute: 5,
+			AppointmentLatePenaltyMaxPoints: 90,
+		})
+		if err != nil {
+			t.Fatalf("UpdateQueuePolicy: %v", err)
+		}
+
+		var qrRankAfter, liveRankAfter int
+		_ = p.pool.QueryRow(ctx, `SELECT source_rank FROM tickets WHERE id=$1::uuid`, tQR.ID).Scan(&qrRankAfter)
+		_ = p.pool.QueryRow(ctx, `SELECT source_rank FROM tickets WHERE id=$1::uuid`, tLive.ID).Scan(&liveRankAfter)
+
+		if qrRankBefore != qrRankAfter || liveRankBefore != liveRankAfter {
+			t.Fatalf("MISMATCH in Case D: ranks before (QR=%d, LIVE=%d) != after (QR=%d, LIVE=%d)", qrRankBefore, liveRankBefore, qrRankAfter, liveRankAfter)
+		}
+	})
+}
+
+// TestNearTurnUsesTrueCanonicalTopTwo verifies that near-turn notification logic
+// operates on the true top-2 queue candidates, rather than selecting the first 2
+// candidates that have not yet been notified.
+func TestNearTurnUsesTrueCanonicalTopTwo(t *testing.T) {
+	ctx, p, _ := integration(t)
+	baseTime := time.Date(2026, 9, 21, 14, 0, 0, 0, time.UTC)
+
+	// Clean outbox
+	execSQL(t, ctx, p, `DELETE FROM notification_outbox`)
+
+	// Ensure Window 1 is OPEN
+	if _, err := p.ChangeWindowStatus(ctx, window1, domain.WindowStatusOpen); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create 3 tickets: T1 (pos 1), T2 (pos 2), T3 (pos 3)
+	t1 := create(t, ctx, p, parcels, "top2-t1")
+	t2 := create(t, ctx, p, parcels, "top2-t2")
+	t3 := create(t, ctx, p, parcels, "top2-t3")
+
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, source_rank=1, checkin_at=$2 WHERE id=$1::uuid`, t1.ID, baseTime.Add(1*time.Minute))
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, source_rank=1, checkin_at=$2 WHERE id=$1::uuid`, t2.ID, baseTime.Add(2*time.Minute))
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, source_rank=1, checkin_at=$2 WHERE id=$1::uuid`, t3.ID, baseTime.Add(3*time.Minute))
+
+	// Pre-populate near-turn notification for T1 and T2 (simulating they have already received near-turn)
+	for _, tkt := range []domain.Ticket{t1, t2} {
+		var cycleID int64
+		_ = p.pool.QueryRow(ctx, `SELECT COALESCE(MAX(id),0) FROM ticket_events WHERE ticket_id=$1::uuid AND type IN ('CREATED','RETURNED','REDIRECTED','ARRIVED')`, tkt.ID).Scan(&cycleID)
+		dedupeKey := fmt.Sprintf("TICKET_NEAR_TURN:%s:%d", tkt.ID, cycleID)
+		execSQL(t, ctx, p, `
+			INSERT INTO notification_outbox (ticket_id, branch_id, event_type, dedupe_key, payload, status, next_attempt_at, created_at)
+			VALUES ($1::uuid, $2::uuid, 'TICKET_NEAR_TURN', $3, '{}'::jsonb, 'SENT', clock_timestamp(), clock_timestamp())
+		`, tkt.ID, demoBranch, dedupeKey)
+	}
+
+	// Trigger near-turn evaluation for the branch
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.enqueueNearTurnForTopCandidates(ctx, tx, demoBranch, baseTime.Add(5*time.Minute)); err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("enqueueNearTurnForTopCandidates: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reviewer assertion: T3 is at position 3, so T3 must NOT have received a near-turn notification!
+	var countT3 int
+	err = p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, t3.ID).Scan(&countT3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countT3 != 0 {
+		t.Fatalf("BUG CONFIRMED: T3 at position 3 received near-turn notification because T1 and T2 were already notified! count=%d", countT3)
+	}
+
+	// Also verify via EnqueueNearTurnIfEligible directly for T3: position is 3, must return without enqueuing
+	if err := p.EnqueueNearTurnIfEligible(ctx, t3.ID); err != nil {
+		t.Fatalf("EnqueueNearTurnIfEligible T3: %v", err)
+	}
+	_ = p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, t3.ID).Scan(&countT3)
+	if countT3 != 0 {
+		t.Fatalf("EnqueueNearTurnIfEligible enqueued notification for ticket at position 3! count=%d", countT3)
+	}
+}
+
+// TestNearTurnRespectsCompatibleWindow verifies that near-turn notification is only
+// enqueued when an OPEN compatible window exists for the ticket's service.
+func TestNearTurnRespectsCompatibleWindow(t *testing.T) {
+	ctx, p, _ := integration(t)
+	baseTime := time.Date(2026, 9, 21, 14, 0, 0, 0, time.UTC)
+	execSQL(t, ctx, p, `DELETE FROM notification_outbox`)
+
+	// Close window 2 (payments window). Windows 1 and 3 are parcels only.
+	if _, err := p.ChangeWindowStatus(ctx, window2, domain.WindowStatusClosed); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create ticket for PAYMENTS service
+	tPay := create(t, ctx, p, payments, "pay-no-win")
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, source_rank=1, checkin_at=$2 WHERE id=$1::uuid`, tPay.ID, baseTime.Add(1*time.Minute))
+
+	// Attempt near-turn: ticket has NO compatible open window in branch!
+	if err := p.EnqueueNearTurnIfEligible(ctx, tPay.ID); err != nil {
+		t.Fatalf("EnqueueNearTurnIfEligible: %v", err)
+	}
+
+	var countPay int
+	_ = p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, tPay.ID).Scan(&countPay)
+	if countPay != 0 {
+		t.Fatalf("expected 0 near-turn notifications when NO compatible open window exists, got %d", countPay)
+	}
+
+	// Now open Window 2 (compatible with payments)
+	if _, err := p.ChangeWindowStatus(ctx, window2, domain.WindowStatusOpen); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now near-turn should be enqueued
+	if err := p.EnqueueNearTurnIfEligible(ctx, tPay.ID); err != nil {
+		t.Fatalf("EnqueueNearTurnIfEligible after window opened: %v", err)
+	}
+
+	_ = p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, tPay.ID).Scan(&countPay)
+	if countPay != 1 {
+		t.Fatalf("expected 1 near-turn notification after compatible window opened, got %d", countPay)
+	}
+}
+
+// TestNearTurnConcurrentEnqueueIdempotent verifies that concurrent transactions attempting
+// to enqueue near-turn notifications produce exactly 1 outbox event at the database level,
+// and that legitimate re-entry (return to queue) correctly permits a new notification.
+func TestNearTurnConcurrentEnqueueIdempotent(t *testing.T) {
+	ctx, p, _ := integration(t)
+	baseTime := time.Date(2026, 9, 21, 14, 0, 0, 0, time.UTC)
+	execSQL(t, ctx, p, `DELETE FROM notification_outbox`)
+
+	if _, err := p.ChangeWindowStatus(ctx, window1, domain.WindowStatusOpen); err != nil {
+		t.Fatal(err)
+	}
+
+	tkt := create(t, ctx, p, parcels, "concurrent-near-turn")
+	execSQL(t, ctx, p, `UPDATE tickets SET due_at=$2, ready_at=$2, source_rank=1, checkin_at=$2 WHERE id=$1::uuid`, tkt.ID, baseTime)
+
+	// 10 concurrent transactions attempt to enqueue near-turn for the same occurrence
+	const workers = 10
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = p.EnqueueNearTurnIfEligible(ctx, tkt.ID)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("worker %d error: %v", i, err)
+		}
+	}
+
+	// Assert EXACTLY 1 business notification in outbox
+	var outboxCount int
+	err := p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, tkt.ID).Scan(&outboxCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("expected exactly 1 outbox event across concurrent workers, got %d", outboxCount)
+	}
+
+	// Now simulate ticket is called, served, and returned to queue (legitimate new queue-entry cycle)
+	called, err := p.CallNextAt(ctx, window1, baseTime.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("CallNext: %v", err)
+	}
+	if called.ID != tkt.ID {
+		t.Fatalf("expected called ticket %s, got %s", tkt.ID, called.ID)
+	}
+
+	returned, err := p.ReturnTicket(ctx, tkt.ID)
+	if err != nil {
+		t.Fatalf("ReturnTicket: %v", err)
+	}
+	if returned.Status != domain.TicketStatusWaiting {
+		t.Fatalf("expected returned status WAITING, got %s", returned.Status)
+	}
+
+	// In the new queue-entry cycle, when near-turn is evaluated, it may legitimately enqueue a new notification
+	if err := p.EnqueueNearTurnIfEligible(ctx, tkt.ID); err != nil {
+		t.Fatalf("EnqueueNearTurnIfEligible in new cycle: %v", err)
+	}
+
+	err = p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_outbox WHERE ticket_id=$1::uuid AND event_type='TICKET_NEAR_TURN'`, tkt.ID).Scan(&outboxCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outboxCount != 2 {
+		t.Fatalf("expected exactly 2 near-turn outbox events after return to queue (1 per cycle), got %d", outboxCount)
+	}
+}
+
+// TestPolicyRecalculationAudit verifies that when a policy update changes due_at or source_rank,
+// an immutable QUEUE_RECALCULATED event is appended to ticket_events explaining the change.
+func TestPolicyRecalculationAudit(t *testing.T) {
+	ctx, p, _ := integration(t)
+
+	curPolicy, err := p.GetQueuePolicy(ctx, demoBranch)
+	if err != nil {
+		t.Fatalf("GetQueuePolicy: %v", err)
+	}
+
+	tkt := create(t, ctx, p, parcels, "audit-recalc-tkt")
+
+	// Verify events count before policy update: only CREATED
+	evsBefore, err := p.ListTicketEvents(ctx, tkt.ID)
+	if err != nil {
+		t.Fatalf("ListTicketEvents: %v", err)
+	}
+	if len(evsBefore) != 1 || evsBefore[0].Type != domain.TicketEventCreated {
+		t.Fatalf("expected 1 CREATED event before, got %v", evsBefore)
+	}
+
+	// Update QueuePolicy changing anti-starvation threshold from default to 5 minutes
+	newThreshold := 5
+	if curPolicy.AntiStarvationThresholdMinutes == 5 {
+		newThreshold = 10
+	}
+	updatedPolicy, err := p.UpdateQueuePolicy(ctx, application.UpdateQueuePolicyCommand{
+		BranchID:                        demoBranch,
+		ExpectedVersion:                 curPolicy.Version,
+		AppointmentDuePriority:          curPolicy.AppointmentDuePriority,
+		QRPriority:                      curPolicy.QRPriority,
+		LivePriority:                    curPolicy.LivePriority,
+		AntiStarvationThresholdMinutes:  newThreshold,
+		AntiStarvationPointsPerMinute:   curPolicy.AntiStarvationPointsPerMinute,
+		AppointmentGraceMinutes:         curPolicy.AppointmentGraceMinutes,
+		AppointmentLatePenaltyPerMinute: curPolicy.AppointmentLatePenaltyPerMinute,
+		AppointmentLatePenaltyMaxPoints: curPolicy.AppointmentLatePenaltyMaxPoints,
+	})
+	if err != nil {
+		t.Fatalf("UpdateQueuePolicy: %v", err)
+	}
+
+	// Verify audit log has QUEUE_RECALCULATED event
+	evsAfter, err := p.ListTicketEvents(ctx, tkt.ID)
+	if err != nil {
+		t.Fatalf("ListTicketEvents after: %v", err)
+	}
+	if len(evsAfter) != 2 {
+		t.Fatalf("expected 2 events after policy update (CREATED + QUEUE_RECALCULATED), got %d: %+v", len(evsAfter), evsAfter)
+	}
+
+	recalcEvent := evsAfter[1]
+	if recalcEvent.Type != domain.TicketEventQueueRecalculated {
+		t.Fatalf("expected event type QUEUE_RECALCULATED, got %s", recalcEvent.Type)
+	}
+	if recalcEvent.PolicyVersion == nil || *recalcEvent.PolicyVersion != updatedPolicy.Version {
+		t.Fatalf("expected policyVersion %d, got %v", updatedPolicy.Version, recalcEvent.PolicyVersion)
+	}
+	if recalcEvent.ToStatus != domain.TicketStatusWaiting {
+		t.Fatalf("expected toStatus WAITING, got %s", recalcEvent.ToStatus)
+	}
+	if recalcEvent.FromStatus != nil {
+		t.Fatalf("expected fromStatus nil for in-status recalculation, got %v", recalcEvent.FromStatus)
+	}
+	if recalcEvent.DueAt == nil {
+		t.Fatal("expected dueAt to be recorded on QUEUE_RECALCULATED event")
+	}
+}
