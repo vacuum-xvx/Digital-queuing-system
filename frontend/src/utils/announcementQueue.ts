@@ -28,7 +28,7 @@ export function enqueueAnnouncement(fn: () => Promise<unknown>): void {
     .then(() => queuedGeneration === generation ? fn() : undefined)
     .catch((err) => {
       // Ошибка в одном объявлении не должна блокировать очередь
-      console.warn('[AnnouncementQueue] Error in queued announcement:', err);
+      if (import.meta.env.DEV) console.warn('[AnnouncementQueue] Error in queued announcement:', err);
     }) as Promise<void>;
 }
 

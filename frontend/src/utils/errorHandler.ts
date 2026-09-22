@@ -28,6 +28,25 @@ export function categorizeError(error: unknown): ErrorCategory {
   const isError = error instanceof Error;
   const errorMessage = isError ? error.message.toLowerCase() : String(error).toLowerCase();
 
+  // Domain codes from API (e.g. RATE_LIMITED, WINDOW_BUSY, POLICY_VERSION_CONFLICT) — always client-retry semantics
+  if (error && typeof error === 'object') {
+    const code = (error as Record<string, unknown>).code ?? (error as Record<string, unknown>).error;
+    if (typeof code === 'string') {
+      const c = code.toUpperCase();
+      if (c === 'RATE_LIMITED' || c === 'WINDOW_BUSY' || c === 'POLICY_VERSION_CONFLICT' || c === 'WINDOW_CLOSED' || c === 'NO_ELIGIBLE_TICKETS') {
+        return ErrorCategory.CLIENT;
+      }
+    }
+    // Nested { error: { code } } shape from API ErrorResponse
+    const nested = (error as Record<string, unknown>).error as Record<string, unknown> | undefined;
+    if (nested && typeof nested.code === 'string') {
+      const c = nested.code.toUpperCase();
+      if (c === 'RATE_LIMITED' || c === 'WINDOW_BUSY' || c === 'POLICY_VERSION_CONFLICT' || c === 'WINDOW_CLOSED' || c === 'NO_ELIGIBLE_TICKETS') {
+        return ErrorCategory.CLIENT;
+      }
+    }
+  }
+
   // Network errors
   if (
     errorMessage.includes('network') ||
@@ -38,12 +57,21 @@ export function categorizeError(error: unknown): ErrorCategory {
     return ErrorCategory.NETWORK;
   }
 
+  // Rate-limited is also surfaced via message when status is missing
+  if (errorMessage.includes('rate_limited') || errorMessage.includes('429') || errorMessage.includes('too many requests')) {
+    return ErrorCategory.CLIENT;
+  }
+
   // Check for Response object (fetch API)
   if (error && typeof error === 'object' && 'status' in error) {
     const status = (error as { status: number }).status;
 
     if (status === 401 || status === 403) {
       return ErrorCategory.AUTH;
+    }
+
+    if (status === 429) {
+      return ErrorCategory.CLIENT;
     }
 
     if (status >= 500) {
@@ -61,7 +89,50 @@ export function categorizeError(error: unknown): ErrorCategory {
 /**
  * Get user-friendly error details based on error category
  */
+function extractCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const obj = error as Record<string, unknown>;
+  if (typeof obj.code === 'string') return obj.code.toUpperCase();
+  if (typeof obj.error === 'string') return obj.error.toUpperCase();
+  const nested = obj.error as Record<string, unknown> | undefined;
+  if (nested && typeof nested.code === 'string') return nested.code.toUpperCase();
+  return null;
+}
+
 export function getErrorDetails(error: unknown): ErrorDetails {
+  const code = extractCode(error);
+  if (code === 'RATE_LIMITED') {
+    return {
+      title: 'Слишком много запросов',
+      message: 'Вы превысили лимит запросов. Подождите минуту и повторите.',
+      isRetryable: true,
+      suggestedAction: 'Подождите 60 секунд и попробуйте снова.',
+    };
+  }
+  if (code === 'WINDOW_BUSY') {
+    return {
+      title: 'Окно занято',
+      message: 'Окно уже обслуживает клиента. Завершите текущий приём.',
+      isRetryable: false,
+      suggestedAction: 'Дождитесь завершения обслуживания или выберите другое окно.',
+    };
+  }
+  if (code === 'POLICY_VERSION_CONFLICT') {
+    return {
+      title: 'Конфликт версии политики',
+      message: 'Политика очереди была изменена другим администратором.',
+      isRetryable: true,
+      suggestedAction: 'Обновите страницу и примените изменения заново.',
+    };
+  }
+  if (code === 'WINDOW_CLOSED') {
+    return {
+      title: 'Окно закрыто',
+      message: 'Окно закрыто и не принимает вызовы.',
+      isRetryable: false,
+      suggestedAction: 'Откройте окно в панели администратора.',
+    };
+  }
   const category = categorizeError(error);
 
   switch (category) {

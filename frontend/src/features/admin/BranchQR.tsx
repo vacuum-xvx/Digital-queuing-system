@@ -48,7 +48,7 @@ export function BranchQR({ branchId, branchName }: BranchQRProps) {
         if (active) setQrImage(dataUrl);
       })
       .catch((err) => {
-        console.error('Failed to generate branch QR:', err);
+        if (import.meta.env.DEV) console.error('Failed to generate branch QR:', err);
       });
 
     return () => {

@@ -79,7 +79,7 @@ export function getSharedAudioContext(): AudioContext | null {
     try {
       sharedAudioContext = new AudioContextClass();
     } catch (e) {
-      console.warn('Failed to create AudioContext:', e);
+      if (import.meta.env.DEV) console.warn('Failed to create AudioContext:', e);
     }
   }
 
@@ -266,7 +266,7 @@ export function playPostalChime(volume: number = 0.28): Promise<void> {
       // Разрешаем промис чуть раньше затухания, чтобы речь диктора плавно следовала за гонгом
       setTimeout(resolve, 650);
     } catch (err) {
-      console.warn('Audio chime failed:', err);
+      if (import.meta.env.DEV) console.warn('Audio chime failed:', err);
       resolve();
     }
   });
@@ -583,7 +583,7 @@ export async function announceTicketCall(
 
         utterance.onend = handleFinish;
         utterance.onerror = (e) => {
-          console.warn('Speech synthesis utterance error:', e);
+          if (import.meta.env.DEV) console.warn('Speech synthesis utterance error:', e);
           handleFinish();
         };
 
@@ -595,7 +595,7 @@ export async function announceTicketCall(
             }
             window.speechSynthesis.speak(utterance);
           } catch (speakErr) {
-            console.warn('Failed to speak utterance:', speakErr);
+            if (import.meta.env.DEV) console.warn('Failed to speak utterance:', speakErr);
             handleFinish();
           }
         }, 50);
@@ -605,7 +605,7 @@ export async function announceTicketCall(
           handleFinish();
         }, 8000);
       } catch (err) {
-        console.warn('Speech synthesis exception:', err);
+        if (import.meta.env.DEV) console.warn('Speech synthesis exception:', err);
         if (onEnd) onEnd();
         resolve(announcementData);
       }

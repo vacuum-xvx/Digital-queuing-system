@@ -58,7 +58,7 @@ export function BranchWorkloadCard({
       })
       .catch((err) => {
         // Fallback to local baseline without throwing
-        console.warn('Backend workload fetch fallback:', err);
+        if (import.meta.env.DEV) console.warn('Backend workload fetch fallback:', err);
       });
     return () => {
       active = false;
