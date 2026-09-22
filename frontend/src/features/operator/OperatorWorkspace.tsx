@@ -558,9 +558,13 @@ export function OperatorWorkspace() {
                         if (liveKey.current?.selection !== selection) {
                           liveKey.current = { selection, key: crypto.randomUUID() };
                         }
+                        const selectedSvc = services.find(s => s.id === serviceId);
                         const ticket = await api.createLiveTicket(branchId, serviceId, liveKey.current.key);
+                        if (!ticket.serviceName && selectedSvc) {
+                          ticket.serviceName = selectedSvc.name;
+                        }
                         liveKey.current = null;
-                        setNotice('Выдан талон ' + ticket.publicNumber);
+                        setNotice('Выдан талон ' + ticket.publicNumber + (ticket.serviceName ? ` (${ticket.serviceName})` : ''));
                       })
                     }
                     className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-blue-50 border border-[#054FA6] text-[#054FA6] hover:bg-blue-100 font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
@@ -575,7 +579,7 @@ export function OperatorWorkspace() {
                 <div>
                   <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
                     <ArrowRightLeft className="w-4 h-4 text-[#003B73]" />
-                    <span>Перенаправление</span>
+                    <span>Управление талоном</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
                     Возврат в общую очередь или перевод к другому специалисту
@@ -601,6 +605,7 @@ export function OperatorWorkspace() {
                     type="button"
                     disabled={!current || pending}
                     onClick={() => {
+                      if (!current) return;
                       setRedirectServiceId('');
                       setRedirectWindowId('');
                       setShowRedirectModal(true);
@@ -672,21 +677,26 @@ export function OperatorWorkspace() {
                           : 'bg-slate-50 border-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-black text-slate-900 text-sm">
-                          {item.publicNumber}
-                        </span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
-                            isApt
-                              ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                              : isQr
-                              ? 'bg-sky-50 text-[#054FA6] border-sky-200'
-                              : 'bg-amber-50 text-amber-900 border-amber-200'
-                          }`}
-                        >
-                          {isApt ? 'Запись' : isQr ? 'QR-код' : 'Живая'}
-                        </span>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-slate-900 text-sm">
+                            {item.publicNumber}
+                          </span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                              isApt
+                                ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                : isQr
+                                ? 'bg-sky-50 text-[#054FA6] border-sky-200'
+                                : 'bg-amber-50 text-amber-900 border-amber-200'
+                            }`}
+                          >
+                            {isApt ? 'Запись' : isQr ? 'QR-код' : 'Живая'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 font-medium">
+                          {item.serviceName || services.find(s => s.id === (item as any).serviceId)?.name || 'Услуга не определена'}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-mono text-slate-500">
@@ -807,6 +817,7 @@ export function OperatorWorkspace() {
                 onClick={() => {
                   setShowRedirectModal(false);
                   const targetWin = windows.find(w => w.id === redirectWindowId);
+                  const targetSvc = services.find(s => s.id === redirectServiceId);
                   void act(async () => {
                     await api.redirectTicket(
                       current.id,
@@ -814,7 +825,8 @@ export function OperatorWorkspace() {
                       redirectWindowId || undefined
                     );
                     const targetText = targetWin ? `в Окно №${targetWin.number}` : 'в очередь';
-                    setNotice(`Талон ${current.publicNumber} успешно перенаправлен ${targetText}`);
+                    const svcText = targetSvc ? ` на услугу «${targetSvc.name}»` : '';
+                    setNotice(`Талон ${current.publicNumber} успешно перенаправлен ${targetText}${svcText}`);
                   });
                 }}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-[#003B73] hover:bg-[#054FA6] text-white shadow-sm transition-colors"

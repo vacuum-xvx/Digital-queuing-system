@@ -48,6 +48,7 @@ export type Ticket = {
   publicNumber: string;
   branchId: string;
   serviceId: string;
+  serviceName?: string;
   source: TicketSource;
   status: TicketStatus;
   window: TicketWindow | null;

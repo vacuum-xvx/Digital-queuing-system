@@ -394,6 +394,58 @@ export function formatAnnouncementPhrase(
   };
 }
 
+let cachedVoices: SpeechSynthesisVoice[] = [];
+let voicesInitialized = false;
+
+export function initSpeechVoices(): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  if (voicesInitialized) return;
+  voicesInitialized = true;
+
+  const update = () => {
+    try {
+      const list = window.speechSynthesis.getVoices();
+      if (list && list.length > 0) {
+        cachedVoices = list;
+      }
+    } catch {}
+  };
+
+  update();
+  try {
+    if (window.speechSynthesis.addEventListener) {
+      window.speechSynthesis.addEventListener('voiceschanged', update);
+    } else if ('onvoiceschanged' in window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = update;
+    }
+  } catch {}
+}
+
+if (typeof window !== 'undefined') {
+  initSpeechVoices();
+}
+
+/**
+ * Разблокировка Web Audio и SpeechSynthesis в контексте пользовательского жеста
+ */
+export function unlockSpeechSynthesis(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const ctx = getSharedAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    if ('speechSynthesis' in window) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      const silent = new SpeechSynthesisUtterance('');
+      silent.volume = 0;
+      window.speechSynthesis.speak(silent);
+    }
+  } catch {}
+}
+
 /**
  * Получение установленных в системе русских голосов с ранжированием по естественности
  * Приоритет отдается нейронным, Google, Apple Siri, Microsoft Natural и женским голосам
@@ -402,7 +454,10 @@ export function getRussianSpeechVoices(): SpeechSynthesisVoice[] {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     return [];
   }
-  const voices = window.speechSynthesis.getVoices() || [];
+  let voices = window.speechSynthesis.getVoices() || [];
+  if (voices.length === 0 && cachedVoices.length > 0) {
+    voices = cachedVoices;
+  }
   const ruVoices = voices.filter(
     (v) =>
       v.lang.toLowerCase().startsWith('ru') ||
@@ -410,6 +465,12 @@ export function getRussianSpeechVoices(): SpeechSynthesisVoice[] {
       v.name.toLowerCase().includes('russian') ||
       v.name.toLowerCase().includes('рус')
   );
+
+  if (ruVoices.length === 0) {
+    // Если русских голосов не найдено, возвращаем все доступные (дефолтный голос браузера первым)
+    const defaultVoice = voices.find(v => v.default) || voices[0];
+    return defaultVoice ? [defaultVoice, ...voices.filter(v => v !== defaultVoice)] : voices;
+  }
 
   const rateVoice = (voice: SpeechSynthesisVoice): number => {
     const name = (voice.name || '').toLowerCase();
@@ -489,7 +550,6 @@ export async function announceTicketCall(
         if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
         }
-        window.speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(announcementData.phrase);
         utterance.lang = 'ru-RU';
@@ -530,6 +590,9 @@ export async function announceTicketCall(
         // Небольшая задержка перед речью после гонга
         setTimeout(() => {
           try {
+            if (window.speechSynthesis.paused) {
+              window.speechSynthesis.resume();
+            }
             window.speechSynthesis.speak(utterance);
           } catch (speakErr) {
             console.warn('Failed to speak utterance:', speakErr);
@@ -539,9 +602,6 @@ export async function announceTicketCall(
 
         // Страховочный таймаут (если синтез зависнет в браузере)
         timeout = setTimeout(() => {
-          try {
-            window.speechSynthesis.cancel();
-          } catch {}
           handleFinish();
         }, 8000);
       } catch (err) {

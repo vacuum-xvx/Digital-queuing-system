@@ -73,6 +73,7 @@ export function createMockTicket(
     publicNumber: `${prefix}-${numStr}`,
     branchId: '11111111-1111-1111-1111-111111111111',
     serviceId: '22222222-2222-2222-2222-222222222222',
+    serviceName: 'Посылки',
     source,
     status,
     window: {

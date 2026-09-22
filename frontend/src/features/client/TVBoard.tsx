@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PochtaEmblem, PochtaWordmark } from '../../components/common/PochtaBrand';
 import { useTVQueue } from '../../api/queries';
-import { announceTicketCall, isSoundEnabled, setSoundEnabled } from '../../utils/postalVoice';
+import { announceTicketCall, isSoundEnabled, setSoundEnabled, unlockSpeechSynthesis } from '../../utils/postalVoice';
 import { enqueueAnnouncement } from '../../utils/announcementQueue';
 import { subscribeToTVCalls } from '../../utils/tvNotification';
 
@@ -93,6 +93,16 @@ export function TVBoard() {
   });
   const [flash, setFlash] = useState<{ ticket: string; windowId: string | number } | null>(null);
   const flashKeyRef = useRef(0);
+  const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return isSoundEnabled();
+  });
+
+  const handleUnlockAudio = () => {
+    setSoundEnabled(true);
+    setAudioUnlocked(true);
+    unlockSpeechSynthesis();
+  };
 
   /* ── clock ── */
   useEffect(() => {
@@ -149,17 +159,20 @@ export function TVBoard() {
 
     if (isInitialRef.current) {
       windows.forEach(w => {
-        if (w.currentTicketNumber) lastAnnouncedRef.current.set(w.number, w.currentTicketNumber);
+        if (w.currentTicketNumber && w.currentTicketStatus === 'CALLED') {
+          lastAnnouncedRef.current.set(w.number, `${w.currentTicketNumber}:CALLED`);
+        }
       });
       isInitialRef.current = false;
       return;
     }
 
     windows.forEach(w => {
-      if (w.currentTicketNumber) {
+      if (w.currentTicketNumber && w.currentTicketStatus === 'CALLED') {
         const prev = lastAnnouncedRef.current.get(w.number);
-        if (prev !== w.currentTicketNumber) {
-          lastAnnouncedRef.current.set(w.number, w.currentTicketNumber);
+        const currentKey = `${w.currentTicketNumber}:CALLED`;
+        if (prev !== currentKey) {
+          lastAnnouncedRef.current.set(w.number, currentKey);
           triggerCallAnnouncement(w.currentTicketNumber, w.number);
         }
       } else {
@@ -186,19 +199,21 @@ export function TVBoard() {
     }
   }, [flash, tvData]);
 
-  /* ── enable sound on first click / touch (autoplay policy) ── */
+  /* ── enable sound on first click / touch / keydown (autoplay policy) ── */
   useEffect(() => {
-    if (!isSoundEnabled()) setSoundEnabled(true);
-    const enableOnce = () => {
-      if (!isSoundEnabled()) setSoundEnabled(true);
-      document.removeEventListener('click', enableOnce);
-      document.removeEventListener('touchstart', enableOnce);
+    const onGesture = () => {
+      handleUnlockAudio();
+      document.removeEventListener('click', onGesture);
+      document.removeEventListener('touchstart', onGesture);
+      document.removeEventListener('keydown', onGesture);
     };
-    document.addEventListener('click', enableOnce);
-    document.addEventListener('touchstart', enableOnce);
+    document.addEventListener('click', onGesture);
+    document.addEventListener('touchstart', onGesture);
+    document.addEventListener('keydown', onGesture);
     return () => {
-      document.removeEventListener('click', enableOnce);
-      document.removeEventListener('touchstart', enableOnce);
+      document.removeEventListener('click', onGesture);
+      document.removeEventListener('touchstart', onGesture);
+      document.removeEventListener('keydown', onGesture);
     };
   }, []);
 
@@ -262,6 +277,20 @@ export function TVBoard() {
           </div>
         </div>
         <div className="tv-topbar-right">
+          {!audioUnlocked ? (
+            <button
+              type="button"
+              className="tv-audio-btn"
+              onClick={handleUnlockAudio}
+              title="Разрешить голосовое оповещение в браузере"
+            >
+              Включить звук
+            </button>
+          ) : (
+            <span className="tv-audio-badge" title="Голосовые оповещения активны">
+              Звук включён
+            </span>
+          )}
           <div className="tv-status-badge" role="status">
             {error ? 'Нет связи · данные могут устареть' : isLoading ? 'Подключение…' : 'Данные обновляются'}
           </div>
@@ -403,6 +432,33 @@ const tvStyles = `
   display: flex;
   align-items: center;
   gap: 2vw;
+}
+.tv-audio-btn {
+  font-family: inherit;
+  font-size: 1.4vh;
+  font-weight: 700;
+  padding: 0.6vh 1.2vw;
+  border-radius: 9999px;
+  border: 1px solid #D97706;
+  background: #FEF3C7;
+  color: #92400E;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.tv-audio-btn:hover {
+  background: #FDE68A;
+  transform: scale(1.02);
+}
+.tv-audio-badge {
+  font-size: 1.4vh;
+  font-weight: 700;
+  padding: 0.6vh 1.2vw;
+  border-radius: 9999px;
+  border: 1px solid #BBF7D0;
+  background: #F0FDF4;
+  color: #166534;
+  white-space: nowrap;
 }
 .tv-status-badge {
   display: flex;
