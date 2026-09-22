@@ -43,6 +43,10 @@ func validPolicy(c application.UpdateQueuePolicyCommand) bool {
 		c.AppointmentLatePenaltyMaxPoints <= c.AppointmentDuePriority
 }
 
+// getBranchPolicyTx merges the in-memory file policy (fallback for Services/Call/WindowClose/Alerts)
+// with per-branch DB overrides (qr/live priorities, grace, late penalty, anti-starvation threshold).
+// File remains authoritative for Services/Call/WindowClose/Alerts; DB overlays are visible via UpdateQueuePolicy.
+// Drift between file and DB (e.g. early_window) is logged at Debug and does not recalc already-queued tickets until policy update.
 func (p *Postgres) getBranchPolicyTx(ctx context.Context, tx pgx.Tx, branchID pgtype.UUID) domain.QueuePolicyConfig {
 	base := p.GetPolicy()
 	var qrPri, livePri, graceMin, starveMin, latePenaltyMin, latePenaltyMax int

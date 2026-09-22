@@ -59,6 +59,7 @@ func dbError(err error) error {
 		return nil
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
+		slog.Debug("persistence: not found", "err", err)
 		return application.ErrNotFound
 	}
 	if errors.Is(err, context.Canceled) {
@@ -69,6 +70,7 @@ func dbError(err error) error {
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "tickets_one_active_per_window" {
+		slog.Debug("persistence: window busy", "constraint", pgErr.ConstraintName)
 		return application.ErrWindowBusy
 	}
 	// Do not expose driver messages, SQL or connection details across the boundary.

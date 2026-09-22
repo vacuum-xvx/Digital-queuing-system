@@ -285,11 +285,6 @@ func DefaultQueuePolicy() QueuePolicyConfig {
 			"live":        {Rank: 2, MaxWaitMinutes: &maxWait30},
 		},
 		Services: map[string]ServicePolicy{
-			"letters":                              {MaxWaitMinutes: 20},
-			"parcels":                              {MaxWaitMinutes: 30},
-			"payments":                             {MaxWaitMinutes: 15},
-			"send":                                 {MaxWaitMinutes: 30},
-			"retail":                               {MaxWaitMinutes: 15},
 			"22222222-2222-2222-2222-222222222222": {MaxWaitMinutes: 30}, // Parcels
 			"55555555-5555-5555-5555-555555555555": {MaxWaitMinutes: 15}, // Payments
 			"33333333-2222-2222-2222-222222222222": {MaxWaitMinutes: 30}, // Send
