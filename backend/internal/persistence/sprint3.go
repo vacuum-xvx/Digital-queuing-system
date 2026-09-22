@@ -129,9 +129,14 @@ func (p *Postgres) ArriveAppointment(ctx context.Context, ticketID string) (appl
 		ServiceID:   t.ServiceID,
 	}, checkin)
 
+	targetID, err := uuid(t.ID)
+	if err != nil {
+		return empty, err
+	}
+
 	if err = tx.QueryRow(ctx, `UPDATE tickets
 		SET arrived_at=$2, checkin_at=$2, due_at=$3, ready_at=$4, source_rank=$5, policy_version=$6
-		WHERE id=$1 RETURNING arrived_at`, id, checkin, dueAt, readyAt, sourceRank, policy.PolicyVersion).Scan(&t.ArrivedAt); err != nil {
+		WHERE id=$1 RETURNING arrived_at`, targetID, checkin, dueAt, readyAt, sourceRank, policy.PolicyVersion).Scan(&t.ArrivedAt); err != nil {
 		return empty, dbError(err)
 	}
 	*t.ArrivedAt = t.ArrivedAt.UTC()

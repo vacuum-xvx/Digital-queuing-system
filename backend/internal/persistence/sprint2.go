@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"strings"
 	"time"
@@ -60,6 +61,8 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 		if !matches {
 			return empty, application.ErrIdempotencyConflict
 		}
+		rawToken, _ := DeterministicManagementToken(cmd.IdempotencyKey)
+		t.ManagementToken = &rawToken
 		return application.CreateAppointmentResult{Appointment: appointmentView(t), Replayed: true}, nil
 	}
 	existing, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
@@ -88,9 +91,10 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 	}, time.Time{})
 
 	var tid string
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at,queue_entered_at,public_number,appointment_requested_at,ready_at,due_at,source_rank,policy_version)
- VALUES($1,$2,'APPOINTMENT','SCHEDULED',$3,$4,$4,next_appointment_public_number(),$5,$6,$7,$8,$9)
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, scheduled, requestedInstant, readyAt, dueAt, sourceRank, policy.PolicyVersion).Scan(&tid)
+	rawToken, tokenHash := DeterministicManagementToken(cmd.IdempotencyKey)
+	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,scheduled_at,queue_entered_at,public_number,appointment_requested_at,ready_at,due_at,source_rank,policy_version,management_token_hash)
+ VALUES($1,$2,'APPOINTMENT','SCHEDULED',$3,$4,$4,next_appointment_public_number(),$5,$6,$7,$8,$9,$10)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, scheduled, requestedInstant, readyAt, dueAt, sourceRank, policy.PolicyVersion, tokenHash).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
 		if err != nil {
@@ -105,6 +109,7 @@ func (p *Postgres) CreateAppointment(ctx context.Context, cmd application.Create
 	if err != nil {
 		return empty, err
 	}
+	t.ManagementToken = &rawToken
 	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil, EventExtra{
 		Actor:  "client_online",
 		Reason: "appointment scheduled",
@@ -136,6 +141,30 @@ func (p *Postgres) CancelAppointment(ctx context.Context, ticketID string) (appl
 	if t.Source != domain.TicketSourceAppointment {
 		return empty, application.ErrInvalidState
 	}
+
+	var storedHash *string
+	_ = tx.QueryRow(ctx, `SELECT management_token_hash FROM tickets WHERE id=$1`, id).Scan(&storedHash)
+	if !IsStaffBypass(ctx) {
+		token, hasToken := ManagementTokenFromContext(ctx)
+		if IsPublicClient(ctx) {
+			if !hasToken || token == "" || storedHash == nil || *storedHash == "" {
+				return empty, application.ErrForbidden
+			}
+			computed := HashManagementToken(token)
+			if subtle.ConstantTimeCompare([]byte(*storedHash), []byte(computed)) != 1 {
+				return empty, application.ErrForbidden
+			}
+		} else if hasToken {
+			if storedHash == nil || *storedHash == "" {
+				return empty, application.ErrForbidden
+			}
+			computed := HashManagementToken(token)
+			if subtle.ConstantTimeCompare([]byte(*storedHash), []byte(computed)) != 1 {
+				return empty, application.ErrForbidden
+			}
+		}
+	}
+
 	if t.Status == domain.TicketStatusCancelled {
 		return appointmentView(t), nil
 	}
@@ -170,6 +199,29 @@ func (p *Postgres) CancelTicket(ctx context.Context, ticketID string) (domain.Ti
 	t, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.id=$1 FOR UPDATE OF t`, id))
 	if err != nil {
 		return empty, err
+	}
+
+	var storedHash *string
+	_ = tx.QueryRow(ctx, `SELECT management_token_hash FROM tickets WHERE id=$1`, id).Scan(&storedHash)
+	if !IsStaffBypass(ctx) {
+		token, hasToken := ManagementTokenFromContext(ctx)
+		if IsPublicClient(ctx) {
+			if !hasToken || token == "" || storedHash == nil || *storedHash == "" {
+				return empty, application.ErrForbidden
+			}
+			computed := HashManagementToken(token)
+			if subtle.ConstantTimeCompare([]byte(*storedHash), []byte(computed)) != 1 {
+				return empty, application.ErrForbidden
+			}
+		} else if hasToken {
+			if storedHash == nil || *storedHash == "" {
+				return empty, application.ErrForbidden
+			}
+			computed := HashManagementToken(token)
+			if subtle.ConstantTimeCompare([]byte(*storedHash), []byte(computed)) != 1 {
+				return empty, application.ErrForbidden
+			}
+		}
 	}
 	if t.Status == domain.TicketStatusCancelled {
 		return t, nil

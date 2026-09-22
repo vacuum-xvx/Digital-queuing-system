@@ -77,6 +77,7 @@ type Ticket struct {
 	PolicyVersion    int64
 	RecallCount      int
 	ClientID         *string
+	ManagementToken  *string
 }
 
 type QueuePolicy struct {

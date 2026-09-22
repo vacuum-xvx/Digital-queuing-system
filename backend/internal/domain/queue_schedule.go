@@ -128,6 +128,7 @@ type ScheduleTicketInput struct {
 	Source      TicketSource
 	ScheduledAt *time.Time
 	ServiceID   string
+	IsRequeued  bool
 }
 
 // ComputeSchedule is a pure function that calculates due_at, ready_at and source_rank.
@@ -155,13 +156,6 @@ func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, check
 
 	switch ticket.Source {
 	case TicketSourceAppointment:
-		slot := time.Time{}
-		if ticket.ScheduledAt != nil {
-			slot = ticket.ScheduledAt.UTC()
-		}
-		grace := time.Duration(policy.Appointment.GraceMinutes) * time.Minute
-		earlyWindow := time.Duration(policy.Appointment.EarlyWindowMinutes) * time.Minute
-
 		aptRank := 0
 		if sp, ok := policy.Sources["appointment"]; ok {
 			aptRank = sp.Rank
@@ -170,6 +164,22 @@ func ComputeSchedule(policy QueuePolicyConfig, ticket ScheduleTicketInput, check
 		if sp, ok := policy.Sources["live"]; ok {
 			liveRank = sp.Rank
 		}
+
+		if ticket.IsRequeued {
+			maxWait := getMaxWait("appointment")
+			checkin := checkinAt.UTC()
+			dueAt = checkin.Add(maxWait)
+			readyAt = checkin
+			sourceRank = aptRank
+			return dueAt.UTC(), readyAt.UTC(), sourceRank
+		}
+
+		slot := time.Time{}
+		if ticket.ScheduledAt != nil {
+			slot = ticket.ScheduledAt.UTC()
+		}
+		grace := time.Duration(policy.Appointment.GraceMinutes) * time.Minute
+		earlyWindow := time.Duration(policy.Appointment.EarlyWindowMinutes) * time.Minute
 
 		if checkinAt.IsZero() {
 			// Not checked in yet: eligible exactly at scheduled slot time

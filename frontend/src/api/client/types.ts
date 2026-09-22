@@ -49,11 +49,13 @@ export type Ticket = {
   serviceStartedAt: string | null;
   completedAt: string | null;
   arrivedAt?: string | null;
+  managementToken?: string | null;
 };
 
 export type Appointment = {
   ticket: Ticket;
   scheduledAt: string;
+  managementToken?: string | null;
 };
 
 export type QueuePositionReason = 'AVAILABLE' | 'NOT_ELIGIBLE_YET' | 'NO_OPEN_COMPATIBLE_WINDOW' | 'NOT_QUEUED';

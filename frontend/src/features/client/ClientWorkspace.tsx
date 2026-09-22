@@ -18,6 +18,8 @@ const STORAGE_BRANCH_KEY = 'client_selected_branch_id';
 const STORAGE_SERVICE_KEY = 'client_selected_service_id';
 const STORAGE_TICKETS_KEY = 'client_active_ticket_ids';
 const STORAGE_APPOINTMENTS_KEY = 'client.appointments';
+const STORAGE_MGMT_TOKENS_KEY = 'client_management_tokens';
+const STORAGE_PENDING_IDEMPOTENCY_KEY = 'client_pending_idempotency';
 const ANON_SCOPE = 'anon';
 
 type ClientScreen = 'home' | 'booking' | 'walkin' | 'my';
@@ -212,6 +214,73 @@ function removeSavedTicketId(id: string, scope: string) {
   }
 }
 
+function mgmtTokensKeyFor(scope: string): string {
+  return `${STORAGE_MGMT_TOKENS_KEY}:${scope}`;
+}
+
+function getSavedMgmtTokens(scope: string): Record<string, string> {
+  try {
+    const val = sessionStorage.getItem(mgmtTokensKeyFor(scope)) || localStorage.getItem(mgmtTokensKeyFor(scope));
+    if (!val) return {};
+    const parsed = JSON.parse(val);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function saveMgmtToken(id: string, token: string | undefined | null, scope: string) {
+  if (!id || !token) return;
+  const tokens = getSavedMgmtTokens(scope);
+  tokens[id] = token;
+  const updated = JSON.stringify(tokens);
+  try { sessionStorage.setItem(mgmtTokensKeyFor(scope), updated); } catch {}
+  try { localStorage.setItem(mgmtTokensKeyFor(scope), updated); } catch {}
+}
+
+function removeMgmtToken(id: string, scope: string) {
+  const tokens = getSavedMgmtTokens(scope);
+  if (!tokens[id]) return;
+  delete tokens[id];
+  const updated = JSON.stringify(tokens);
+  try { sessionStorage.setItem(mgmtTokensKeyFor(scope), updated); } catch {}
+  try { localStorage.setItem(mgmtTokensKeyFor(scope), updated); } catch {}
+}
+
+function getStoredIdempotencyKey(identity: string): string {
+  try {
+    const val = sessionStorage.getItem(STORAGE_PENDING_IDEMPOTENCY_KEY) || localStorage.getItem(STORAGE_PENDING_IDEMPOTENCY_KEY);
+    if (val) {
+      const parsed = JSON.parse(val);
+      if (parsed && parsed.identity === identity && typeof parsed.key === 'string' && parsed.key.length > 0) {
+        return parsed.key;
+      }
+    }
+  } catch {}
+  const key = makeIdempotencyKey();
+  try {
+    const data = JSON.stringify({ identity, key });
+    sessionStorage.setItem(STORAGE_PENDING_IDEMPOTENCY_KEY, data);
+    localStorage.setItem(STORAGE_PENDING_IDEMPOTENCY_KEY, data);
+  } catch {}
+  return key;
+}
+
+function clearStoredIdempotencyKey(identity?: string) {
+  try {
+    if (identity) {
+      const val = sessionStorage.getItem(STORAGE_PENDING_IDEMPOTENCY_KEY) || localStorage.getItem(STORAGE_PENDING_IDEMPOTENCY_KEY);
+      if (val) {
+        const parsed = JSON.parse(val);
+        if (parsed?.identity !== identity) return;
+      }
+    }
+    sessionStorage.removeItem(STORAGE_PENDING_IDEMPOTENCY_KEY);
+    localStorage.removeItem(STORAGE_PENDING_IDEMPOTENCY_KEY);
+  } catch {}
+}
+
 try {
   sessionStorage.removeItem(STORAGE_TICKETS_KEY);
   sessionStorage.removeItem(STORAGE_APPOINTMENTS_KEY);
@@ -307,8 +376,10 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const createLock = useRef(false);
   const requestKey = useRef<{ identity: string; key: string } | null>(null);
   const keyFor = (identity: string) => {
-    if (requestKey.current?.identity !== identity) requestKey.current = { identity, key: makeIdempotencyKey() };
-    return requestKey.current.key;
+    if (requestKey.current?.identity === identity) return requestKey.current.key;
+    const stored = getStoredIdempotencyKey(identity);
+    requestKey.current = { identity, key: stored };
+    return stored;
   };
 
   useEffect(() => {
@@ -555,9 +626,14 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     createLock.current = true;
     setCreating(true);
     setError(null);
+    const identity = `qr:${branchId}:${serviceId}`;
     try {
-      const created = await api.createQrTicket(branchId, serviceId, keyFor(`qr:${branchId}:${serviceId}`));
+      const created = await api.createQrTicket(branchId, serviceId, keyFor(identity));
+      clearStoredIdempotencyKey(identity);
       requestKey.current = null;
+      if (created.managementToken) {
+        saveMgmtToken(created.id, created.managementToken, ownerScope);
+      }
       if (kiosk) {
         setKioskTicket(created);
       } else {
@@ -586,16 +662,22 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     createLock.current = true;
     setCreating(true);
     setError(null);
+    const identity = `appointment:${branchId}:${serviceId}:${scheduledAt.toISOString()}`;
     try {
       const created = await api.createAppointment(
         branchId,
         serviceId,
         scheduledAt.toISOString(),
-        keyFor(`appointment:${branchId}:${serviceId}:${scheduledAt.toISOString()}`)
+        keyFor(identity)
       );
+      clearStoredIdempotencyKey(identity);
       requestKey.current = null;
 
       const finalTicket = created.ticket;
+      const mgmtToken = created.managementToken || finalTicket.managementToken;
+      if (mgmtToken) {
+        saveMgmtToken(finalTicket.id, mgmtToken, ownerScope);
+      }
 
       addSavedTicketId(finalTicket.id, ownerScope);
       setTickets(prev => [finalTicket, ...prev]);
@@ -620,13 +702,16 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     setCancelling(true);
     try {
       let cancelledTicket: Ticket;
+      const tokens = getSavedMgmtTokens(ownerScope);
+      const mgmtToken = tokens[ticket.id] || ticket.managementToken || undefined;
       if (isAppointment) {
-        const res = await api.cancelAppointment(ticket.id);
+        const res = await api.cancelAppointment(ticket.id, mgmtToken);
         cancelledTicket = res.ticket;
       } else {
-        cancelledTicket = await api.cancelTicket(ticket.id);
+        cancelledTicket = await api.cancelTicket(ticket.id, mgmtToken);
       }
       removeSavedTicketId(ticket.id, ownerScope);
+      removeMgmtToken(ticket.id, ownerScope);
       setTickets(prev => prev.map(t => t.id === ticket.id ? cancelledTicket : t));
       setPositions(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
       setEtas(prev => { const next = { ...prev }; delete next[ticket.id]; return next; });
@@ -653,7 +738,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
       stopPolling();
       pollAll();
     } catch (reason: unknown) {
-      setError(friendlyError(reason, 'Не удалось подтвердить прибытие'));
+      setError(friendlyError(reason, 'Не удалось подтвердить прибытие. Попробуйте ещё раз.'));
     } finally {
       setArriving(false);
     }

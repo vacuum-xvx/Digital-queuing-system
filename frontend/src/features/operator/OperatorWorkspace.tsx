@@ -250,7 +250,9 @@ export function OperatorWorkspace() {
       if (publicNum.startsWith('A-')) {
         try {
           await arriveAppointment(publicNum);
-        } catch {}
+        } catch {
+          setNotice('Не удалось подтвердить прибытие. Попробуйте ещё раз.');
+        }
       }
       const ticket = await api.callNext(windowId, publicNum);
       const targetNum = ticket?.publicNumber || publicNum;
@@ -501,7 +503,9 @@ export function OperatorWorkspace() {
                                     }
                                   }
                                   return;
-                                } catch {}
+                                } catch {
+                                  setNotice('Не удалось подтвердить прибытие. Попробуйте ещё раз.');
+                                }
                               }
                             }
                             throw err;
