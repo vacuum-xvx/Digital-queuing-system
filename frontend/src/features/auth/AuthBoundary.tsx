@@ -110,7 +110,9 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
     );
   }
 
-  const allowed = user.role === 'employee' || user.role === 'opc_chief';
+  const allowed = area === 'admin'
+    ? user.role === 'opc_chief'
+    : user.role === 'employee' || user.role === 'opc_chief';
 
   return (
     <div className="space-y-4">
