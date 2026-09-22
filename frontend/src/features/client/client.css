@@ -518,20 +518,15 @@
   gap: 0.5rem;
   overflow-wrap: normal;
   word-break: normal;
+  justify-content: center;
+  text-align: center;
 }
 
 .cx-eta-label {
-  flex: 1 1 12rem;
+  flex: 0 1 auto;
   min-width: 0;
   line-height: 1.5;
-}
-
-.cx-eta-load {
-  flex: 0 1 auto;
-  max-width: 100%;
-  margin-left: auto;
   text-align: center;
-  line-height: 1.5;
 }
 
 .cx-pos-val {
