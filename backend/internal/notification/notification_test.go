@@ -1,7 +1,9 @@
 package notification
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -427,5 +429,56 @@ func TestDemoServerEndpoints(t *testing.T) {
 	}
 	if demo.GetMode() != DemoModeFail {
 		t.Fatalf("expected mode FAIL, got %s", demo.GetMode())
+	}
+}
+
+// TestDemoNotificationReceiverSuppressesDuplicateMessageID verifies that duplicate delivery
+// with the same message ID is acknowledged with HTTP 200 without appending duplicate business effects.
+func TestDemoNotificationReceiverSuppressesDuplicateMessageID(t *testing.T) {
+	demo := NewDemoServer(nil)
+	server := httptest.NewServer(demo.Handler())
+	defer server.Close()
+
+	send := func(id, ticketID string) int {
+		body, _ := json.Marshal(map[string]any{
+			"id":           id,
+			"ticketId":     ticketID,
+			"branchId":     "11111111-1111-1111-1111-111111111111",
+			"publicNumber": "Q-0001",
+			"eventType":    "TICKET_CALLED",
+		})
+		resp, err := http.Post(server.URL+"/notify", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST /notify: %v", err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// 1. First delivery of message X
+	status1 := send("msg-x", "ticket-1")
+	if status1 != http.StatusOK {
+		t.Fatalf("first delivery expected 200, got %d", status1)
+	}
+	if len(demo.History()) != 1 {
+		t.Fatalf("expected history len 1 after first delivery, got %d", len(demo.History()))
+	}
+
+	// 2. Retry of same message X (e.g. response was lost)
+	status2 := send("msg-x", "ticket-1")
+	if status2 != http.StatusOK {
+		t.Fatalf("duplicate delivery expected 200, got %d", status2)
+	}
+	if len(demo.History()) != 1 {
+		t.Fatalf("expected history len STILL 1 after duplicate delivery, got %d", len(demo.History()))
+	}
+
+	// 3. Different message Y for later genuine call of same ticket
+	status3 := send("msg-y", "ticket-1")
+	if status3 != http.StatusOK {
+		t.Fatalf("new call message expected 200, got %d", status3)
+	}
+	if len(demo.History()) != 2 {
+		t.Fatalf("expected history len to increment to 2 for new message, got %d", len(demo.History()))
 	}
 }

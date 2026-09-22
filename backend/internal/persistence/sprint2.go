@@ -204,9 +204,11 @@ func insertEvent(ctx context.Context, tx pgx.Tx, t domain.Ticket, kind domain.Ti
 	if from != nil {
 		fromStatus = *from
 	}
-	// FSM state transition validation
-	if err := domain.ValidateTransition(fromStatus, t.Status); err != nil {
-		return err
+	// FSM state transition validation (bypassed for policy recalculation audit records)
+	if kind != domain.TicketEventQueueRecalculated {
+		if err := domain.ValidateTransition(fromStatus, t.Status); err != nil {
+			return err
+		}
 	}
 
 	var window *string

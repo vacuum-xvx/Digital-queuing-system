@@ -132,17 +132,28 @@ func (s *DemoServer) handleNotify(w http.ResponseWriter, r *http.Request) {
 
 		s.mu.Lock()
 		s.seenIDs[msg.ID]++
-		s.history = append(s.history, msg)
 		seenCount := s.seenIDs[msg.ID]
+		if seenCount == 1 {
+			s.history = append(s.history, msg)
+		}
 		s.mu.Unlock()
 
-		s.logger.Info("demo notification delivered",
-			"notification_id", msg.ID,
-			"ticket_id", msg.TicketID,
-			"public_number", msg.PublicNumber,
-			"window_number", msg.WindowNumber,
-			"duplicate_count", seenCount,
-		)
+		if seenCount > 1 {
+			s.logger.Info("demo notification duplicate delivery recognized, suppressed duplicate effect",
+				"notification_id", msg.ID,
+				"ticket_id", msg.TicketID,
+				"public_number", msg.PublicNumber,
+				"duplicate_count", seenCount,
+			)
+		} else {
+			s.logger.Info("demo notification delivered",
+				"notification_id", msg.ID,
+				"ticket_id", msg.TicketID,
+				"public_number", msg.PublicNumber,
+				"window_number", msg.WindowNumber,
+				"duplicate_count", seenCount,
+			)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

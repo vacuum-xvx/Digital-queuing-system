@@ -191,7 +191,7 @@ ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 [ Клиентский портал / QR-стойка / Kiosk ]   [ Табло зала TV ]   [ Пульт оператора / Панель начальника ]
                    │                                │                           │
                    └────────────────────────────────┼───────────────────────────┘
-                                                    │ HTTPS / SSE / REST
+                                                    │ HTTPS / REST (Short-Polling)
                                                     ▼
                                     ┌──────────────────────────────┐
                                     │ Nginx Reverse Proxy / Vite   │
@@ -202,7 +202,7 @@ ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
                      │            Ядро бэкенда (Go 1.25 Modular Monolith)         │
                      │  • REST API Controllers & Middleware (Chi, Auth, CORS)    │
                      │  • Queue Engine (due_at Scheduling, FSM, SKIP LOCKED)     │
-                     │  • SSE Fan-Out Hub (потоковая трансляция событий залов)   │
+                     │  • State Re-fetch & Short-Polling Contract (UI / TV / App)│
                      │  • Transactional Outbox Worker (асинхронная доставка)     │
                      └─────────────────────────────┬─────────────────────────────┘
                                                    │
@@ -224,6 +224,7 @@ ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 ```
 
 Реализованная архитектура MVP автономна и не зависит от внешних облачных сервисов.
+Клиентские интерфейсы (мобильный экран, электронное табло зала, рабочее место оператора) взаимодействуют с бэкендом через канонический контракт **HTTP REST short polling / periodic state re-fetch** (интервалы 2–5 с), обеспечивая устойчивость к нестабильной сети без поддержки постоянных duplex-соединений.
 
 ---
 

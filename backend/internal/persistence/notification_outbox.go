@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -211,17 +212,25 @@ func (p *Postgres) ListNotificationOutbox(ctx context.Context, limit, offset int
 	return items, total, nil
 }
 
-// enqueueNearTurnForTopCandidates finds top waiting tickets that have reached position <= 2 and enqueues near-turn notifications.
+// enqueueNearTurnForTopCandidates finds true top 2 candidates in canonical ranked queue
+// with an open compatible window, and idempotently enqueues near-turn notifications.
 func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.Tx, branch string, decisionTime time.Time) error {
 	rows, err := tx.Query(ctx, `
-		SELECT t.id::text, t.branch_id::text, t.public_number
+		SELECT t.id::text, t.branch_id::text, t.public_number,
+		       COALESCE((SELECT MAX(e.id) FROM ticket_events e WHERE e.ticket_id = t.id AND e.type IN ('CREATED', 'RETURNED', 'REDIRECTED', 'ARRIVED')), 0) as cycle_id
 		FROM tickets t
 		WHERE t.branch_id = $1::uuid
 		  AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
-		  AND t.ready_at <= $2::timestamptz
-		  AND NOT EXISTS (
-		      SELECT 1 FROM notification_outbox no
-		      WHERE no.ticket_id = t.id AND no.event_type = 'TICKET_NEAR_TURN'
+		  AND (
+		      (t.source = 'APPOINTMENT' AND t.arrived_at IS NULL AND (t.scheduled_at IS NULL OR t.scheduled_at <= $2::timestamptz + INTERVAL '15 minutes') AND (t.ready_at IS NULL OR t.ready_at <= $2::timestamptz))
+		      OR ((t.source <> 'APPOINTMENT' OR t.arrived_at IS NOT NULL) AND (t.ready_at IS NULL OR t.ready_at <= $2::timestamptz))
+		  )
+		  AND EXISTS (
+		      SELECT 1 FROM windows w
+		      WHERE w.branch_id = t.branch_id
+		        AND w.status = 'OPEN'
+		        AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = w.id AND ws.service_id = t.service_id)
+		        AND (t.window_id IS NULL OR w.id = t.window_id)
 		  )
 		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 		LIMIT 2
@@ -234,24 +243,28 @@ func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.T
 
 	type candInfo struct {
 		id, branchID, publicNum string
+		cycleID                 int64
 	}
 	var cands []candInfo
 	for rows.Next() {
 		var c candInfo
-		if err := rows.Scan(&c.id, &c.branchID, &c.publicNum); err == nil {
+		if err := rows.Scan(&c.id, &c.branchID, &c.publicNum, &c.cycleID); err == nil {
 			cands = append(cands, c)
 		}
 	}
 	rows.Close()
 
 	for _, c := range cands {
+		dedupeKey := fmt.Sprintf("TICKET_NEAR_TURN:%s:%d", c.id, c.cycleID)
 		var outboxID string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
-			VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+			INSERT INTO notification_outbox (ticket_id, branch_id, event_type, dedupe_key, payload, status, next_attempt_at, created_at)
+			VALUES ($1::uuid, $2::uuid, $3, $4, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+			ON CONFLICT (dedupe_key) DO NOTHING
 			RETURNING id::text
-		`, c.id, c.branchID, string(domain.NotificationTicketNearTurn)).Scan(&outboxID)
+		`, c.id, c.branchID, string(domain.NotificationTicketNearTurn), dedupeKey).Scan(&outboxID)
 		if err != nil {
+			// Either error or ON CONFLICT returned no row (already enqueued for this cycle)
 			continue
 		}
 
@@ -284,13 +297,26 @@ func (p *Postgres) EnqueueNearTurnIfEligible(ctx context.Context, ticketID strin
 	}
 	defer tx.Rollback(ctx)
 
-	// 1. Fetch ticket to verify status and get public_number, branch_id
-	var tIDStr, branchID, publicNum string
+	// Establish snapshot time
+	var now time.Time
+	if err = tx.QueryRow(ctx, `SELECT transaction_timestamp()`).Scan(&now); err != nil {
+		return dbError(err)
+	}
+	now = now.UTC()
+
+	// 1. Fetch ticket to verify status, branch, service, eligibility
+	var tIDStr, branchID, serviceID, publicNum, source string
 	var status domain.TicketStatus
+	var targetWindowID *string
+	var readyAt, scheduledAt, arrivedAt, dueAt, checkinAt *time.Time
+	var sourceRank int
+	var queueEnteredAt time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT id::text, branch_id::text, status, public_number
+		SELECT id::text, branch_id::text, service_id::text, status, public_number, source,
+		       window_id::text, ready_at, scheduled_at, arrived_at, due_at, source_rank, checkin_at, queue_entered_at
 		FROM tickets WHERE id = $1
-	`, tID).Scan(&tIDStr, &branchID, &status, &publicNum)
+	`, tID).Scan(&tIDStr, &branchID, &serviceID, &status, &publicNum, &source,
+		&targetWindowID, &readyAt, &scheduledAt, &arrivedAt, &dueAt, &sourceRank, &checkinAt, &queueEnteredAt)
 	if err != nil {
 		return dbError(err)
 	}
@@ -299,27 +325,97 @@ func (p *Postgres) EnqueueNearTurnIfEligible(ctx context.Context, ticketID strin
 		return nil
 	}
 
-	// 2. Atomically check and insert if not already enqueued
-	var alreadyExists bool
-	err = tx.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM notification_outbox
-			WHERE ticket_id = $1::uuid AND event_type = $2
-		)
-	`, tID, string(domain.NotificationTicketNearTurn)).Scan(&alreadyExists)
-	if err != nil {
-		return dbError(err)
-	}
-	if alreadyExists {
+	// Due eligibility check (same as QueuePosition)
+	if source == string(domain.TicketSourceAppointment) && arrivedAt == nil {
+		if scheduledAt != nil && scheduledAt.After(now.Add(15*time.Minute)) {
+			return nil
+		}
+		if readyAt != nil && readyAt.After(now) {
+			return nil
+		}
+	} else if readyAt != nil && readyAt.After(now) {
 		return nil
 	}
 
+	// 2. Open compatible window check (same canonical semantics as QueuePosition)
+	var hasOpenWindow bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM windows w
+			WHERE w.branch_id = $1::uuid AND w.status = 'OPEN'
+			  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = w.id AND ws.service_id = $2::uuid)
+			  AND ($3::uuid IS NULL OR w.id = $3::uuid)
+		)
+	`, branchID, serviceID, targetWindowID).Scan(&hasOpenWindow)
+	if err != nil {
+		return dbError(err)
+	}
+	if !hasOpenWindow {
+		return nil
+	}
+
+	// 3. True canonical queue position check (must be rank <= 2 in branch queue)
+	effectiveDue := now
+	if dueAt != nil {
+		effectiveDue = *dueAt
+	} else if scheduledAt != nil {
+		effectiveDue = *scheduledAt
+	}
+	effectiveCheckin := queueEnteredAt
+	if checkinAt != nil {
+		effectiveCheckin = *checkinAt
+	} else if arrivedAt != nil {
+		effectiveCheckin = *arrivedAt
+	}
+
+	var rank int
+	err = tx.QueryRow(ctx, `
+		SELECT count(*) + 1
+		FROM tickets c
+		WHERE c.branch_id = $1::uuid
+		  AND (c.status = 'WAITING' OR (c.source = 'APPOINTMENT' AND c.status = 'SCHEDULED'))
+		  AND (
+		      (c.source = 'APPOINTMENT' AND c.arrived_at IS NULL AND (c.scheduled_at IS NULL OR c.scheduled_at <= $2::timestamptz + INTERVAL '15 minutes') AND (c.ready_at IS NULL OR c.ready_at <= $2::timestamptz))
+		      OR ((c.source <> 'APPOINTMENT' OR c.arrived_at IS NOT NULL) AND (c.ready_at IS NULL OR c.ready_at <= $2::timestamptz))
+		  )
+		  AND EXISTS (
+		      SELECT 1 FROM windows w
+		      WHERE w.branch_id = c.branch_id AND w.status = 'OPEN'
+		        AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = w.id AND ws.service_id = c.service_id)
+		        AND (c.window_id IS NULL OR w.id = c.window_id)
+		  )
+		  AND (c.due_at, c.source_rank, c.checkin_at, c.id) < ($3::timestamptz, $4::int, $5::timestamptz, $6::uuid)
+	`, branchID, now, effectiveDue, sourceRank, effectiveCheckin, tID).Scan(&rank)
+	if err != nil {
+		return dbError(err)
+	}
+	if rank > 2 {
+		return nil
+	}
+
+	// 4. Stable queue-entry cycle identity and DB-level deduplication
+	var cycleID int64
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(e.id), 0)
+		FROM ticket_events e
+		WHERE e.ticket_id = $1::uuid AND e.type IN ('CREATED', 'RETURNED', 'REDIRECTED', 'ARRIVED')
+	`, tID).Scan(&cycleID)
+	if err != nil {
+		return dbError(err)
+	}
+
+	dedupeKey := fmt.Sprintf("TICKET_NEAR_TURN:%s:%d", tIDStr, cycleID)
 	var outboxID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO notification_outbox (ticket_id, branch_id, event_type, payload, status, next_attempt_at, created_at)
-		VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+		INSERT INTO notification_outbox (ticket_id, branch_id, event_type, dedupe_key, payload, status, next_attempt_at, created_at)
+		VALUES ($1::uuid, $2::uuid, $3, $4, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
+		ON CONFLICT (dedupe_key) DO NOTHING
 		RETURNING id::text
-	`, tID, branchID, string(domain.NotificationTicketNearTurn)).Scan(&outboxID)
+	`, tID, branchID, string(domain.NotificationTicketNearTurn), dedupeKey).Scan(&outboxID)
+	if errors.Is(err, pgx.ErrNoRows) || outboxID == "" {
+		// Already enqueued for this cycle
+		return tx.Commit(ctx)
+	}
 	if err != nil {
 		return dbError(err)
 	}

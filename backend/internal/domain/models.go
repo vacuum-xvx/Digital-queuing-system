@@ -103,6 +103,7 @@ const (
 	TicketEventCancelled      TicketEventType = "CANCELLED"
 	TicketEventReturned       TicketEventType = "RETURNED"
 	TicketEventRedirected     TicketEventType = "REDIRECTED"
+	TicketEventQueueRecalculated TicketEventType = "QUEUE_RECALCULATED"
 )
 
 type TicketEvent struct {
