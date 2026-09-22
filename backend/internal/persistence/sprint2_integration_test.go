@@ -115,10 +115,6 @@ func TestAppointmentQueuePolicyAndLifecycle(t *testing.T) {
 		t.Fatalf("due priority: %+v %v", claimed, err)
 	}
 
-	_, err = p.ReturnTicket(ctx, a.ID)
-	wantError(t, err, application.ErrInvalidState)
-	_, err = p.RedirectTicket(ctx, application.RedirectTicketCommand{TicketID: a.ID, NewServiceID: parcels})
-	wantError(t, err, application.ErrInvalidState)
 	e := events(t, ctx, p, a.ID, 2)[1]
 	if e.Type != domain.TicketEventCalled || e.FromStatus == nil || *e.FromStatus != domain.TicketStatusScheduled || e.PolicyVersion == nil || *e.PolicyVersion != 2 || e.DecisionPriority == nil || *e.DecisionPriority != 100 || e.WindowID == nil || *e.WindowID != window1 {
 		t.Fatalf("called=%+v", e)

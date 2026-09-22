@@ -110,6 +110,8 @@ function parseTicket(value: unknown): Ticket {
     calledAt: value.calledAt === null ? null : requireString(value.calledAt, 'calledAt'),
     serviceStartedAt: value.serviceStartedAt === null ? null : requireString(value.serviceStartedAt, 'serviceStartedAt'),
     completedAt: value.completedAt === null ? null : requireString(value.completedAt, 'completedAt'),
+    arrivedAt: typeof value.arrivedAt === 'string' ? value.arrivedAt : undefined,
+    managementToken: typeof value.managementToken === 'string' ? value.managementToken : undefined,
   };
 }
 
@@ -121,7 +123,9 @@ function parseAppointment(value: unknown): Appointment {
   if (Number.isNaN(Date.parse(scheduledAt))) {
     throw new ClientApiError('Некорректное поле scheduledAt');
   }
-  return { ticket: parseTicket(value.ticket), scheduledAt };
+  const ticket = parseTicket(value.ticket);
+  const mgmtToken = typeof value.managementToken === 'string' ? value.managementToken : ticket.managementToken;
+  return { ticket, scheduledAt, managementToken: mgmtToken };
 }
 
 async function request<T>(path: string, init?: RequestInit, parser?: (value: unknown) => T): Promise<T> {
@@ -204,17 +208,23 @@ export async function createAppointment(
   }, parseAppointment);
 }
 
-export async function cancelAppointment(ticketId: string, signal?: AbortSignal): Promise<Appointment> {
+export async function cancelAppointment(ticketId: string, token?: string, signal?: AbortSignal): Promise<Appointment> {
+  const headers: Record<string, string> = {};
+  if (token) headers['X-Ticket-Manage-Token'] = token;
   return request(`/appointments/${encodeURIComponent(ticketId)}/cancel`, {
     method: 'POST',
     signal,
+    headers,
   }, parseAppointment);
 }
 
-export async function cancelTicket(ticketId: string, signal?: AbortSignal): Promise<Ticket> {
+export async function cancelTicket(ticketId: string, token?: string, signal?: AbortSignal): Promise<Ticket> {
+  const headers: Record<string, string> = {};
+  if (token) headers['X-Ticket-Manage-Token'] = token;
   return request(`/tickets/${encodeURIComponent(ticketId)}/cancel`, {
     method: 'POST',
     signal,
+    headers,
   }, parseTicket);
 }
 

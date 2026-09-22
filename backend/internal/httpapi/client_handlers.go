@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"postcode/backend/internal/application"
+	"postcode/backend/internal/domain"
+	"postcode/backend/internal/persistence"
 )
 
 func (a *API) ListBranches(w http.ResponseWriter, r *http.Request) {
@@ -129,8 +131,9 @@ type CreateAppointmentRequest struct {
 }
 
 type AppointmentResponse struct {
-	Ticket      TicketDTO `json:"ticket"`
-	ScheduledAt time.Time `json:"scheduledAt"`
+	Ticket          TicketDTO `json:"ticket"`
+	ScheduledAt     time.Time `json:"scheduledAt"`
+	ManagementToken *string   `json:"managementToken,omitempty"`
 }
 
 func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
@@ -185,14 +188,32 @@ func (a *API) CreateAppointment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSONResponse(w, status, AppointmentResponse{
-		Ticket:      mapTicket(result.Appointment.Ticket),
-		ScheduledAt: result.Appointment.ScheduledAt,
+		Ticket:          mapTicket(result.Appointment.Ticket),
+		ScheduledAt:     result.Appointment.ScheduledAt,
+		ManagementToken: result.Appointment.Ticket.ManagementToken,
 	})
 }
 
 func (a *API) CancelAppointment(w http.ResponseWriter, r *http.Request) {
 	ticketID := chi.URLParam(r, "ticketId")
-	appView, err := a.usecases.CancelAppointment(r.Context(), ticketID)
+	user, isStaff := userFromContext(r.Context())
+	isAuthorizedStaff := isStaff && (user.Role == domain.RoleEmployee || user.Role == domain.RoleOPCChief)
+
+	token := r.Header.Get("X-Ticket-Manage-Token")
+	if !isAuthorizedStaff && strings.TrimSpace(token) == "" {
+		writeJSONError(w, r, http.StatusForbidden, "FORBIDDEN", "X-Ticket-Manage-Token header is required for cancellation")
+		return
+	}
+
+	ctx := r.Context()
+	if isAuthorizedStaff {
+		ctx = persistence.WithStaffBypass(ctx)
+	} else {
+		ctx = persistence.WithPublicClient(ctx)
+		ctx = persistence.WithManagementToken(ctx, token)
+	}
+
+	appView, err := a.usecases.CancelAppointment(ctx, ticketID)
 	if err != nil {
 		a.respondError(w, r, err)
 		return
@@ -206,7 +227,24 @@ func (a *API) CancelAppointment(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) CancelTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID := chi.URLParam(r, "ticketId")
-	ticket, err := a.usecases.CancelTicket(r.Context(), ticketID)
+	user, isStaff := userFromContext(r.Context())
+	isAuthorizedStaff := isStaff && (user.Role == domain.RoleEmployee || user.Role == domain.RoleOPCChief)
+
+	token := r.Header.Get("X-Ticket-Manage-Token")
+	if !isAuthorizedStaff && strings.TrimSpace(token) == "" {
+		writeJSONError(w, r, http.StatusForbidden, "FORBIDDEN", "X-Ticket-Manage-Token header is required for cancellation")
+		return
+	}
+
+	ctx := r.Context()
+	if isAuthorizedStaff {
+		ctx = persistence.WithStaffBypass(ctx)
+	} else {
+		ctx = persistence.WithPublicClient(ctx)
+		ctx = persistence.WithManagementToken(ctx, token)
+	}
+
+	ticket, err := a.usecases.CancelTicket(ctx, ticketID)
 	if err != nil {
 		a.respondError(w, r, err)
 		return

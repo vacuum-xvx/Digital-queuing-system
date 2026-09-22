@@ -227,11 +227,15 @@ func (p *Postgres) GetCurrentTicket(ctx context.Context, windowID string) (*doma
 	return &t, nil
 }
 
-func replay(t domain.Ticket, branchID, serviceID pgtype.UUID) (application.CreateQRTicketResult, error) {
+func replay(t domain.Ticket, branchID, serviceID pgtype.UUID, idempotencyKey string) (application.CreateQRTicketResult, error) {
 	b, _ := uuid(t.BranchID)
 	s, _ := uuid(t.ServiceID)
 	if b != branchID || s != serviceID || t.Source != domain.TicketSourceQR {
 		return application.CreateQRTicketResult{}, application.ErrIdempotencyConflict
+	}
+	if idempotencyKey != "" {
+		rawToken, _ := DeterministicManagementToken(idempotencyKey)
+		t.ManagementToken = &rawToken
 	}
 	return application.CreateQRTicketResult{Ticket: t, Replayed: true}, nil
 }
@@ -255,7 +259,7 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 	defer tx.Rollback(context.Background())
 	existing, err := scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
 	if err == nil {
-		return replay(existing, b, s)
+		return replay(existing, b, s, cmd.IdempotencyKey)
 	}
 	if !errors.Is(err, application.ErrNotFound) {
 		return empty, err
@@ -276,16 +280,17 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 		ServiceID: cmd.ServiceID,
 	}, now)
 
-	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,created_at,queue_entered_at,checkin_at,ready_at,due_at,source_rank,policy_version)
- VALUES($1,$2,'QR','WAITING',$3,$4,$4,$4,$5,$6,$7,$8)
- ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, now, readyAt, dueAt, sourceRank, policy.PolicyVersion).Scan(&tid)
+	rawToken, tokenHash := DeterministicManagementToken(cmd.IdempotencyKey)
+	err = tx.QueryRow(ctx, `INSERT INTO tickets(branch_id,service_id,source,status,idempotency_key,created_at,queue_entered_at,checkin_at,ready_at,due_at,source_rank,policy_version,management_token_hash)
+ VALUES($1,$2,'QR','WAITING',$3,$4,$4,$4,$5,$6,$7,$8,$9)
+ ON CONFLICT(idempotency_key) DO NOTHING RETURNING id::text`, b, s, cmd.IdempotencyKey, now, readyAt, dueAt, sourceRank, policy.PolicyVersion, tokenHash).Scan(&tid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// READ COMMITTED gives this statement a fresh snapshot after the conflicting insert commits.
 		existing, err = scanTicket(tx.QueryRow(ctx, ticketSelect+`WHERE t.idempotency_key=$1`, cmd.IdempotencyKey))
 		if err != nil {
 			return empty, err
 		}
-		return replay(existing, b, s)
+		return replay(existing, b, s, cmd.IdempotencyKey)
 	}
 	if err != nil {
 		return empty, dbError(err)
@@ -294,6 +299,7 @@ func (p *Postgres) CreateQRTicket(ctx context.Context, cmd application.CreateQRT
 	if err != nil {
 		return empty, err
 	}
+	t.ManagementToken = &rawToken
 	if err = insertEvent(ctx, tx, t, domain.TicketEventCreated, nil, nil, nil, EventExtra{
 		Actor:  "kiosk_qr",
 		Reason: "ticket created",
@@ -886,7 +892,27 @@ func (p *Postgres) ReturnTicket(ctx context.Context, ticketID string) (domain.Ti
 	if err != nil {
 		return domain.Ticket{}, err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND source<>'APPOINTMENT' AND status IN ('CALLED', 'SERVING')`, id)
+	if before.Status != domain.TicketStatusCalled && before.Status != domain.TicketStatusServing {
+		return domain.Ticket{}, application.ErrInvalidState
+	}
+
+	var tag pgconn.CommandTag
+	if before.Source == domain.TicketSourceAppointment {
+		now := time.Now().UTC()
+		bId, _ := uuid(before.BranchID)
+		policy := p.getBranchPolicyTx(ctx, tx, bId)
+		dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+			Source:      before.Source,
+			ScheduledAt: before.ScheduledAt,
+			ServiceID:   before.ServiceID,
+			IsRequeued:  true,
+		}, now)
+
+		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, checkin_at=$2, ready_at=$3, due_at=$4, source_rank=$5, requeued_at=$2 WHERE id=$1 AND status IN ('CALLED', 'SERVING')`,
+			id, now, readyAt, dueAt, sourceRank)
+	} else {
+		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL WHERE id=$1 AND status IN ('CALLED', 'SERVING')`, id)
+	}
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
 	}
@@ -931,13 +957,18 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	if err != nil {
 		return domain.Ticket{}, err
 	}
+	if before.Status != domain.TicketStatusCalled && before.Status != domain.TicketStatusServing {
+		return domain.Ticket{}, application.ErrInvalidState
+	}
 
 	var ns pgtype.UUID
+	targetServiceID := before.ServiceID
 	if cmd.NewServiceID != "" {
 		ns, err = uuid(cmd.NewServiceID)
 		if err != nil {
 			return domain.Ticket{}, err
 		}
+		targetServiceID = cmd.NewServiceID
 	} else {
 		ns, err = uuid(before.ServiceID)
 		if err != nil {
@@ -946,10 +977,30 @@ func (p *Postgres) RedirectTicket(ctx context.Context, cmd application.RedirectT
 	}
 
 	var tag pgconn.CommandTag
-	if nw != nil {
-		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2 WHERE id=$3 AND source<>'APPOINTMENT' AND status IN ('CALLED', 'SERVING')`, nw, ns, id)
+	if before.Source == domain.TicketSourceAppointment {
+		now := time.Now().UTC()
+		bId, _ := uuid(before.BranchID)
+		policy := p.getBranchPolicyTx(ctx, tx, bId)
+		dueAt, readyAt, sourceRank := domain.ComputeSchedule(policy, domain.ScheduleTicketInput{
+			Source:      before.Source,
+			ScheduledAt: before.ScheduledAt,
+			ServiceID:   targetServiceID,
+			IsRequeued:  true,
+		}, now)
+
+		if nw != nil {
+			tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2, checkin_at=$3, ready_at=$4, due_at=$5, source_rank=$6, requeued_at=$3 WHERE id=$7 AND status IN ('CALLED', 'SERVING')`,
+				nw, ns, now, readyAt, dueAt, sourceRank, id)
+		} else {
+			tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1, checkin_at=$2, ready_at=$3, due_at=$4, source_rank=$5, requeued_at=$2 WHERE id=$6 AND status IN ('CALLED', 'SERVING')`,
+				ns, now, readyAt, dueAt, sourceRank, id)
+		}
 	} else {
-		tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1 WHERE id=$2 AND source<>'APPOINTMENT' AND status IN ('CALLED', 'SERVING')`, ns, id)
+		if nw != nil {
+			tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=$1, service_id=$2 WHERE id=$3 AND status IN ('CALLED', 'SERVING')`, nw, ns, id)
+		} else {
+			tag, err = tx.Exec(ctx, `UPDATE tickets SET status='WAITING', window_id=NULL, service_id=$1 WHERE id=$2 AND status IN ('CALLED', 'SERVING')`, ns, id)
+		}
 	}
 	if err != nil {
 		return domain.Ticket{}, dbError(err)

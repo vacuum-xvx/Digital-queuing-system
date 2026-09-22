@@ -148,6 +148,7 @@ type TicketDTO struct {
 	CalledAt         *time.Time    `json:"calledAt"`
 	ServiceStartedAt *time.Time    `json:"serviceStartedAt"`
 	CompletedAt      *time.Time    `json:"completedAt"`
+	ManagementToken  *string       `json:"managementToken,omitempty"`
 }
 
 type WindowDTO struct {
@@ -198,6 +199,10 @@ func mapTicket(t domain.Ticket) TicketDTO {
 			Number: t.Window.Number,
 		}
 	}
+	var mgmtToken *string
+	if t.ManagementToken != nil && *t.ManagementToken != "" {
+		mgmtToken = t.ManagementToken
+	}
 	return TicketDTO{
 		ID:               t.ID,
 		PublicNumber:     t.PublicNumber,
@@ -212,6 +217,7 @@ func mapTicket(t domain.Ticket) TicketDTO {
 		CalledAt:         t.CalledAt,
 		ServiceStartedAt: t.ServiceStartedAt,
 		CompletedAt:      t.CompletedAt,
+		ManagementToken:  mgmtToken,
 	}
 }
 
@@ -223,6 +229,12 @@ func (a *API) respondError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, application.ErrNotFound):
 		status = http.StatusNotFound
 		code = "NOT_FOUND"
+	case errors.Is(err, application.ErrForbidden):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+	case errors.Is(err, application.ErrUnauthorized):
+		status = http.StatusUnauthorized
+		code = "UNAUTHORIZED"
 	case errors.Is(err, application.ErrIdempotencyConflict):
 		status = http.StatusConflict
 		code = "IDEMPOTENCY_CONFLICT"

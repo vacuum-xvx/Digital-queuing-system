@@ -147,10 +147,11 @@ func (p *Postgres) UpdateQueuePolicy(ctx context.Context, c application.UpdateQu
 		status         domain.TicketStatus
 		oldDueAt       *time.Time
 		oldSourceRank  int
+		requeuedAt     *time.Time
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT t.id::text, t.source, t.scheduled_at, t.service_id::text, t.checkin_at, t.arrived_at, t.queue_entered_at, t.status, t.due_at, t.source_rank
+		SELECT t.id::text, t.source, t.scheduled_at, t.service_id::text, t.checkin_at, t.arrived_at, t.queue_entered_at, t.status, t.due_at, t.source_rank, t.requeued_at
 		FROM tickets t
 		WHERE t.branch_id = $1 AND (t.status = 'WAITING' OR (t.source = 'APPOINTMENT' AND t.status = 'SCHEDULED'))
 		FOR UPDATE SKIP LOCKED
@@ -163,7 +164,7 @@ func (p *Postgres) UpdateQueuePolicy(ctx context.Context, c application.UpdateQu
 	for rows.Next() {
 		var item ticketRecalc
 		var srcStr, statusStr string
-		if err = rows.Scan(&item.id, &srcStr, &item.scheduledAt, &item.serviceID, &item.checkinAt, &item.arrivedAt, &item.queueEnteredAt, &statusStr, &item.oldDueAt, &item.oldSourceRank); err != nil {
+		if err = rows.Scan(&item.id, &srcStr, &item.scheduledAt, &item.serviceID, &item.checkinAt, &item.arrivedAt, &item.queueEnteredAt, &statusStr, &item.oldDueAt, &item.oldSourceRank, &item.requeuedAt); err != nil {
 			rows.Close()
 			return empty, dbError(err)
 		}
@@ -193,6 +194,7 @@ func (p *Postgres) UpdateQueuePolicy(ctx context.Context, c application.UpdateQu
 			Source:      item.source,
 			ScheduledAt: item.scheduledAt,
 			ServiceID:   item.serviceID,
+			IsRequeued:  item.requeuedAt != nil,
 		}, checkin)
 
 		_, err = tx.Exec(ctx, `UPDATE tickets SET due_at = $1, ready_at = $2, source_rank = $3, policy_version = $4 WHERE id = $5::uuid`,

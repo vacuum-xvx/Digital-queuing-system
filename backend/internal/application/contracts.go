@@ -18,6 +18,8 @@ var (
 	ErrNotEligibleYet      = errors.New("not eligible yet")
 	ErrNoOpenCompatibleWindow = errors.New("no open compatible window")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
+	ErrForbidden           = errors.New("forbidden")
+	ErrUnauthorized        = errors.New("unauthorized")
 )
 
 type CreateQRTicketCommand struct {
