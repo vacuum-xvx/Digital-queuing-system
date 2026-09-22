@@ -58,6 +58,7 @@ type Ticket struct {
 	PublicNumber     string
 	BranchID         string
 	ServiceID        string
+	ServiceName      string
 	Source           TicketSource
 	Status           TicketStatus
 	Window           *WindowRef

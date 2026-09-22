@@ -139,6 +139,7 @@ type TicketDTO struct {
 	PublicNumber     string        `json:"publicNumber"`
 	BranchID         string        `json:"branchId"`
 	ServiceID        string        `json:"serviceId"`
+	ServiceName      string        `json:"serviceName,omitempty"`
 	Source           string        `json:"source"`
 	Status           string        `json:"status"`
 	Window           *WindowRefDTO `json:"window"`
@@ -202,6 +203,7 @@ func mapTicket(t domain.Ticket) TicketDTO {
 		PublicNumber:     t.PublicNumber,
 		BranchID:         t.BranchID,
 		ServiceID:        t.ServiceID,
+		ServiceName:      t.ServiceName,
 		Source:           string(t.Source),
 		Status:           string(t.Status),
 		Window:           window,

@@ -1865,6 +1865,8 @@ components:
           type: string
         serviceId:
           type: string
+        serviceName:
+          type: string
         source:
           $ref: '#/components/schemas/TicketSource'
         status:

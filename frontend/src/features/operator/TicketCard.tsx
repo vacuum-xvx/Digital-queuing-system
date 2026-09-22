@@ -72,11 +72,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, 
   const isServing = ticket.status === 'SERVING';
   const sourceConfig = getTicketSourceConfig(ticket.source);
 
-  // Тип услуги: сначала каталог услуг отделения, затем услуги выбранного окна
+  // Тип услуги: сначала поле из талона, затем каталог услуг отделения, затем услуги выбранного окна
   const serviceName =
+    ticket.serviceName ||
     services?.find(s => s.id === ticket.serviceId)?.name ||
     selectedWindow.services.find(s => s.id === ticket.serviceId)?.name ||
-    'Услуга не указана';
+    'Услуга не определена';
 
   return (
     <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm space-y-4">
@@ -105,7 +106,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, 
         </div>
       </div>
 
-      {/* Main Ticket Number */}
+      {/* Main Ticket Number and Service */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 font-bold">
@@ -114,8 +115,11 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, selectedWindow, 
           <div className="ticket-number text-5xl sm:text-6xl font-black font-mono text-[#003B73] tracking-tight my-1">
             {ticket.publicNumber}
           </div>
-          <div className="text-xs font-semibold text-slate-700">
-            {serviceName}
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className="text-xs font-mono uppercase tracking-wider text-slate-500 font-semibold">Услуга:</span>
+            <span className="text-sm font-bold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+              {serviceName}
+            </span>
           </div>
         </div>
 

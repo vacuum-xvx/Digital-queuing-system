@@ -215,7 +215,26 @@ func (p *Postgres) ListNotificationOutbox(ctx context.Context, limit, offset int
 // enqueueNearTurnForTopCandidates finds true top 2 candidates in canonical ranked queue
 // with an open compatible window, and idempotently enqueues near-turn notifications.
 func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.Tx, branch string, decisionTime time.Time) error {
-	rows, err := tx.Query(ctx, `
+	var commit func() error
+	var rollback func()
+	activeTx := tx
+
+	if activeTx == nil {
+		subTx, err := p.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		activeTx = subTx
+		_, _ = subTx.Exec(ctx, `SET LOCAL lock_timeout = '100ms'`)
+		commit = func() error { return subTx.Commit(ctx) }
+		rollback = func() { _ = subTx.Rollback(context.Background()) }
+	} else {
+		commit = func() error { return nil }
+		rollback = func() {}
+	}
+	defer rollback()
+
+	rows, err := activeTx.Query(ctx, `
 		SELECT t.id::text, t.branch_id::text, t.public_number,
 		       COALESCE((SELECT MAX(e.id) FROM ticket_events e WHERE e.ticket_id = t.id AND e.type IN ('CREATED', 'RETURNED', 'REDIRECTED', 'ARRIVED')), 0) as cycle_id
 		FROM tickets t
@@ -234,7 +253,6 @@ func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.T
 		  )
 		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 		LIMIT 2
-		FOR SHARE OF t SKIP LOCKED
 	`, branch, decisionTime)
 	if err != nil {
 		return err
@@ -257,7 +275,7 @@ func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.T
 	for _, c := range cands {
 		dedupeKey := fmt.Sprintf("TICKET_NEAR_TURN:%s:%d", c.id, c.cycleID)
 		var outboxID string
-		err := tx.QueryRow(ctx, `
+		err := activeTx.QueryRow(ctx, `
 			INSERT INTO notification_outbox (ticket_id, branch_id, event_type, dedupe_key, payload, status, next_attempt_at, created_at)
 			VALUES ($1::uuid, $2::uuid, $3, $4, '{}'::jsonb, 'PENDING', clock_timestamp(), clock_timestamp())
 			ON CONFLICT (dedupe_key) DO NOTHING
@@ -278,10 +296,10 @@ func (p *Postgres) enqueueNearTurnForTopCandidates(ctx context.Context, tx pgx.T
 			CreatedAt:    time.Now().UTC(),
 		}
 		if payload, pErr := json.Marshal(msg); pErr == nil {
-			_, _ = tx.Exec(ctx, `UPDATE notification_outbox SET payload=$1::jsonb WHERE id=$2::uuid`, payload, outboxID)
+			_, _ = activeTx.Exec(ctx, `UPDATE notification_outbox SET payload=$1::jsonb WHERE id=$2::uuid`, payload, outboxID)
 		}
 	}
-	return nil
+	return commit()
 }
 
 // EnqueueNearTurnIfEligible idempotently enqueues a TICKET_NEAR_TURN notification if eligible.

@@ -35,6 +35,7 @@ func (p *Postgres) ReconcileStaleTickets(ctx context.Context, authoritativeTime 
 		SELECT `+ticketColumns+`
 		FROM tickets t
 		LEFT JOIN windows w ON w.id = t.window_id
+		LEFT JOIN services s ON s.id = t.service_id
 		WHERE t.status = 'CALLED'
 		  AND t.called_at <= $1::timestamptz
 		FOR UPDATE OF t SKIP LOCKED

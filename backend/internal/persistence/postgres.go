@@ -79,8 +79,9 @@ func dbError(err error) error {
 const ticketColumns = `t.id::text, t.public_number, t.branch_id::text, t.service_id::text,
  t.source, t.status, w.id::text, w.number, t.created_at, t.queue_entered_at,
  t.called_at, t.service_started_at, t.completed_at, t.scheduled_at, t.arrived_at, t.no_show_at,
- t.checkin_at, t.ready_at, t.due_at, t.source_rank, t.policy_version, t.recall_count, t.client_id`
-const ticketSelect = `SELECT ` + ticketColumns + ` FROM tickets t LEFT JOIN windows w ON w.id=t.window_id `
+ t.checkin_at, t.ready_at, t.due_at, t.source_rank, t.policy_version, t.recall_count, t.client_id,
+ COALESCE(s.name, '')`
+const ticketSelect = `SELECT ` + ticketColumns + ` FROM tickets t LEFT JOIN windows w ON w.id=t.window_id LEFT JOIN services s ON s.id=t.service_id `
 
 func scanTicket(row pgx.Row) (domain.Ticket, error) {
 	var t domain.Ticket
@@ -91,6 +92,7 @@ func scanTicket(row pgx.Row) (domain.Ticket, error) {
 		&wid, &number, &t.CreatedAt, &t.QueueEnteredAt,
 		&t.CalledAt, &t.ServiceStartedAt, &t.CompletedAt, &t.ScheduledAt, &t.ArrivedAt, &t.NoShowAt,
 		&t.CheckinAt, &t.ReadyAt, &t.DueAt, &t.SourceRank, &t.PolicyVersion, &t.RecallCount, &t.ClientID,
+		&t.ServiceName,
 	)
 	if err != nil {
 		return domain.Ticket{}, dbError(err)
@@ -371,11 +373,11 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		return empty, dbError(pErr)
 	}
 
-	// 1. Fetch top candidates with FOR UPDATE SKIP LOCKED ordered by due_at ASC, source_rank ASC, checkin_at ASC, id ASC
 	candidateRows, err := tx.Query(ctx, `
 		SELECT `+ticketColumns+`
 		FROM tickets t
 		LEFT JOIN windows w ON w.id = t.window_id
+		LEFT JOIN services s ON s.id = t.service_id
 		WHERE t.branch_id = $1::uuid
 		  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
 		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
@@ -383,7 +385,7 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 		  AND t.ready_at <= $3::timestamptz
 		ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 		LIMIT 1
-		FOR UPDATE OF t SKIP LOCKED
+		FOR NO KEY UPDATE OF t SKIP LOCKED
 	`, branch, windowID, decisionTime)
 	if err != nil {
 		return empty, dbError(err)
@@ -484,12 +486,13 @@ func (p *Postgres) CallNextAt(ctx context.Context, windowID string, decisionTime
 	// Enqueue notification in outbox; failure must not abort successful CallNext
 	_ = p.enqueueCallNotification(ctx, tx, t)
 
-	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
-	_ = p.enqueueNearTurnForTopCandidates(ctx, tx, branch, decisionTime)
-
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)
 	}
+
+	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
+	_ = p.enqueueNearTurnForTopCandidates(ctx, nil, branch, decisionTime)
+
 	return t, nil
 }
 
@@ -567,6 +570,7 @@ func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ti
 		SELECT `+ticketColumns+`
 		FROM tickets t
 		LEFT JOIN windows w ON w.id = t.window_id
+		LEFT JOIN services s ON s.id = t.service_id
 		WHERE t.branch_id = $1::uuid
 		  AND (t.window_id IS NULL OR t.window_id = $2::uuid)
 		  AND EXISTS (SELECT 1 FROM window_services ws WHERE ws.window_id = $2::uuid AND ws.service_id = t.service_id)
@@ -631,12 +635,13 @@ func (p *Postgres) CallSpecificTicketAt(ctx context.Context, windowID string, ti
 	// Enqueue notification in outbox; failure must not abort successful call
 	_ = p.enqueueCallNotification(ctx, tx, t)
 
-	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
-	_ = p.enqueueNearTurnForTopCandidates(ctx, tx, t.BranchID, decisionTime)
-
 	if err = tx.Commit(ctx); err != nil {
 		return empty, dbError(err)
 	}
+
+	// Promote/enqueue near-turn notification for newly eligible top waiting tickets (position <= 2)
+	_ = p.enqueueNearTurnForTopCandidates(ctx, nil, t.BranchID, decisionTime)
+
 	return t, nil
 }
 func (p *Postgres) StartService(ctx context.Context, ticketID string) (domain.Ticket, error) {
