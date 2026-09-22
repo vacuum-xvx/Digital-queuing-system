@@ -1223,11 +1223,6 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                         eta.estimatedWaitSeconds !== null && (
                           <div className="cx-ticket-position cx-ticket-eta font-mono text-xs font-bold text-[#054FA6]">
                             <span className="cx-eta-label">Ожидание примерно{' '}<span className="cx-eta-duration">{Math.ceil(eta.estimatedWaitSeconds / 60)} мин</span></span>
-                            {eta.distribution && eta.distribution.p90 - eta.distribution.median > 0.5 * eta.distribution.median && (
-                              <span className="cx-eta-load text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                                Повышенная нагрузка
-                              </span>
-                            )}
                           </div>
                         )}
                       {!terminalStatuses.has(ticket.status) && (

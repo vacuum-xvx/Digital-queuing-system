@@ -89,7 +89,7 @@ test('client ticket keeps ETA details without rendering a sparkline', async () =
   const content = await readFile(new URL('../src/features/client/ClientWorkspace.tsx', import.meta.url), 'utf8');
   assert.match(content, /Ожидание примерно/);
   assert.match(content, /Позиция в очереди/);
-  assert.match(content, /Повышенная нагрузка/);
+  assert.doesNotMatch(content, /Повышенная нагрузка|cx-eta-load/);
   assert.doesNotMatch(content, /ETASparkline|cx-eta-chart|Распределение времени обслуживания/);
 });
 
