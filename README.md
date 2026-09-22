@@ -191,44 +191,175 @@ ORDER BY t.due_at ASC, t.source_rank ASC, t.checkin_at ASC, t.id ASC
 
 ## Архитектура системы
 
-```text
-[ Клиентский портал / QR-стойка / Kiosk ]   [ Табло зала TV ]   [ Пульт оператора / Панель начальника ]
-                   │                                │                           │
-                   └────────────────────────────────┼───────────────────────────┘
-                                                    │ HTTPS / REST (Short-Polling)
-                                                    ▼
-                                    ┌──────────────────────────────┐
-                                    │ Nginx Reverse Proxy / Vite   │
-                                    └──────────────┬───────────────┘
-                                                   │
-                                                   ▼
-                     ┌───────────────────────────────────────────────────────────┐
-                     │            Ядро бэкенда (Go 1.25 Modular Monolith)         │
-                     │  • REST API Controllers & Middleware (Chi, Auth, CORS)    │
-                     │  • Queue Engine (due_at Scheduling, FSM, SKIP LOCKED)     │
-                     │  • State Re-fetch & Short-Polling Contract (UI / TV / App)│
-                     │  • Transactional Outbox Worker (асинхронная доставка)     │
-                     └─────────────────────────────┬─────────────────────────────┘
-                                                   │
-                                                   ▼
-                     ┌───────────────────────────────────────────────────────────┐
-                     │                  PostgreSQL 17 Primary                    │
-                     │  • Таблицы tickets, windows, services, users, sessions   │
-                     │  • Очередь уведомлений (notification_outbox)              │
-                     │  • Неизменяемый журнал аудита с триггером (ticket_events) │
-                     │  • Регистрация операционных инцидентов (operator_incidents)│
-                     └──────────────┬─────────────────────────────┬──────────────┘
-                                    │                             │
-                                    ▼                             ▼
-                     ┌───────────────────────────┐ ┌─────────────────────────────┐
-                     │ Демо-адаптер уведомлений  │ │ Стек наблюдаемости          │
-                     │ (:8082 /notify /health)   │ │ Prometheus :9090, Grafana   │
-                     │                           │ │ :3001, Loki :3100, Exporter │
-                     └───────────────────────────┘ └─────────────────────────────┘
+> 💡 Наведи на узел, кликни по ссылке, разверни детали ▼
+
+```mermaid
+flowchart TB
+    %% ── Frontend ──
+    subgraph FE["🖥 Frontend — React 19 + TS 5.9 + Vite"]
+        direction LR
+        Client["👤 Клиент<br/><b>/</b> — запись, талоны, ETA"]
+        QR["📱 QR<br/><b>/q/:id</b>"]
+        Kiosk["🏦 Киоск<br/><b>/kiosk/:id</b>"]
+        TV["📺 Табло<br/><b>/tv</b> — гонг + речь"]
+        Operator["🎛 Оператор<br/><b>/operator</b>"]
+        Admin["👑 Начальник<br/><b>/admin</b>"]
+    end
+
+    %% ── Edge ──
+    Edge["⬥ Nginx / Vite Proxy<br/>TLS 1.3 • /api → :8080"]
+
+    %% ── Backend ──
+    subgraph BE["⚙️ Backend — Go 1.25 Modular Monolith"]
+        direction TB
+        Router["Chi Router<br/>CORS exact • X-Request-ID • /metrics • login 20/min"]
+        Auth["Auth • sessions 7д<br/>bcrypt • HttpOnly Lax"]
+        Engine["Queue Engine<br/>ComputeSchedule() pure<br/>due_at → rank → checkin → id"]
+        Lock["SKIP LOCKED<br/>FOR NO KEY UPDATE"]
+        FSM["FSM • ticket_events<br/>append-only trigger"]
+        Outbox["Transactional Outbox<br/>notify 3× backoff"]
+    end
+
+    %% ── Data ──
+    subgraph DB["🗄 PostgreSQL 17"]
+        direction TB
+        Tables[("tickets<br/>windows • services<br/>users • sessions")]
+        Audit[("ticket_events<br/>immutable")]
+        Incidents[("operator_incidents")]
+        OutboxT[("notification_outbox")]
+        Idx{"Индексы<br/>waiting_due_at<br/>one_active_per_window"}
+    end
+
+    %% ── Observability ──
+    subgraph OBS["📊 Наблюдаемость"]
+        Prometheus["Prometheus :9090"]
+        Grafana["Grafana :3001<br/>15 панелей"]
+        Loki["Loki :3100 + Promtail"]
+        Exporter["postgres-exporter :9187"]
+        Alert["Alertmanager → Telegram"]
+    end
+
+    Demo["📨 notification-demo :8082<br/>/notify"]
+
+    %% ── Links ──
+    Client & QR & Kiosk & TV & Operator & Admin --> Edge --> Router
+    Router --> Auth --> Engine --> Lock --> FSM
+    FSM --> Outbox --> OutboxT
+    Engine <--> Tables
+    FSM --> Audit
+    OutboxT --> Demo
+    Idx -.-> Tables
+    Router --> Prometheus --> Grafana
+    Tables --> Exporter --> Prometheus
+    Loki --> Grafana
+    Prometheus --> Alert
+
+    %% ── Styles ──
+    classDef fe fill:#E3F2FD,stroke:#003B73,stroke-width:2px,color:#0A1929
+    classDef be fill:#FFF3E0,stroke:#ED6C02,stroke-width:2px,color:#0A1929
+    classDef db fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#0A1929
+    classDef obs fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,color:#0A1929
+    classDef demo fill:#FFFDE7,stroke:#F9A825,stroke-width:2px,color:#0A1929
+    classDef edge fill:#E0F2F1,stroke:#00695C,stroke-width:2px,color:#0A1929
+    class Client,QR,Kiosk,TV,Operator,Admin fe
+    class Router,Auth,Engine,Lock,FSM,Outbox be
+    class Tables,Audit,Incidents,OutboxT,Idx db
+    class Prometheus,Grafana,Loki,Exporter,Alert obs
+    class Demo demo
+    class Edge edge
+
+    click Client href "#возможности-системы" "Возможности"
+    click Engine href "backend/internal/domain/queue_schedule.go" "Queue engine"
+    click Demo href "http://localhost:8082/notify" "Demo notify"
 ```
 
-Реализованная архитектура MVP автономна и не зависит от внешних облачных сервисов.
-Клиентские интерфейсы (мобильный экран, электронное табло зала, рабочее место оператора) взаимодействуют с бэкендом через канонический контракт **HTTP REST short polling / periodic state re-fetch** (интервалы 2–5 с), обеспечивая устойчивость к нестабильной сети без поддержки постоянных duplex-соединений.
+<details>
+<summary><b>🔍 Как читать — слой за слоем</b></summary>
+
+| Цвет | Слой | Что внутри | Файл |
+|---|---|---|---|
+| <span style="color:#003B73">■</span> Синий | Frontend | Клиент/QR/Киоск/Табло/Оператор/Начальник — polling 2–5с, Moscow TZ, a11y | `frontend/src/App.tsx:14` |
+| <span style="color:#00695C">■</span> Бирюза | Edge | Nginx + Vite proxy, TLS 1.3, `VITE_API_BASE_URL` | `nginx/nginx.conf`, `vite.config.ts:25` |
+| <span style="color:#ED6C02">■</span> Оранж | Backend | Chi, RBAC `employee/opc_chief`, `ComputeSchedule()` pure, `SKIP LOCKED` | `internal/domain/queue_schedule.go:136`, `persistence/postgres.go:382` |
+| <span style="color:#2E7D32">■</span> Зелёный | Данные | `tickets`, `windows`, `ticket_events` immutable, `notification_outbox`, `operator_incidents` | `migrations/000014`, `init.sql` |
+| <span style="color:#7B1FA2">■</span> Фиолетовый | Observability | Prometheus → Grafana 15 панелей → Alertmanager Telegram, Loki+Promtail | `monitoring/*` |
+
+Короткий поллинг — осознанно: устойчивость к обрывам без WebSocket, все переходы состояний — через БД.
+
+</details>
+
+### Жизненный цикл талона — интерактивно
+
+```mermaid
+stateDiagram-v2
+    [*] --> SCHEDULED: POST /tickets/appointment<br/>due_at=slot rank=0
+    SCHEDULED --> WAITING: POST /arrive<br/>или slot наступил
+    SCHEDULED --> CANCELLED: POST /cancel
+    WAITING --> CALLED: POST /call-next<br/>SKIP LOCKED
+    WAITING --> CANCELLED: POST /cancel
+    CALLED --> SERVING: POST /start
+    CALLED --> NO_SHOW: POST /no-show<br/>или Reconcile 90с×2
+    CALLED --> WAITING: POST /return<br/>POST /redirect
+    SERVING --> COMPLETED: POST /complete
+    SERVING --> WAITING: POST /return<br/>POST /redirect
+    SERVING --> CLOSING: window → CLOSING
+    COMPLETED --> [*]
+    CANCELLED --> [*]
+    NO_SHOW --> [*]
+
+    note right of WAITING
+      due_at = checkin + 30м
+      rank: appointment 0 > qr 1 > live 2
+      ORDER BY due_at, rank, checkin, id
+    end note
+```
+
+<details>
+<summary><b>🔄 Sequence — от QR до табло (кликни)</b></summary>
+
+```mermaid
+sequenceDiagram
+    actor C as 👤 Клиент
+    participant E as Edge
+    participant API as Go API
+    participant Q as ComputeSchedule
+    participant DB as Postgres
+    participant O as 🎛 Оператор
+    participant T as 📺 Табло
+
+    C->>E: POST /branches/{id}/tickets/qr<br/>Idempotency-Key: uuid
+    E->>API: forward
+    API->>Q: due=now+30m rank=1
+    Q->>DB: INSERT WAITING<br/>idempotency_key UNIQUE
+    DB-->>C: Q-000123 WAITING
+    C->>E: GET /tickets/{id}/position + /eta<br/>poll 2с
+    E->>API: queuePosition + eta
+    API->>DB: 20 последних COMPLETED<br/>взвеш. среднее
+    DB-->>C: position:3 eta: ~340с
+    O->>E: POST /windows/{id}/call-next
+    E->>API: CallNextAt(now)
+    API->>DB: SELECT ... WHERE ready<=now<br/>ORDER BY due_at,rank,checkin,id<br/>LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED
+    DB-->>API: winner Q-000123
+    API->>DB: UPDATE CALLED + ticket_events CALLED<br/>+ notification_outbox
+    DB-->>O: 200 CALLED window:2
+    API-->>T: GET /tv?branchId=... poll 3с
+    T->>T: playPostalChime(587→880Hz)<br/>SpeechSynthesis ru-RU
+    O->>API: POST /tickets/{id}/start → SERVING<br/>POST /complete → COMPLETED
+```
+
+*Запись:* `due_at=slot`, `ready_at=slot` (до чекина), после `arrive` → `checkin`; ранний приход `checkin < slot-10м` → `due=checkin+30м rank=live` (теряет приоритет, но не талон). Опоздание `>15м` → `due=checkin+30м+penalty`.
+
+</details>
+
+<details>
+<summary><b>📐 Формулы — due_at / ready_at / ETA</b></summary>
+
+* **QR/LIVE:** `ready=checkin`, `due=checkin + max_wait (service 30/15м или source 30м)` — `queue_schedule.go:230`
+* **Appointment вовремя `checkin ∈ [slot-10м, slot+15м]`:** `due=slot`, `ready=checkin`, `rank=0`
+* **Appointment рано/поздно:** `due=checkin+30м+penalty(lateMin×penalty)`, `rank=live` — `queue_schedule.go:196`
+* **ETA** `eta.go:46`: 20 последних `COMPLETED` той же `(branch,service)`, `weighted = Σ dur·(N-i)/Σ(N-i)`, свободное окно `0`, занятое `max(30, weighted-elapsed)`, раздача `position-1` на earliest-window, clamp `60..1800`.
+
+</details>
 
 ---
 
