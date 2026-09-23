@@ -3,7 +3,6 @@
 # 📮 Цифровая очередь нового поколения
 ### Хакатон PostCode Challenge 2026 • Кейс «Электронная очередь для Почты России»
 **Команда «5 указателей»**
-*Наш домен pointers-team.tech по неизвестным причинам был заблокирован*
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-pointers--team.tech-003B73?style=for-the-badge&logo=nginx&logoColor=white)](http://144.31.181.192/)
 [![Backup Demo](https://img.shields.io/badge/Backup-post--queue.duckdns.org-054FA6?style=for-the-badge)](https://post-queue.duckdns.org/)
@@ -93,7 +92,7 @@ curl -s http://localhost:8080/ready
 * Пульт оператора: [https://pointers-team.tech/operator](https://pointers-team.tech/operator)
 * Панель начальника ОПС: [https://pointers-team.tech/admin](https://pointers-team.tech/admin)
 * Терминал зала (Kiosk): [https://pointers-team.tech/kiosk/11111111-1111-1111-1111-111111111111](https://pointers-team.tech/kiosk/11111111-1111-1111-1111-111111111111)
-* Swagger UI: [https://pointers-team.tech:8081](https://pointers-team.tech:8081)
+* Swagger UI: [https://pointers-team.tech/docs/](https://pointers-team.tech/docs/)
 * Дашборд Grafana: [https://pointers-team.tech/grafana/](https://pointers-team.tech/grafana/)
 
 ### Тестовые учетные записи
