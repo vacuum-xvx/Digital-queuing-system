@@ -5,7 +5,7 @@
 **Команда «5 указателей»**
 *Наш домен pointers-team.tech по неизвестным причинам был заблокирован*
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-pointers--team.tech-003B73?style=for-the-badge&logo=nginx&logoColor=white)](http://144.31.181.192/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-pointers--team.tech-003B73?style=for-the-badge&logo=nginx&logoColor=white)](https://post-queue.duckdns.org/)
 [![Backup Demo](https://img.shields.io/badge/Backup-post--queue.duckdns.org-054FA6?style=for-the-badge)](https://post-queue.duckdns.org/)
 [![Tests T1-T10](https://img.shields.io/badge/Tests_T1--T10-10%2F10_PASS-10B981?style=for-the-badge&logo=checkmarx&logoColor=white)](#соответствие-тз-и-сценарии-жюри)
 [![Slides](https://img.shields.io/badge/Slides-PPTX-E11D48?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white)](docs/presentation/postcode_queue_presentation.pptx)
@@ -87,14 +87,14 @@ curl -s http://localhost:8080/ready
 
 #### Публичный стенд
 
-* Клиентский портал: [https://pointers-team.tech/](https://pointers-team.tech/)
-* Стойка входа (QR-скан): [https://pointers-team.tech/q/11111111-1111-1111-1111-111111111111](https://pointers-team.tech/q/11111111-1111-1111-1111-111111111111)
-* Табло вызова зала (TV Board): [https://pointers-team.tech/tv?branchId=11111111-1111-1111-1111-111111111111](https://pointers-team.tech/tv?branchId=11111111-1111-1111-1111-111111111111)
-* Пульт оператора: [https://pointers-team.tech/operator](https://pointers-team.tech/operator)
-* Панель начальника ОПС: [https://pointers-team.tech/admin](https://pointers-team.tech/admin)
-* Терминал зала (Kiosk): [https://pointers-team.tech/kiosk/11111111-1111-1111-1111-111111111111](https://pointers-team.tech/kiosk/11111111-1111-1111-1111-111111111111)
-* Swagger UI: [https://pointers-team.tech:8081](https://pointers-team.tech:8081)
-* Дашборд Grafana: [https://pointers-team.tech/grafana/](https://pointers-team.tech/grafana/)
+* Клиентский портал: [https://post-queue.duckdns.org/](https://post-queue.duckdns.org/)
+* Стойка входа (QR-скан): [https://post-queue.duckdns.org/q/11111111-1111-1111-1111-111111111111](https://post-queue.duckdns.org/q/11111111-1111-1111-1111-111111111111)
+* Табло вызова зала (TV Board): [https://post-queue.duckdns.org/tv?branchId=11111111-1111-1111-1111-111111111111](https://post-queue.duckdns.org/tv?branchId=11111111-1111-1111-1111-111111111111)
+* Пульт оператора: [https://post-queue.duckdns.org/operator](https://post-queue.duckdns.org/operator)
+* Панель начальника ОПС: [https://post-queue.duckdns.org/admin](https://post-queue.duckdns.org/admin)
+* Терминал зала (Kiosk): [https://post-queue.duckdns.org/kiosk/11111111-1111-1111-1111-111111111111](https://post-queue.duckdns.org/kiosk/11111111-1111-1111-1111-111111111111)
+* Swagger UI: [https://post-queue.duckdns.org:8081](https://post-queue.duckdns.org:8081)
+* Дашборд Grafana: [https://post-queue.duckdns.org/grafana/](https://post-queue.duckdns.org/grafana/)
 
 ### Тестовые учетные записи
 
