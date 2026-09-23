@@ -4,7 +4,7 @@
 ### Хакатон PostCode Challenge 2026 • Кейс «Электронная очередь для Почты России»
 **Команда «5 указателей»**
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-pointers--team.tech-003B73?style=for-the-badge&logo=nginx&logoColor=white)](http://144.31.181.192/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-pointers--team.tech-003B73?style=for-the-badge&logo=nginx&logoColor=white)](https://pointers-team.tech/)
 [![Backup Demo](https://img.shields.io/badge/Backup-post--queue.duckdns.org-054FA6?style=for-the-badge)](https://post-queue.duckdns.org/)
 [![Tests T1-T10](https://img.shields.io/badge/Tests_T1--T10-10%2F10_PASS-10B981?style=for-the-badge&logo=checkmarx&logoColor=white)](#соответствие-тз-и-сценарии-жюри)
 [![Slides](https://img.shields.io/badge/Slides-PPTX-E11D48?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white)](docs/presentation/postcode_queue_presentation.pptx)
