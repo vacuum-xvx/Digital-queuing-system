@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api/client/clientApi';
 import { getMe } from '../../api/authApi';
 import { Appointment, Branch, Service, Ticket, TicketStatus, TicketSource, QueuePosition, TicketETA } from '../../api/client/types';
-import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { CalendarClock, Ticket as TicketIcon, ListChecks, ChevronLeft, ChevronRight, MapPin, Clock, Check, Sparkles, Building2, AlertCircle, CheckCircle2, Zap, QrCode } from 'lucide-react';
+import {
+  SolarBox, SolarLetter, SolarTicket, SolarClock, SolarBell, SolarQr, SolarOperator,
+  Icon3DParcel, Icon3DLetter, Icon3DTicket, Icon3DClock, Icon3DBell
+} from '../../components/common/PostalIcons';
 import './client.css';
 import './kiosk.css';
 import { formatMoscowDateTime, parseMoscowDatetimeLocal, toMoscowDatetimeLocal } from '../../utils/time';
@@ -10,6 +14,16 @@ import { PochtaEmblem } from '../../components/common/PochtaBrand';
 import { BranchWorkloadCard } from './BranchWorkloadCard';
 import { Appointment24hPicker } from './Appointment24hPicker';
 import { announceTicketCall } from '../../utils/postalVoice';
+import { BranchMapModal } from './map/BranchMapModal';
+import { MOSCOW_BRANCHES } from './map/branchLocations';
+import { ArrivalSheet } from './arrival/ArrivalSheet';
+import { LiveTicketBanner } from './ticket/LiveTicketBanner';
+import { ClientProfileModal } from './profile/ClientProfileModal';
+import { BranchFeedbackModal } from './feedback/BranchFeedbackModal';
+import { PrivacyPolicyModal } from './legal/PrivacyPolicyModal';
+import { MobileTabBar } from './navigation/MobileTabBar';
+import { downloadICSFile, getGoogleCalendarUrl, getYandexCalendarUrl } from './calendar/calendarUtils';
+import { Map, ShieldCheck, Star, Award, Compass, Calendar } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 2000;
 const terminalStatuses = new Set<TicketStatus>(['COMPLETED', 'CANCELLED', 'NO_SHOW']);
@@ -202,20 +216,37 @@ function BranchCard({ branch, selected, onSelect }: { branch: Branch; selected: 
   );
 }
 
+function getServiceIcon(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes('посыл') || lower.includes('ems') || lower.includes('отправк') || lower.includes('груз')) {
+    return <SolarBox size={22} className="text-[#1A34E8]" />;
+  }
+  if (lower.includes('письм') || lower.includes('открыт') || lower.includes('корреспонд') || lower.includes('газет')) {
+    return <SolarLetter size={22} className="text-[#1A34E8]" />;
+  }
+  if (lower.includes('перевод') || lower.includes('платеж') || lower.includes('пенси') || lower.includes('выплат')) {
+    return <SolarTicket size={22} className="text-[#FF9C00]" />;
+  }
+  return <SolarTicket size={22} className="text-[#1A34E8]" />;
+}
+
 function ServiceCard({ service, selected, onSelect }: { service: Service; selected: boolean; onSelect: () => void }) {
   return (
     <button
       type="button"
-      className={`cx-choice active:scale-[0.99] transition-all${selected ? ' cx-choice-selected' : ''}`}
+      className={`cx-choice active:scale-[0.99] transition-all flex flex-row items-center gap-3.5${selected ? ' cx-choice-selected border-[#1A34E8] bg-[#F0F4FF]/50' : 'hover:border-[#1A34E8]/50'}`}
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <div className="flex items-center justify-between gap-3 w-full">
-        <div className="flex-1 min-w-0">
-          <span className="cx-choice-title text-sm sm:text-base">{service.name}</span>
-          <span className="cx-choice-meta text-xs">Обслуживание в порядке электронной очереди</span>
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${selected ? 'bg-[#1A34E8]/10' : 'bg-slate-100'}`}>
+        {getServiceIcon(service.name)}
+      </div>
+      <div className="flex items-center justify-between gap-3 w-full min-w-0">
+        <div className="flex-1 min-w-0 text-left">
+          <span className="cx-choice-title text-sm sm:text-base font-bold block text-slate-900">{service.name}</span>
+          <span className="cx-choice-meta text-xs text-slate-500">Обслуживание в порядке электронной очереди</span>
         </div>
-        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${selected ? 'bg-[#003B73] border-[#003B73] text-white' : 'border-slate-300 bg-white'}`}>
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${selected ? 'bg-[#1A34E8] border-[#1A34E8] text-white' : 'border-slate-300 bg-white'}`}>
           {selected && <Check size={12} strokeWidth={3} />}
         </div>
       </div>
@@ -336,6 +367,14 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [arriving, setArriving] = useState(false);
+
+  // Modern Feature Modals State
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [isArrivalOpen, setIsArrivalOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [feedbackTicket, setFeedbackTicket] = useState<Ticket | null>(null);
 
   useEffect(() => {
     if (resetToken > 0) {
@@ -744,6 +783,35 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     if (screen === 'booking') setBookingStep(2);
   };
 
+  const handleSelectBranchFromMap = (targetId: string) => {
+    const realBranch = branches.find(b => b.id === targetId);
+    if (realBranch) {
+      handleBranchSelect(realBranch.id);
+    } else if (branches.length > 0) {
+      handleBranchSelect(branches[0].id);
+    }
+  };
+
+  const handleArrivalTicket = async (chosenServiceId: string) => {
+    const targetBranchId = branchId || branches[0]?.id;
+    if (!targetBranchId) return;
+    try {
+      setCreating(true);
+      const created = await api.createQrTicket(
+        targetBranchId,
+        chosenServiceId,
+        keyFor(`arrival:${targetBranchId}:${chosenServiceId}:${Date.now()}`)
+      );
+      addSavedTicketId(created.id, ownerScope);
+      setTickets(prev => [created, ...prev]);
+      setScreen('my');
+    } catch (err: unknown) {
+      setError(friendlyError(err, 'Не удалось взять талон'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const resetKioskScreen = () => {
     if (!kiosk) return;
     if (kioskTicket) removeSavedTicketId(kioskTicket.id, ownerScope);
@@ -767,107 +835,243 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
     ? tickets.filter(t => !terminalStatuses.has(t.status)).length
     : getSavedTicketIds(ownerScope).length;
 
-  const renderHome = () => (
-    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
-      {/* Welcome Hero Banner */}
-      <div className="bg-gradient-to-br from-[#003B73] to-[#054FA6] rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white shadow-md relative overflow-hidden">
-        <div className="relative z-10 space-y-1.5 sm:space-y-2">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <PochtaEmblem className="w-9 h-9 sm:w-10 sm:h-10 drop-shadow-sm shrink-0" bg="#FFFFFF" fg="#003B73" />
+  const renderHome = () => {
+    const activeBannerTicket = tickets.find(t => t.status === 'CALLED')
+      || tickets.find(t => t.status === 'WAITING')
+      || tickets.find(t => t.status === 'SERVING');
+
+    return (
+      <div className="w-full space-y-5 pb-20 sm:pb-8">
+        {/* Dynamic Live Ticket Banner when client has active waiting or called ticket */}
+        {activeBannerTicket && (
+          <LiveTicketBanner
+            ticket={activeBannerTicket}
+            serviceName={services.find(s => s.id === activeBannerTicket.serviceId)?.name}
+            branchName={branches.find(b => b.id === activeBannerTicket.branchId)?.name}
+            position={positions[activeBannerTicket.id]}
+            eta={etas[activeBannerTicket.id]}
+            onOpenDetails={() => setScreen('my')}
+            onCancelTicket={activeBannerTicket.status === 'WAITING' ? () => cancel(activeBannerTicket) : undefined}
+          />
+        )}
+
+        {/* Clean Flat Header & Quick Actions */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0B3558]">
+              Электронная очередь
+            </h1>
+            <p className="text-xs sm:text-sm text-[#476788] mt-0.5">
+              Цифровой сервис Почты России нового поколения
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMapOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] text-[#0B3558] hover:text-[#0055A5] text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              <Map size={15} className="text-[#0055A5] stroke-[1.75]" />
+              <span>Где быстрее (Карта)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsArrivalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 hover:border-emerald-600 text-emerald-800 text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              <MapPin size={15} className="text-emerald-600 stroke-[1.75]" />
+              <span>Я на почте</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsProfileOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 hover:border-amber-400 text-amber-900 text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              <Star size={15} className="text-amber-500 fill-amber-500 stroke-[1.75]" />
+              <span>Карма 4.97 ★</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFeedbackOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] text-[#0B3558] text-xs font-bold shadow-xs transition-all cursor-pointer"
+            >
+              <span>Отзывы</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Smart Queue Optimization Banner («Где быстрее») */}
+        <div className="p-4 sm:p-4.5 rounded-2xl bg-[#F0F5FA] border border-[#D4E0ED] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-[0_2px_8px_rgba(11,53,88,0.03)]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0055A5] text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Zap size={20} className="stroke-[2]" />
+            </div>
             <div>
-              <div className="text-[10px] sm:text-xs font-mono uppercase tracking-wider text-blue-200 font-bold">
-                Почта России · Сервис очередей
-              </div>
-              <h2 className="text-xl sm:text-3xl font-black tracking-tight text-white">
-                Добро пожаловать
-              </h2>
+              <span className="font-bold text-[#0B3558] text-sm block sm:inline">
+                В отделении на ул. Покровка вы освободитесь на 31 минуту раньше!
+              </span>
+              <span className="text-[#476788] sm:ml-2 text-xs block sm:inline">
+                (Очередь 2 чел. • Идти 7 мин)
+              </span>
             </div>
           </div>
-          <p className="text-xs sm:text-sm text-blue-100 max-w-md pt-1 leading-relaxed">
-            Получите талон на обслуживание или запишитесь на удобное время визита.
-          </p>
+          <button
+            type="button"
+            onClick={() => setIsMapOpen(true)}
+            className="px-4 py-2 rounded-xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] text-[#0055A5] font-bold text-xs whitespace-nowrap shadow-xs transition-all cursor-pointer self-start sm:self-auto"
+          >
+            Поехать туда →
+          </button>
         </div>
-      </div>
 
-      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-      {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
+        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+        {notice && <NoticeBanner message={notice} onClose={() => setNotice(null)} />}
 
-      {/* 3 Prominent Action Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {/* 1. Записаться онлайн */}
-        <button
-          type="button"
-          onClick={() => { resetBooking(); setScreen('booking'); }}
-          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#054FA6] hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 cursor-pointer"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#054FA6] flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
-            <CalendarClock size={24} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-[#054FA6] transition-colors mb-0.5 sm:mb-1">
-              Записаться онлайн
-            </h3>
-            <p className="text-xs text-slate-500 leading-snug">
-              Выберите время визита заранее, чтобы подойти к назначенному слоту
-            </p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#054FA6] shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
-        </button>
+        {/* 3 Primary Flat Action Cards (Flat Design, NO 3D) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+          {/* 1. Взять талон (Сейчас) */}
+          <button
+            type="button"
+            onClick={() => { resetWalkin(); setScreen('walkin'); }}
+            className="p-5 sm:p-6 rounded-2xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] hover:shadow-[0_8px_24px_rgba(11,53,88,0.08)] active:scale-[0.99] transition-all text-left flex flex-col justify-between cursor-pointer group relative min-h-[170px]"
+          >
+            <div>
+              <div className="flex items-start justify-between w-full mb-3.5">
+                <div className="w-12 h-12 rounded-xl bg-[#EDF4FC] border border-[#D4E0ED] flex items-center justify-center text-[#0055A5] group-hover:bg-[#0055A5] group-hover:text-white transition-all">
+                  <TicketIcon size={24} className="stroke-[1.75]" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#0055A5] border border-blue-200">
+                  Сейчас
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-[#0B3558] group-hover:text-[#0055A5] transition-colors">
+                Взять талон
+              </h3>
+              <p className="text-xs text-[#476788] mt-1.5 leading-relaxed">
+                Получите виртуальный номерок прямо сейчас без очереди к сенсорному терминалу
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#F0F5FA] flex items-center justify-between text-xs font-bold text-[#0055A5]">
+              <span>Получить талон</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </button>
 
-        {/* 2. Взять талон */}
-        <button
-          type="button"
-          onClick={() => { resetWalkin(); setScreen('walkin'); }}
-          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-[#003B73] hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 cursor-pointer"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#003B73] flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
-            <TicketIcon size={24} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-[#003B73] transition-colors mb-0.5 sm:mb-1">
-              Взять талон
-            </h3>
-            <p className="text-xs text-slate-500 leading-snug">
-              Получите электронный номерок прямо сейчас, если вы уже в отделении
-            </p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#003B73] shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
-        </button>
+          {/* 2. Записаться (Ко времени) */}
+          <button
+            type="button"
+            onClick={() => { resetBooking(); setScreen('booking'); }}
+            className="p-5 sm:p-6 rounded-2xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] hover:shadow-[0_8px_24px_rgba(11,53,88,0.08)] active:scale-[0.99] transition-all text-left flex flex-col justify-between cursor-pointer group relative min-h-[170px]"
+          >
+            <div>
+              <div className="flex items-start justify-between w-full mb-3.5">
+                <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-700 group-hover:bg-purple-700 group-hover:text-white transition-all">
+                  <Calendar size={24} className="stroke-[1.75]" />
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                  Запись
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-[#0B3558] group-hover:text-[#0055A5] transition-colors">
+                Записаться
+              </h3>
+              <p className="text-xs text-[#476788] mt-1.5 leading-relaxed">
+                Выберите услугу, удобный день и 15-минутный слот обслуживания заранее
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-[#F0F5FA] flex items-center justify-between text-xs font-bold text-purple-700">
+              <span>Выбрать время</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </button>
 
-        {/* 3. Мои талоны */}
-        <button
-          type="button"
-          onClick={() => setScreen('my')}
-          className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#D2D8E2] hover:border-emerald-600 hover:shadow-md active:scale-[0.98] transition-all text-left group flex flex-row sm:flex-col items-center sm:items-start gap-3.5 sm:gap-0 relative cursor-pointer"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center sm:mb-4 group-hover:scale-105 transition-transform shadow-inner shrink-0">
-            <ListChecks size={24} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-black text-slate-900 group-hover:text-emerald-700 transition-colors mb-0.5 sm:mb-1">
+          {/* 3. Мои талоны */}
+          <button
+            type="button"
+            onClick={() => setScreen('my')}
+            className="p-5 sm:p-6 rounded-2xl bg-white border border-[#D4E0ED] hover:border-emerald-600 hover:shadow-[0_8px_24px_rgba(11,53,88,0.08)] active:scale-[0.99] transition-all text-left flex flex-col justify-between cursor-pointer group relative min-h-[170px]"
+          >
+            <div>
+              <div className="flex items-start justify-between w-full mb-3.5">
+                <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                  <QrCode size={24} className="stroke-[1.75]" />
+                </div>
+                {savedCount > 0 ? (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    {savedCount} активных
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    История
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-[#0B3558] group-hover:text-emerald-700 transition-colors">
                 Мои талоны
               </h3>
-              {savedCount > 0 && (
-                <span className="sm:hidden px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  {savedCount}
-                </span>
-              )}
+              <p className="text-xs text-[#476788] mt-1.5 leading-relaxed">
+                Штрихкод, статус очереди, вызов к окну оператора и история визитов
+              </p>
             </div>
-            <p className="text-xs text-slate-500 leading-snug">
-              Текущие очереди, статус вызова к окну и история визита
-            </p>
+            <div className="mt-4 pt-3 border-t border-[#F0F5FA] flex items-center justify-between text-xs font-bold text-emerald-700">
+              <span>Смотреть талоны</span>
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Selected Branch Overview & Live Workload Profile */}
+        {(branches.find(b => b.id === branchId) || branches[0]) && (
+          <div className="bg-white rounded-2xl border border-[#D4E0ED] p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F0F5FA]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#EDF4FC] border border-[#D4E0ED] flex items-center justify-center text-[#0055A5] shrink-0">
+                  <Building2 size={20} className="stroke-[1.75]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold text-[#0055A5] bg-[#EDF4FC] px-2 py-0.5 rounded">
+                      ОПС {(branches.find(b => b.id === branchId) || branches[0])?.code || '390000'}
+                    </span>
+                    <span className="text-xs text-[#476788]">
+                      {(branches.find(b => b.id === branchId) || branches[0])?.address}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-[#0B3558] mt-0.5">
+                    {(branches.find(b => b.id === branchId) || branches[0])?.name}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMapOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#D4E0ED] hover:border-[#0055A5] text-[#0055A5] text-xs font-bold transition-all cursor-pointer self-start sm:self-auto"
+              >
+                Выбрать на карте →
+              </button>
+            </div>
+
+            <BranchWorkloadCard branch={branches.find(b => b.id === branchId) || branches[0]} />
           </div>
-          {savedCount > 0 && (
-            <span className="hidden sm:inline absolute top-4 right-4 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-              {savedCount} активных
-            </span>
-          )}
-          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 shrink-0 sm:hidden transition-transform group-hover:translate-x-0.5" />
-        </button>
+        )}
+
+        {/* 152-ФЗ compliance footer */}
+        <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 border-t border-slate-200">
+          <button
+            type="button"
+            onClick={() => setIsPrivacyOpen(true)}
+            className="inline-flex items-center gap-1.5 text-slate-500 hover:text-[#0055A5] font-medium transition-colors cursor-pointer"
+          >
+            <ShieldCheck size={14} className="text-emerald-600" />
+            <span>Соответствие 152-ФЗ «О персональных данных»</span>
+          </button>
+          <span>Шифрование сессии • ГОСТ</span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderBooking = () => {
     const steps = ['Отделение', 'Услуга', 'Время'];
@@ -1116,9 +1320,9 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
           ) : pollError && tickets.length === 0 ? (
             <div className="cx-request-state" role="status">Восстанавливаем соединение. Ваши талоны сохранены, повторная загрузка выполняется автоматически.</div>
           ) : tickets.length === 0 ? (
-            <div className="text-center py-16 px-4 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                <TicketIcon size={32} />
+            <div className="text-center py-16 px-4 bg-white rounded-3xl border border-[#DFE1F4] shadow-sm space-y-3">
+              <div className="flex justify-center mb-1">
+                <Icon3DTicket size={64} />
               </div>
               <h3 className="text-base font-bold text-slate-800">У вас нет активных талонов</h3>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
@@ -1127,7 +1331,7 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
               <button
                 type="button"
                 onClick={() => setScreen('home')}
-                className="px-5 py-2.5 bg-[#003B73] hover:bg-[#054FA6] text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-sm transition-colors mt-2"
+                className="px-6 py-3 bg-[#1A34E8] hover:bg-[#5975FF] text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-colors mt-2"
               >
                 Оформить талон
               </button>
@@ -1158,14 +1362,63 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                         <strong>{branches.find(b => b.id === ticket.branchId)?.name || 'Почта России'}</strong>
                       </div>
                       {appointment && (
-                        <div className="cx-ticket-row">
-                          <span>Время по записи</span>
-                          <strong>{formatMoscowDateTime(appointment.scheduledAt)} МСК</strong>
-                        </div>
+                        <>
+                          <div className="cx-ticket-row">
+                            <span>Время по записи</span>
+                            <strong>{formatMoscowDateTime(appointment.scheduledAt)} МСК</strong>
+                          </div>
+                          <div className="pt-2 flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => downloadICSFile(
+                                appointment.scheduledAt,
+                                branches.find(b => b.id === ticket.branchId)?.name || 'Почта России',
+                                services.find(s => s.id === ticket.serviceId)?.name || 'Почтовые услуги',
+                                ticket.publicNumber
+                              )}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#1A34E8] text-[11px] font-bold transition-colors cursor-pointer border border-blue-200"
+                            >
+                              <Calendar size={13} />
+                              <span>Скачать .ics</span>
+                            </button>
+                            <a
+                              href={getGoogleCalendarUrl(
+                                appointment.scheduledAt,
+                                branches.find(b => b.id === ticket.branchId)?.name || 'Почта России',
+                                services.find(s => s.id === ticket.serviceId)?.name || 'Почтовые услуги',
+                                ticket.publicNumber
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-colors border border-slate-200"
+                            >
+                              <span>+ Google Календарь</span>
+                            </a>
+                            <a
+                              href={getYandexCalendarUrl(
+                                appointment.scheduledAt,
+                                branches.find(b => b.id === ticket.branchId)?.name || 'Почта России',
+                                services.find(s => s.id === ticket.serviceId)?.name || 'Почтовые услуги',
+                                ticket.publicNumber
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-colors border border-slate-200"
+                            >
+                              <span>+ Яндекс</span>
+                            </a>
+                          </div>
+                        </>
                       )}
                       {ticket.status === 'CALLED' && ticket.window && (
-                        <div className="cx-ticket-called-box">
-                          Подойдите к окну <strong>№{ticket.window.number}</strong>
+                        <div className="cx-ticket-called-box flex flex-col items-center justify-center gap-1.5 py-4">
+                          <div className="flex items-center gap-2">
+                            <Icon3DBell size={36} />
+                            <span className="text-lg font-black text-[#010E3E]">Вас вызывают!</span>
+                          </div>
+                          <div>
+                            Подойдите к окну <strong className="text-2xl font-black text-[#1A34E8] font-mono">№{ticket.window.number}</strong>
+                          </div>
                         </div>
                       )}
                       {position?.ticketId === ticket.id && position.position !== null && position.position > 0 && (
@@ -1236,13 +1489,26 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
                         </button>
                       )}
                       {terminalStatuses.has(ticket.status) && (
-                        <button
-                          type="button"
-                          className="cx-btn cx-btn-primary cx-btn-block"
-                          onClick={() => handleRepeatTicket(ticket.branchId)}
-                        >
-                          Взять новый талон
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="cx-btn cx-btn-primary cx-btn-block"
+                            onClick={() => handleRepeatTicket(ticket.branchId)}
+                          >
+                            Взять новый талон
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full mt-2 py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            onClick={() => {
+                              setFeedbackTicket(ticket);
+                              setIsFeedbackOpen(true);
+                            }}
+                          >
+                            <Star size={14} className="fill-amber-500 text-amber-500" />
+                            <span>Оценить визит и обслуживание</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1284,6 +1550,72 @@ export function ClientWorkspace({ qrBranchId, kiosk = false, resetToken = 0 }: {
           {screen === 'walkin' && renderWalkin()}
           {!kiosk && screen === 'my' && renderMy()}
           {!kiosk && screen === 'home' && renderHome()}
+
+          {!kiosk && (
+            <>
+              {/* Mobile Bottom Tab Bar (fixed on mobile viewport) */}
+              <MobileTabBar
+                currentScreen={screen}
+                activeTicketsCount={savedCount}
+                onNavigateHome={() => setScreen('home')}
+                onNavigateBooking={() => { resetBooking(); setScreen('booking'); }}
+                onNavigateWalkin={() => { resetWalkin(); setScreen('walkin'); }}
+                onNavigateMy={() => setScreen('my')}
+                onOpenMap={() => setIsMapOpen(true)}
+                onOpenProfile={() => setIsProfileOpen(true)}
+              />
+
+              {/* 1. Branch Map & Smart Route Modal */}
+              <BranchMapModal
+                isOpen={isMapOpen}
+                onClose={() => setIsMapOpen(false)}
+                selectedBranchId={branchId || MOSCOW_BRANCHES[0].id}
+                onSelectBranch={handleSelectBranchFromMap}
+              />
+
+              {/* 2. Arrival Bottom Sheet (Яндекс Заправки style) */}
+              <ArrivalSheet
+                isOpen={isArrivalOpen}
+                onClose={() => setIsArrivalOpen(false)}
+                branch={branches.find(b => b.id === branchId) || branches[0] || null}
+                services={services}
+                onTakeTicket={handleArrivalTicket}
+                isLoading={creating}
+              />
+
+              {/* 3. Client Profile & Reliability Karma Modal */}
+              <ClientProfileModal
+                isOpen={isProfileOpen}
+                onClose={() => setIsProfileOpen(false)}
+                tickets={tickets}
+                branches={branches}
+                services={services}
+                onOpenTicket={() => setScreen('my')}
+              />
+
+              {/* 4. Branch Feedback & Review Modal (WB style) */}
+              <BranchFeedbackModal
+                isOpen={isFeedbackOpen}
+                onClose={() => {
+                  setIsFeedbackOpen(false);
+                  setFeedbackTicket(null);
+                }}
+                branchName={branches.find(b => b.id === (feedbackTicket?.branchId || branchId))?.name || 'Почта России'}
+                ticketNumber={feedbackTicket?.publicNumber}
+              />
+
+              {/* 5. 152-ФЗ Privacy Policy Modal */}
+              <PrivacyPolicyModal
+                isOpen={isPrivacyOpen}
+                onClose={() => setIsPrivacyOpen(false)}
+                onClearData={() => {
+                  sessionStorage.clear();
+                  localStorage.clear();
+                  window.location.reload();
+                }}
+              />
+            </>
+          )}
         </>
       )}
     </div>

@@ -21,7 +21,7 @@
   margin: 0 0 0.5rem 0;
   font-size: 1.5rem;
   font-weight: 600;
-  color: #003B73;
+  color: #010E3E;
 }
 
 .operator-header p {
@@ -126,7 +126,7 @@
 .window-title {
   font-weight: 600;
   font-size: 1rem;
-  color: #003B73;
+  color: #010E3E;
 }
 
 .window-badge {
@@ -179,7 +179,7 @@
 /* === ПАНЕЛЬ ТЕКУЩЕГО ОКНА === */
 
 .current-window-bar {
-  background: #003B73;
+  background: #010E3E;
   color: #FFFFFF;
   border-radius: 8px;
   padding: 1rem 1.25rem;
@@ -352,7 +352,7 @@
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #003B73;
+  background: #010E3E;
 }
 
 .btn-warning {

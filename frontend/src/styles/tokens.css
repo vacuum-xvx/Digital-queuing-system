@@ -1,0 +1,103 @@
+/**
+ * Дизайн-система «Цифровая Очередь» — Пресет «Pochta Modern Digital»
+ * Источник правды: реальный портал pochta.ru, Radix/shadcn tokens, 21st.dev micro-interactions
+ */
+
+@layer base {
+  :root {
+    /* === ОСНОВНЫЕ ЦВЕТА ПОЧТЫ РОССИИ (Modern Web) === */
+    --pochta-blue: #1A34E8;
+    --pochta-blue-hover: #5975FF;
+    --pochta-blue-active: #1A32D1;
+    --pochta-ultramarine: #0055A5;
+    --pochta-navy: #010E3E;
+    --pochta-red: #FF3A44;
+    --pochta-red-hover: #E02832;
+    --pochta-accent: #FC3F1D;
+    --pochta-orange: #FF9C00;
+    --pochta-green: #2DA771;
+
+    /* === СЕМАНТИЧЕСКИЕ ТОКЕНЫ (shadcn / Tailwind HSL) === */
+    --background: 216 33% 98%;           /* #F8FAFC */
+    --foreground: 228 18% 19%;           /* #252630 */
+
+    --card: 0 0% 100%;                   /* #FFFFFF */
+    --card-foreground: 228 18% 19%;      /* #252630 */
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 228 18% 19%;
+
+    --primary: 232 82% 51%;              /* #1A34E8 Electric Blue */
+    --primary-foreground: 0 0% 100%;     /* #FFFFFF */
+
+    --secondary: 224 100% 97%;           /* #F0F4FF Ice Blue */
+    --secondary-foreground: 232 82% 45%; /* #1A34E8 */
+
+    --muted: 220 20% 95%;                /* #EDF1F7 */
+    --muted-foreground: 223 8% 53%;      /* #7E808F */
+
+    --accent: 224 100% 95%;              /* #E3ECFE */
+    --accent-foreground: 232 82% 45%;
+
+    --destructive: 356 100% 61%;         /* #FF3A44 */
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 37 100% 50%;              /* #FF9C00 */
+    --warning-foreground: 228 18% 19%;
+
+    --success: 154 58% 42%;              /* #2DA771 */
+    --success-foreground: 0 0% 100%;
+
+    --border: 233 46% 91%;               /* #DFE1F4 деликатная граница */
+    --input: 233 46% 91%;
+    --ring: 232 82% 51%;                 /* #1A34E8 фокус */
+
+    /* === РАДИУСЫ СКРУГЛЕНИЯ (современный 16px стиль pochta.ru) === */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+    --radius: 16px;
+
+    /* === ТИПОГРАФИКА === */
+    --font-sans: 'Manrope', 'Inter', 'Golos Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
+
+    /* === ТЕНИ === */
+    --shadow-subtle: 0 2px 8px -2px rgba(1, 14, 62, 0.05), 0 1px 3px -1px rgba(1, 14, 62, 0.03);
+    --shadow-card: 0 10px 25px -5px rgba(1, 14, 62, 0.06), 0 4px 10px -3px rgba(1, 14, 62, 0.03);
+    --shadow-hover: 0 20px 35px -8px rgba(26, 52, 232, 0.12), 0 6px 15px -3px rgba(1, 14, 62, 0.04);
+    --shadow-called: 0 0 0 3px rgba(26, 52, 232, 0.25), 0 15px 35px rgba(26, 52, 232, 0.18);
+  }
+
+  .dark {
+    --background: 228 67% 6%;            /* #050B1E */
+    --foreground: 210 40% 98%;           /* #F8FAFC */
+
+    --card: 228 50% 10%;                 /* #0A132C */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 228 50% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 232 82% 60%;              /* #3D55FF */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 228 40% 16%;            /* #131E3D */
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 228 35% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 228 40% 18%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 356 90% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 228 30% 20%;
+    --input: 228 30% 20%;
+    --ring: 232 82% 60%;
+  }
+}

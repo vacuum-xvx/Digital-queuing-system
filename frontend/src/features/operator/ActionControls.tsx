@@ -1,6 +1,7 @@
 import React from 'react';
 import { Ticket } from '../../api/operator/types';
 import { Play, Check, UserX, Volume2 } from 'lucide-react';
+import { SolarBell } from '../../components/common/PostalIcons';
 
 interface ActionControlsProps {
   currentTicket: Ticket | null;
@@ -21,7 +22,6 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
   onCompleteService,
   onNoShow,
   onRepeatCall,
-  onReturnToQueue,
 }) => {
   const isNoTicket = currentTicket === null;
   const isCalled = currentTicket?.status === 'CALLED';
@@ -41,7 +41,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           id="btn-call-next"
           disabled={!canCallNext}
           onClick={onCallNext}
-          className="min-h-[50px] py-3 px-4 rounded-2xl bg-[#003B73] hover:bg-[#054FA6] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[50px] py-3 px-4 rounded-2xl bg-[#1A34E8] hover:bg-[#010E3E] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-[#1A34E8]/20 transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
         >
           <Volume2 className="w-4 h-4 text-emerald-300" />
           <span>Вызвать следующего</span>
@@ -53,7 +53,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           id="btn-complete-service"
           disabled={!canComplete}
           onClick={onCompleteService}
-          className="min-h-[50px] py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[50px] py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
         >
           <Check className="w-5 h-5" />
           <span>Завершить обслуживание</span>
@@ -68,7 +68,7 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           id="btn-start-service"
           disabled={!canStart}
           onClick={onStartService}
-          className="min-h-[42px] px-3 rounded-xl border border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-900 flex items-center justify-center gap-1.5 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[42px] px-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 flex items-center justify-center gap-1.5 font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
         >
           <Play className="w-4 h-4 text-amber-700" />
           <span>Начать обслуживание</span>
@@ -81,10 +81,10 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
             id="btn-repeat-call"
             disabled={isPending}
             onClick={onRepeatCall}
-            className="min-h-[42px] px-3 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#003B73] flex items-center justify-center gap-1.5 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[42px] px-3 rounded-xl border border-[#1A34E8]/30 bg-blue-50 hover:bg-blue-100 text-[#1A34E8] flex items-center justify-center gap-1.5 font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
             title="Повторить звуковой гонг и голосовой вызов в зале"
           >
-            <Volume2 className="w-4 h-4 text-[#003B73]" />
+            <SolarBell size={16} variant="duotone" color="#1A34E8" secondaryColor="#5975FF" />
             <span>Повторить вызов</span>
           </button>
         )}
@@ -95,9 +95,9 @@ export const ActionControls: React.FC<ActionControlsProps> = ({
           id="btn-no-show"
           disabled={!isCalled || isPending}
           onClick={onNoShow}
-          className="min-h-[42px] px-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-[#D92534] flex items-center justify-center gap-1.5 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[42px] px-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center gap-1.5 font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer"
         >
-          <UserX className="w-4 h-4 text-[#D92534]" />
+          <UserX className="w-4 h-4 text-rose-600" />
           <span>Не явился</span>
         </button>
       </div>

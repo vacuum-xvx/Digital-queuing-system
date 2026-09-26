@@ -48,10 +48,10 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-[500px] px-4 py-8">
-        <section className="bg-white rounded-3xl border border-[#D2D8E2] p-6 sm:p-8 max-w-md w-full shadow-lg space-y-6">
+        <section className="bg-white rounded-3xl border border-[#DFE1F4] p-6 sm:p-8 max-w-md w-full shadow-lg space-y-6">
           <div className="text-center space-y-2">
             <div className="flex justify-center">
-              <PochtaEmblem className="w-12 h-12 drop-shadow-md" bg="#003B73" fg="#FFFFFF" />
+              <PochtaEmblem className="w-12 h-12 drop-shadow-md" bg="#1A34E8" fg="#FFFFFF" />
             </div>
             <h1 className="text-xl font-black text-slate-900 tracking-tight">
               {area === 'operator' ? 'Вход оператора' : 'Вход администратора'}
@@ -78,7 +78,7 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
                   required
                   disabled={pending}
                   placeholder="operator@pochta.local"
-                  className="mt-1 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent transition-all"
+                  className="mt-1 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#1A34E8] focus:border-transparent transition-all"
                 />
               </label>
             </div>
@@ -93,14 +93,15 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
                   required
                   disabled={pending}
                   placeholder="••••••••"
-                  className="mt-1 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#054FA6] focus:border-transparent transition-all"
+                  className="mt-1 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#1A34E8] focus:border-transparent transition-all"
                 />
               </label>
             </div>
 
             <button
+              type="submit"
               disabled={pending}
-              className="w-full min-h-[46px] py-3 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50 mt-2"
+              className="w-full min-h-[46px] py-3 bg-[#1A34E8] hover:bg-[#5975FF] active:bg-[#1A32D1] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md disabled:opacity-50 mt-2"
             >
               {pending ? 'Входим…' : 'Войти'}
             </button>
@@ -118,7 +119,7 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
 
       {!allowed ? (
         <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-sm space-y-3">
-          <ShieldAlert className="w-12 h-12 text-[#D92534] mx-auto mb-2" />
+          <ShieldAlert className="w-12 h-12 text-[#FF3A44] mx-auto mb-2" />
           <p role="alert" className="text-sm font-bold text-slate-800">У вашей учётной записи нет доступа к этому рабочему месту.</p>
           <p className="text-xs text-slate-500">Обратитесь к администратору ОПС или войдите под учётной записью сотрудника.</p>
         </div>
@@ -128,7 +129,7 @@ export function AuthBoundary({ children, area, loginPage }: { children: ReactNod
           <p className="text-xs text-slate-600">Сессия активна. Вы можете перейти в рабочую зону.</p>
           <a
             href={`/${area}`}
-            className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 bg-[#003B73] hover:bg-[#054FA6] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
+            className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 bg-[#1A34E8] hover:bg-[#5975FF] active:bg-[#1A32D1] text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-md"
           >
             Открыть рабочее место
           </a>

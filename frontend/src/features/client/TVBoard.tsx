@@ -4,6 +4,7 @@ import { useTVQueue } from '../../api/queries';
 import { announceTicketCall, isSoundEnabled, setSoundEnabled } from '../../utils/postalVoice';
 import { enqueueAnnouncement } from '../../utils/announcementQueue';
 import { subscribeToTVCalls } from '../../utils/tvNotification';
+import { Volume2, VolumeX, Moon, Sun, Maximize2, Minimize2 } from 'lucide-react';
 
 /* ─────────────────────── types ─────────────────────── */
 interface TVCall {
@@ -20,34 +21,34 @@ interface TVWaiting {
 }
 
 /* ───────────────── Sber-style animated arrow ──────────────── */
-function SberArrow() {
+function SberArrow({ className = '' }: { className?: string }) {
   return (
-    <div className="tv-sber-arrow">
-      <svg width="80" height="48" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Three chevrons that animate sequentially like Sber terminals */}
+    <div className={`tv-sber-arrow ${className}`} aria-hidden="true">
+      <svg width="84" height="48" viewBox="0 0 84 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Three directional chevrons with sequential glowing pulse */}
         <path
           className="tv-chevron tv-chevron-1"
           d="M8 8L28 24L8 40"
-          stroke="#003B73"
-          strokeWidth="4"
+          stroke="currentColor"
+          strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
         />
         <path
           className="tv-chevron tv-chevron-2"
-          d="M28 8L48 24L28 40"
-          stroke="#003B73"
-          strokeWidth="4"
+          d="M30 8L50 24L30 40"
+          stroke="currentColor"
+          strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
         />
         <path
           className="tv-chevron tv-chevron-3"
-          d="M48 8L68 24L48 40"
-          stroke="#003B73"
-          strokeWidth="4"
+          d="M52 8L72 24L52 40"
+          stroke="currentColor"
+          strokeWidth="4.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
@@ -58,20 +59,42 @@ function SberArrow() {
 }
 
 /* ────────────── flash overlay for new call ──────────── */
-function FlashOverlay({ ticket, windowId }: { ticket: string; windowId: string | number }) {
+function FlashOverlay({
+  ticket,
+  windowId,
+  isDark = false,
+}: {
+  ticket: string;
+  windowId: string | number;
+  isDark?: boolean;
+}) {
   const [visible, setVisible] = useState(true);
   useEffect(() => {
     const t = setTimeout(() => setVisible(false), 4500);
     return () => clearTimeout(t);
   }, []);
   if (!visible) return null;
+
+  const windowFormatted = String(windowId).startsWith('№') ? String(windowId) : `№ ${windowId}`;
+
   return (
-    <div className="tv-flash-overlay">
+    <div className={`tv-flash-overlay ${isDark ? 'tv-flash-overlay--dark' : ''}`} role="alert" aria-live="assertive">
       <div className="tv-flash-card">
-        <div className="tv-flash-label">Талон вызван!</div>
-        <div className="tv-flash-ticket">{ticket}</div>
-        <SberArrow />
-        <div className="tv-flash-window">Окно {windowId}</div>
+        <div className="tv-flash-label">
+          <span className="tv-flash-dot" />
+          <span>Талон вызван!</span>
+        </div>
+        <div className="tv-flash-row">
+          <div className="tv-flash-col">
+            <span className="tv-flash-sublabel">ТАЛОН</span>
+            <div className="tv-flash-ticket">{ticket}</div>
+          </div>
+          <SberArrow className="tv-flash-arrow" />
+          <div className="tv-flash-col">
+            <span className="tv-flash-sublabel">ПРОЙДИТЕ К ОКНУ</span>
+            <div className="tv-flash-window">{windowFormatted}</div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -91,6 +114,17 @@ export function TVBoard() {
     }
     return '';
   });
+
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('tv_board_theme') === 'dark';
+    }
+    return false;
+  });
+
+  const [sound, setSound] = useState<boolean>(() => isSoundEnabled());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const [flash, setFlash] = useState<{ ticket: string; windowId: string | number } | null>(null);
   const flashKeyRef = useRef(0);
 
@@ -100,10 +134,45 @@ export function TVBoard() {
     return () => clearInterval(id);
   }, []);
 
+  /* ── fullscreen tracking ── */
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  };
+
+  const toggleTheme = () => {
+    setIsDark(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tv_board_theme', next ? 'dark' : 'light');
+      }
+      return next;
+    });
+  };
+
+  const toggleSound = () => {
+    const next = !sound;
+    setSoundEnabled(next);
+    setSound(next);
+  };
+
   /* ── branches ── */
   useEffect(() => {
     fetch('/api/v1/branches')
-      .then(r => r.ok ? r.json() : null)
+      .then(r => (r.ok ? r.json() : null))
       .then(d => {
         const list = d?.items || [];
         setBranches(list);
@@ -248,70 +317,121 @@ export function TVBoard() {
 
   /* ═════════════════════ RENDER ═════════════════════ */
   return (
-    <div className="tv-root">
+    <div className={`tv-root ${isDark ? 'tv-root--dark' : ''}`}>
       {/* ── FLASH OVERLAY ── */}
-      {flash && <FlashOverlay key={flashKeyRef.current} ticket={flash.ticket} windowId={flash.windowId} />}
+      {flash && (
+        <FlashOverlay
+          key={flashKeyRef.current}
+          ticket={flash.ticket}
+          windowId={flash.windowId}
+          isDark={isDark}
+        />
+      )}
 
-      {/* ── TOP BAR ── */}
+      {/* ── TOP BAR (Deep Navy with Postal Red bottom accent) ── */}
       <header className="tv-topbar">
         <div className="tv-topbar-left">
-          <PochtaEmblem className="tv-emblem" bg="#003B73" fg="#FFFFFF" />
+          <PochtaEmblem className="tv-emblem" bg="#1A34E8" fg="#FFFFFF" />
           <div className="tv-brand-block">
-            <PochtaWordmark className="tv-wordmark" color="#003B73" />
+            <PochtaWordmark className="tv-wordmark" color="#FFFFFF" />
             <span className="tv-branch-name">{branchName}</span>
           </div>
         </div>
+
         <div className="tv-topbar-right">
-          <div className="tv-status-badge" role="status">
-            {error ? 'Нет связи · данные могут устареть' : isLoading ? 'Подключение…' : 'Данные обновляются'}
+          <div className="tv-status-badge" role="status" aria-live="polite">
+            <span className="tv-status-dot" />
+            <span>
+              {error ? 'Нет связи · данные могут устареть' : isLoading ? 'Подключение…' : 'В реальном времени'}
+            </span>
           </div>
-          <div className="tv-date">{dateString}</div>
-          <div className="tv-clock">{timeString}</div>
+
+          <div className="tv-datetime-block">
+            <div className="tv-date">{dateString}</div>
+            <div className="tv-clock">{timeString}</div>
+          </div>
+
+          <div className="tv-actions">
+            <button
+              type="button"
+              onClick={toggleSound}
+              className={`tv-icon-btn ${!sound ? 'tv-icon-btn--off' : ''}`}
+              title={sound ? 'Звук включен (нажмите для отключения)' : 'Звук выключен (нажмите для включения)'}
+              aria-label="Звуковое оповещение"
+            >
+              {sound ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="tv-icon-btn"
+              title={isDark ? 'Включить светлую тему' : 'Включить тёмную тему'}
+              aria-label="Переключение темы"
+            >
+              {isDark ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="tv-icon-btn"
+              title={isFullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран'}
+              aria-label="Полноэкранный режим"
+            >
+              {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+            </button>
+          </div>
         </div>
       </header>
 
       {/* ── CONTENT ── */}
-      <div className="tv-content">
+      <main className="tv-content">
         {/* LEFT: Active calls */}
-        <section className="tv-calls-section">
+        <section className="tv-calls-section" aria-label="Вызов к окну">
           <div className="tv-section-header">
-            <span className="tv-section-dot tv-section-dot--green" />
-            <span>Пройдите к окну</span>
+            <span className="tv-section-dot tv-section-dot--blue" />
+            <span className="tv-section-title">Пройдите к окну</span>
+            <span className="tv-calls-count">{calls.length}</span>
           </div>
 
           <div className="tv-calls-grid">
-            {calls.map((c) => (
-              <div key={`${c.windowId}-${c.ticketNumber}`} className="tv-call-card">
-                {/* Ticket */}
-                <div className="tv-call-ticket-col">
-                  <div className="tv-call-label">ТАЛОН</div>
-                  <div className="tv-call-ticket">{c.ticketNumber}</div>
-                </div>
+            {calls.map(c => {
+              const windowFormatted = String(c.windowId).startsWith('№') ? c.windowId : `№ ${c.windowId}`;
+              return (
+                <div key={`${c.windowId}-${c.ticketNumber}`} className="tv-call-card">
+                  {/* Ticket Column */}
+                  <div className="tv-call-ticket-col">
+                    <div className="tv-call-label">ТАЛОН</div>
+                    <div className="tv-call-ticket">{c.ticketNumber}</div>
+                  </div>
 
-                {/* Sber-style Arrow */}
-                <SberArrow />
+                  {/* Sber-style Directional Animated Arrow */}
+                  <SberArrow />
 
-                {/* Window */}
-                <div className="tv-call-window-col">
-                  <div className="tv-call-label">ОКНО</div>
-                  <div className="tv-call-window">{c.windowId}</div>
+                  {/* Window Column */}
+                  <div className="tv-call-window-col">
+                    <div className="tv-call-label">ОКНО</div>
+                    <div className="tv-call-window">{windowFormatted}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {calls.length === 0 && (
               <div className="tv-empty">
-                {isLoading ? 'Подключаем табло…' : error ? 'Нет связи с системой очереди' : 'Сейчас никто не вызывается'}
+                <div className="tv-empty-text">
+                  {isLoading ? 'Подключение к СУО…' : error ? 'Нет связи с системой очереди' : 'Сейчас никто не вызывается'}
+                </div>
+                <div className="tv-empty-sub">Ожидайте вызова вашего номера талона</div>
               </div>
             )}
           </div>
         </section>
 
-        {/* RIGHT: Waiting queue — flex-wrap grid, no scroll */}
-        <section className="tv-waiting-section">
+        {/* RIGHT: Waiting queue — responsive flex/grid, no scroll */}
+        <section className="tv-waiting-section" aria-label="Ожидают в очереди">
           <div className="tv-section-header">
             <span className="tv-section-dot tv-section-dot--amber" />
-            <span>Ожидают</span>
+            <span className="tv-section-title">Ожидают</span>
             <span className="tv-waiting-count">{waiting.length}</span>
           </div>
 
@@ -328,13 +448,18 @@ export function TVBoard() {
             )}
           </div>
         </section>
-      </div>
+      </main>
 
       {/* ── BOTTOM BAR ── */}
       <footer className="tv-bottombar">
         <div className="tv-bottombar-inner">
-          <span>Электронная очередь • Почта России</span>
-          <span>Пожалуйста, дождитесь вызова вашего талона</span>
+          <div className="tv-bottombar-left">
+            <span className="tv-bottombar-brand">Электронная очередь • Почта России</span>
+            <span className="tv-bottombar-tag">Pochta Modern Digital</span>
+          </div>
+          <div className="tv-bottombar-right">
+            <span>Пожалуйста, дождитесь вызова вашего талона на табло и звукового сигнала</span>
+          </div>
         </div>
       </footer>
 
@@ -346,19 +471,78 @@ export function TVBoard() {
 
 /* ═════════════════════ CSS ═════════════════════ */
 const tvStyles = `
-/* ═══════════════════════ TV ROOT — LIGHT DESIGN ═══════════════════════ */
+/* ═══════════════════════ THEME VARIABLES (POCHTA MODERN DIGITAL) ═══════════════════════ */
 .tv-root {
+  --tv-bg: #F0F4FF;
+  --tv-surface: #FFFFFF;
+  --tv-navy: #010E3E;
+  --tv-primary: #1A34E8;
+  --tv-primary-hover: #5975FF;
+  --tv-primary-active: #1A32D1;
+  --tv-red: #FF3A44;
+  --tv-green: #2DA771;
+  --tv-amber: #FF9C00;
+  --tv-text: #010E3E;
+  --tv-text-muted: #64748B;
+  --tv-card-bg: #FFFFFF;
+  --tv-card-border: #DFE1F4;
+  --tv-header-bg: #010E3E;
+  --tv-header-text: #FFFFFF;
+  --tv-bottom-bg: #010E3E;
+  --tv-bottom-text: #94A3B8;
+  --tv-waiting-bg: #FFFFFF;
+  --tv-waiting-chip-bg: #F8FAFC;
+  --tv-waiting-chip-border: #DFE1F4;
+  --tv-waiting-chip-first-bg: #EFF6FF;
+  --tv-waiting-chip-first-border: #1A34E8;
+  --tv-flash-bg: rgba(240, 244, 255, 0.95);
+  --tv-flash-card-bg: #FFFFFF;
+  --tv-arrow-color: #1A34E8;
+  --tv-btn-bg: rgba(255, 255, 255, 0.12);
+  --tv-btn-hover: rgba(255, 255, 255, 0.22);
+  --tv-btn-text: #FFFFFF;
+
   position: fixed;
   inset: 0;
   z-index: 99999;
   display: flex;
   flex-direction: column;
-  background: #F2F5F9;
-  color: #1E293B;
-  font-family: 'Golos Text', 'PT Sans', system-ui, sans-serif;
+  background: var(--tv-bg);
+  color: var(--tv-text);
+  font-family: 'Golos Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
   user-select: none;
   cursor: default;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ═══════════════════════ DARK MODE SUPPORT ═══════════════════════ */
+.tv-root--dark {
+  --tv-bg: #010E3E;
+  --tv-surface: #071544;
+  --tv-navy: #FFFFFF;
+  --tv-primary: #3D55FF;
+  --tv-primary-hover: #5975FF;
+  --tv-primary-active: #1A32D1;
+  --tv-text: #F8FAFC;
+  --tv-text-muted: #94A3B8;
+  --tv-card-bg: #071544;
+  --tv-card-border: #1B2B65;
+  --tv-header-bg: #040A26;
+  --tv-header-text: #FFFFFF;
+  --tv-bottom-bg: #040A26;
+  --tv-bottom-text: #64748B;
+  --tv-waiting-bg: #071544;
+  --tv-waiting-chip-bg: #0C1A4D;
+  --tv-waiting-chip-border: #1B2B65;
+  --tv-waiting-chip-first-bg: #142870;
+  --tv-waiting-chip-first-border: #3D55FF;
+  --tv-flash-bg: rgba(1, 14, 62, 0.96);
+  --tv-flash-card-bg: #071544;
+  --tv-arrow-color: #5975FF;
+  --tv-btn-bg: rgba(255, 255, 255, 0.1);
+  --tv-btn-hover: rgba(255, 255, 255, 0.2);
+  --tv-btn-text: #FFFFFF;
 }
 
 /* ═══════════════════════ TOP BAR ═══════════════════════ */
@@ -367,21 +551,22 @@ const tvStyles = `
   align-items: center;
   justify-content: space-between;
   padding: 1.2vh 2.5vw;
-  background: #FFFFFF;
-  border-bottom: 4px solid #D92534;
+  background: var(--tv-header-bg);
+  border-bottom: 4px solid var(--tv-red);
   flex-shrink: 0;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  box-shadow: 0 4px 20px rgba(1, 14, 62, 0.15);
+  color: var(--tv-header-text);
 }
 .tv-topbar-left {
   display: flex;
   align-items: center;
-  gap: 1.2vw;
+  gap: 1.4vw;
 }
 .tv-emblem {
   width: 5.5vh;
   height: 5.5vh;
   border-radius: 14px;
-  filter: drop-shadow(0 2px 6px rgba(0,59,115,0.15));
+  filter: drop-shadow(0 4px 10px rgba(26, 52, 232, 0.35));
 }
 .tv-brand-block {
   display: flex;
@@ -389,14 +574,14 @@ const tvStyles = `
   gap: 0.3vh;
 }
 .tv-wordmark {
-  height: 3vh;
+  height: 3.2vh;
   width: auto;
 }
 .tv-branch-name {
   font-size: 1.5vh;
-  color: #64748B;
+  color: #94A3B8;
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .tv-topbar-right {
@@ -407,42 +592,85 @@ const tvStyles = `
 .tv-status-badge {
   display: flex;
   align-items: center;
-  gap: 0.5vw;
+  gap: 0.6vw;
   font-size: 1.4vh;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #16A34A;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--tv-green);
   text-transform: uppercase;
+  background: rgba(45, 167, 113, 0.12);
+  border: 1px solid rgba(45, 167, 113, 0.3);
+  padding: 0.6vh 1.2vw;
+  border-radius: 9999px;
 }
 .tv-status-dot {
   width: 1vh;
   height: 1vh;
   border-radius: 50%;
-  background: #22C55E;
-  box-shadow: 0 0 8px rgba(34,197,94,0.5);
+  background: var(--tv-green);
+  box-shadow: 0 0 10px rgba(45, 167, 113, 0.8);
   animation: tv-pulse 2s ease-in-out infinite;
 }
+.tv-datetime-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2vh;
+}
 .tv-date {
-  font-size: 1.8vh;
-  color: #64748B;
+  font-size: 1.5vh;
+  color: #94A3B8;
   font-weight: 500;
   text-transform: capitalize;
 }
 .tv-clock {
-  font-size: 4.5vh;
-  font-weight: 900;
+  font-size: 4.8vh;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
   letter-spacing: 0.04em;
-  color: #003B73;
+  color: #FFFFFF;
+  line-height: 1;
 }
 
-/* ═══════════════════════ CONTENT ═══════════════════════ */
+/* ── Topbar Actions (Sound, Theme, Fullscreen) ── */
+.tv-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6vw;
+}
+.tv-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.8vh;
+  height: 4.8vh;
+  border-radius: 1.2vh;
+  background: var(--tv-btn-bg);
+  color: var(--tv-btn-text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.tv-icon-btn:hover {
+  background: var(--tv-btn-hover);
+  transform: translateY(-1px);
+}
+.tv-icon-btn:active {
+  transform: translateY(0);
+}
+.tv-icon-btn--off {
+  color: var(--tv-red);
+  border-color: rgba(255, 58, 68, 0.4);
+}
+
+/* ═══════════════════════ MAIN CONTENT ═══════════════════════ */
 .tv-content {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 30vw;
-  gap: 1.5vw;
-  padding: 2vh 2vw;
+  grid-template-columns: 1fr 32vw;
+  gap: 1.8vw;
+  padding: 2.2vh 2.2vw;
   min-height: 0;
   overflow: hidden;
 }
@@ -452,29 +680,52 @@ const tvStyles = `
   display: flex;
   align-items: center;
   gap: 0.8vw;
+  margin-bottom: 1.8vh;
+  padding-bottom: 1vh;
+  border-bottom: 2px solid var(--tv-card-border);
+}
+.tv-section-dot {
+  width: 1.3vh;
+  height: 1.3vh;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tv-section-dot--blue {
+  background: var(--tv-primary);
+  box-shadow: 0 0 12px rgba(26, 52, 232, 0.6);
+  animation: tv-pulse 2s ease-in-out infinite;
+}
+.tv-section-dot--amber {
+  background: var(--tv-amber);
+  box-shadow: 0 0 12px rgba(255, 156, 0, 0.6);
+  animation: tv-pulse 2s ease-in-out infinite 0.5s;
+}
+.tv-section-title {
   font-size: 2.4vh;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #334155;
-  margin-bottom: 1.8vh;
-  padding-bottom: 1vh;
-  border-bottom: 2px solid #E2E8F0;
+  color: var(--tv-text);
 }
-.tv-section-dot {
-  width: 1.2vh;
-  height: 1.2vh;
-  border-radius: 50%;
+.tv-calls-count {
+  background: var(--tv-primary);
+  color: #FFFFFF;
+  border-radius: 9999px;
+  padding: 0.3vh 1.2vw;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 1.7vh;
+  font-weight: 800;
+  margin-left: auto;
 }
-.tv-section-dot--green {
-  background: #22C55E;
-  box-shadow: 0 0 10px rgba(34,197,94,0.4);
-  animation: tv-pulse 2s ease-in-out infinite;
-}
-.tv-section-dot--amber {
-  background: #F59E0B;
-  box-shadow: 0 0 10px rgba(245,158,11,0.4);
-  animation: tv-pulse 2s ease-in-out infinite 0.5s;
+.tv-waiting-count {
+  background: rgba(255, 156, 0, 0.15);
+  color: #D97706;
+  border-radius: 9999px;
+  padding: 0.3vh 1.2vw;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 1.7vh;
+  font-weight: 800;
+  margin-left: auto;
 }
 
 /* ═══════════════════════ CALL CARDS ═══════════════════════ */
@@ -487,7 +738,7 @@ const tvStyles = `
 .tv-calls-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.8vh;
+  gap: 2vh;
   flex: 1;
   align-content: start;
   overflow: hidden;
@@ -496,54 +747,68 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.5vh 2vw;
+  padding: 1.8vh 2.5vw;
   min-width: 0;
   container-type: inline-size;
-  border-radius: 2.5vh;
-  background: #FFFFFF;
-  border: 2px solid #E2E8F0;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.03);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  animation: none;
+  border-radius: 2.4vh;
+  background: var(--tv-card-bg);
+  border: 2.5px solid var(--tv-card-border);
+  box-shadow: 0 8px 24px rgba(1, 14, 62, 0.05), 0 2px 6px rgba(1, 14, 62, 0.03);
+  animation: tv-called-pulse 3s ease-in-out infinite;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 .tv-call-card:hover {
   transform: scale(1.01);
-  box-shadow: 0 8px 24px rgba(0,59,115,0.08);
+  box-shadow: 0 12px 36px rgba(26, 52, 232, 0.15);
 }
+
+@keyframes tv-called-pulse {
+  0%, 100% {
+    border-color: var(--tv-card-border);
+    box-shadow: 0 8px 24px rgba(1, 14, 62, 0.05), 0 0 0 1px rgba(26, 52, 232, 0.12);
+  }
+  50% {
+    border-color: rgba(26, 52, 232, 0.65);
+    box-shadow: 0 12px 36px rgba(26, 52, 232, 0.18), 0 0 0 3px rgba(26, 52, 232, 0.28);
+  }
+}
+
 .tv-call-ticket-col,
 .tv-call-window-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5vh;
+  gap: 0.6vh;
 }
 .tv-call-label {
-  font-size: 1.4vh;
-  font-weight: 700;
+  font-size: 1.5vh;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: #475569;
+  letter-spacing: 0.22em;
+  color: var(--tv-text-muted);
 }
 .tv-call-ticket {
-  font-size: min(6.5vh, 7cqi);
+  font-size: min(7.5vh, 8.5cqi);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  font-weight: 900;
-  font-family: 'Golos Text', monospace;
-  color: #003B73;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
+  color: var(--tv-text);
   line-height: 1;
   letter-spacing: 0.02em;
 }
 .tv-call-window {
-  font-size: min(6.5vh, 7cqi);
+  font-size: min(7vh, 8cqi);
   white-space: nowrap;
-  font-weight: 900;
-  font-family: 'Golos Text', monospace;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
   color: #FFFFFF;
   line-height: 1;
-  background: #003B73;
-  border-radius: 1.5vh;
-  padding: 0.8vh 1.5vw;
+  background: var(--tv-primary);
+  border-radius: 1.8vh;
+  padding: 0.9vh 2vw;
+  box-shadow: 0 6px 20px rgba(26, 52, 232, 0.35);
+  letter-spacing: 0.02em;
 }
 
 /* ═══════════════════════ SBER-STYLE ANIMATED ARROW ═══════════════════════ */
@@ -551,87 +816,97 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0.3vw;
+  padding: 0 0.5vw;
+  color: var(--tv-arrow-color);
 }
 .tv-sber-arrow svg {
-  width: 5vw;
+  width: 5.5vw;
+  min-width: 64px;
+  max-width: 96px;
   height: auto;
 }
 
-/* Sequential chevron animation — each chevron fades in/out with a stagger */
+/* Sequential chevron animation with high-tech glowing pulse wave */
 .tv-chevron {
-  opacity: 0.15;
-  animation: tv-sber-chevron 1.5s ease-in-out infinite;
+  opacity: 0.18;
+  animation: tv-sber-chevron 1.6s ease-in-out infinite;
 }
 .tv-chevron-1 {
   animation-delay: 0s;
 }
 .tv-chevron-2 {
-  animation-delay: 0.2s;
+  animation-delay: 0.22s;
 }
 .tv-chevron-3 {
-  animation-delay: 0.4s;
+  animation-delay: 0.44s;
 }
 
 @keyframes tv-sber-chevron {
-  0% { opacity: 0.12; stroke-width: 3; }
-  30% { opacity: 1; stroke-width: 5; }
-  60% { opacity: 0.12; stroke-width: 3; }
-  100% { opacity: 0.12; stroke-width: 3; }
+  0% {
+    opacity: 0.15;
+    stroke-width: 4;
+    filter: none;
+  }
+  32% {
+    opacity: 1;
+    stroke-width: 5.5;
+    filter: drop-shadow(0 0 10px rgba(26, 52, 232, 0.75));
+  }
+  65% {
+    opacity: 0.15;
+    stroke-width: 4;
+    filter: none;
+  }
+  100% {
+    opacity: 0.15;
+    stroke-width: 4;
+    filter: none;
+  }
 }
 
 /* ═══════════════════════ WAITING — CHIP GRID (no scroll) ═══════════════════════ */
 .tv-waiting-section {
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
-  border-radius: 2.5vh;
-  padding: 2vh 1.2vw;
-  border: 2px solid #E2E8F0;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  background: var(--tv-waiting-bg);
+  border-radius: 2.4vh;
+  padding: 2.2vh 1.5vw;
+  border: 2.5px solid var(--tv-card-border);
+  box-shadow: 0 8px 24px rgba(1, 14, 62, 0.05);
   min-height: 0;
   overflow: hidden;
-}
-.tv-waiting-count {
-  background: #FEF3C7;
-  color: #B45309;
-  border-radius: 1vh;
-  padding: 0.3vh 1vw;
-  font-variant-numeric: tabular-nums;
-  font-size: 1.8vh;
-  font-weight: 700;
-  margin-left: auto;
 }
 .tv-waiting-grid {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-content: start;
-  gap: 1vh;
+  gap: 1.2vh;
   overflow: hidden;
 }
 .tv-waiting-chip {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1vh 0.5vw;
+  padding: 1.1vh 0.6vw;
   min-width: 0;
-  background: #F1F5F9;
-  border: 2px solid #E2E8F0;
+  background: var(--tv-waiting-chip-bg);
+  border: 2px solid var(--tv-waiting-chip-border);
   border-radius: 1.5vh;
   animation: tv-chip-appear 0.4s ease-out backwards;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 .tv-waiting-chip:first-child {
-  background: #EFF6FF;
-  border-color: #93C5FD;
+  background: var(--tv-waiting-chip-first-bg);
+  border-color: var(--tv-waiting-chip-first-border);
+  box-shadow: 0 2px 10px rgba(26, 52, 232, 0.15);
 }
 .tv-waiting-num {
-  font-size: 2.6vh;
-  font-weight: 900;
-  font-family: 'Golos Text', monospace;
-  color: #1E293B;
-  letter-spacing: 0.01em;
+  font-size: 2.8vh;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
+  color: var(--tv-text);
+  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -640,28 +915,61 @@ const tvStyles = `
 /* ═══════════════════════ BOTTOM BAR ═══════════════════════ */
 .tv-bottombar {
   flex-shrink: 0;
-  background: #FFFFFF;
-  border-top: 2px solid #E2E8F0;
-  padding: 1vh 2.5vw;
+  background: var(--tv-bottom-bg);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1.2vh 2.5vw;
+  color: var(--tv-bottom-text);
 }
 .tv-bottombar-inner {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 1.4vh;
-  color: #94A3B8;
+  font-size: 1.5vh;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+}
+.tv-bottombar-left {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+}
+.tv-bottombar-brand {
+  color: #FFFFFF;
+  font-weight: 700;
+}
+.tv-bottombar-tag {
+  color: var(--tv-primary-hover);
+  font-size: 1.3vh;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(26, 52, 232, 0.2);
+  padding: 0.2vh 0.8vw;
+  border-radius: 6px;
+}
+.tv-bottombar-right {
+  color: #CBD5E1;
 }
 
 /* ═══════════════════════ EMPTY STATES ═══════════════════════ */
 .tv-empty {
   grid-column: 1 / -1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 3vh;
-  color: #94A3B8;
-  font-weight: 600;
+  gap: 1vh;
+  padding: 8vh 2vw;
+  color: var(--tv-text-muted);
+}
+.tv-empty-text {
+  font-size: 3.2vh;
+  font-weight: 700;
+  color: var(--tv-text-muted);
+}
+.tv-empty-sub {
+  font-size: 1.8vh;
+  color: var(--tv-text-muted);
+  opacity: 0.8;
 }
 .tv-empty-small {
   grid-column: 1 / -1;
@@ -669,9 +977,9 @@ const tvStyles = `
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 4vh 0;
-  font-size: 2vh;
-  color: #94A3B8;
+  padding: 5vh 0;
+  font-size: 2.2vh;
+  color: var(--tv-text-muted);
   font-weight: 600;
 }
 
@@ -683,53 +991,100 @@ const tvStyles = `
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(24px);
-  animation: tv-flash-in 0.4s ease-out, tv-flash-out 0.6s ease-in 3.9s forwards;
+  background: var(--tv-flash-bg);
+  backdrop-filter: blur(28px);
+  animation: tv-flash-in 0.35s cubic-bezier(0.16, 1, 0.3, 1), tv-flash-out 0.6s ease-in 3.9s forwards;
 }
 .tv-flash-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3vh;
-  animation: tv-flash-scale 0.5s ease-out;
+  gap: 3.5vh;
+  padding: 5vh 6vw;
+  background: var(--tv-flash-card-bg);
+  border: 3.5px solid var(--tv-primary);
+  border-radius: 3.5vh;
+  box-shadow: 0 25px 70px rgba(1, 14, 62, 0.25), 0 0 0 8px rgba(26, 52, 232, 0.25);
+  animation: tv-flash-scale 0.45s cubic-bezier(0.16, 1, 0.3, 1), tv-flash-glow 2s ease-in-out infinite;
 }
 .tv-flash-label {
-  font-size: 4vh;
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  font-size: 3.2vh;
   font-weight: 800;
-  color: #16A34A;
+  color: var(--tv-red);
   text-transform: uppercase;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.16em;
+}
+.tv-flash-dot {
+  width: 1.6vh;
+  height: 1.6vh;
+  border-radius: 50%;
+  background: var(--tv-red);
+  box-shadow: 0 0 12px rgba(255, 58, 68, 0.8);
+  animation: tv-pulse 1.2s ease-in-out infinite;
+}
+.tv-flash-row {
+  display: flex;
+  align-items: center;
+  gap: 3.5vw;
+}
+.tv-flash-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8vh;
+}
+.tv-flash-sublabel {
+  font-size: 1.6vh;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--tv-text-muted);
 }
 .tv-flash-ticket {
-  font-size: 18vh;
-  font-weight: 900;
-  font-family: 'Golos Text', monospace;
-  color: #003B73;
+  font-size: min(16vh, 15vw);
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
+  color: var(--tv-text);
   line-height: 1;
+  letter-spacing: 0.02em;
 }
 .tv-flash-window {
-  font-size: 10vh;
-  font-weight: 900;
+  font-size: min(10vh, 9vw);
+  font-weight: 800;
+  font-family: 'JetBrains Mono', 'SF Mono', Cascadia Code, monospace;
   color: #FFFFFF;
-  background: #003B73;
-  border-radius: 3vh;
-  padding: 1vh 4vw;
+  background: var(--tv-primary);
+  border-radius: 2.5vh;
+  padding: 1.2vh 3.5vw;
+  box-shadow: 0 10px 30px rgba(26, 52, 232, 0.4);
+  letter-spacing: 0.02em;
+}
+.tv-flash-arrow {
+  color: var(--tv-primary);
+  transform: scale(1.6);
+  margin: 0 1vw;
 }
 
 /* ═══════════════════════ ANIMATIONS ═══════════════════════ */
 @keyframes tv-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
+  50% { opacity: 0.45; transform: scale(0.85); }
 }
 
-@keyframes tv-card-appear {
-  from { opacity: 0; transform: translateY(2vh); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes tv-flash-glow {
+  0%, 100% {
+    box-shadow: 0 25px 70px rgba(1, 14, 62, 0.25), 0 0 0 6px rgba(26, 52, 232, 0.25);
+  }
+  50% {
+    box-shadow: 0 30px 90px rgba(26, 52, 232, 0.35), 0 0 0 14px rgba(26, 52, 232, 0.35);
+  }
 }
 
 @keyframes tv-chip-appear {
-  from { opacity: 0; transform: scale(0.85); }
+  from { opacity: 0; transform: scale(0.88); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -742,7 +1097,7 @@ const tvStyles = `
   to { opacity: 0; pointer-events: none; }
 }
 @keyframes tv-flash-scale {
-  from { transform: scale(0.7); opacity: 0; }
+  from { transform: scale(0.75); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 

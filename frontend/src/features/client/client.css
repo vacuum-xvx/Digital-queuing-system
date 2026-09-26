@@ -2,20 +2,21 @@
 /* Чистый, светлый, профессиональный дизайн без AI-слопа */
 
 :root {
-  --client-primary: var(--brand-primary, #003B73);
-  --client-accent: var(--brand-accent, #0055A5);
-  --client-orange: var(--brand-orange, #FF6B00);
-  --client-bg: var(--background, #F5F7FA);
-  --client-surface: var(--surface, #FFFFFF);
-  --client-text: var(--text, #0A1929);
-  --client-text-secondary: var(--text-secondary, #3E5060);
-  --client-text-muted: var(--muted, #6B7A8D);
-  --client-border: var(--border, #E3E8EF);
-  --client-border-medium: var(--border-medium, #D0D7E2);
-  --client-success: #2E7D32;
-  --client-success-bg: #E8F5E9;
-  --client-radius: 6px;
-  --client-radius-lg: 8px;
+  --client-primary: var(--pochta-blue, #1A34E8);
+  --client-accent: var(--pochta-blue-hover, #5975FF);
+  --client-orange: var(--pochta-orange, #FF9C00);
+  --client-bg: #F8FAFC;
+  --client-surface: #FFFFFF;
+  --client-text: #010E3E;
+  --client-text-secondary: #32333C;
+  --client-text-muted: #7E808F;
+  --client-border: #DFE1F4;
+  --client-border-medium: #C9CBDF;
+  --client-success: #2DA771;
+  --client-success-bg: #E8F8F0;
+  --client-radius: 12px;
+  --client-radius-lg: 16px;
+  --client-radius-xl: 24px;
 }
 
 /* === ОСНОВНОЙ КОНТЕЙНЕР === */
@@ -411,30 +412,33 @@
   background: var(--client-surface);
   border-radius: var(--client-radius-lg);
   border: 1px solid var(--client-border);
+  box-shadow: 0 12px 32px -4px rgba(1, 14, 62, 0.08), 0 4px 12px -2px rgba(1, 14, 62, 0.04);
   overflow: hidden;
+  transition: all 0.2s ease;
 }
 
 .cx-ticket-header {
-  background: var(--client-primary);
-  padding: 1.5rem 1rem;
+  background: linear-gradient(135deg, #1A34E8 0%, #010E3E 100%);
+  padding: 1.75rem 1rem;
   color: white;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
 }
 
 .cx-ticket-num {
-  font-size: clamp(2.25rem, 10vw, 3rem);
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: clamp(2.5rem, 10vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 1;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-family: var(--font-mono);
+  text-shadow: 0 2px 4px rgba(1, 14, 62, 0.2);
 }
 
 .cx-ticket-details {
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
@@ -468,18 +472,30 @@
 }
 
 .cx-ticket-called-box {
-  background: var(--client-success-bg);
-  border: 2px solid var(--client-success);
+  background: linear-gradient(135deg, #F0F4FF 0%, #FFFFFF 100%);
+  border: 2px solid #1A34E8;
   border-radius: var(--client-radius);
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   text-align: center;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #1B5E20;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #010E3E;
+  box-shadow: 0 0 0 4px rgba(26, 52, 232, 0.15), 0 12px 24px -4px rgba(26, 52, 232, 0.2);
+  animation: cx-call-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cx-call-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(26, 52, 232, 0.25), 0 12px 28px -4px rgba(26, 52, 232, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(26, 52, 232, 0.08), 0 16px 36px -4px rgba(26, 52, 232, 0.35);
+  }
 }
 
 .cx-ticket-position {
-  background: #E3F2FD;
+  background: #F0F4FF;
+  border: 1px solid #DFE1F4;
   border-radius: var(--client-radius);
   padding: 0.875rem 1rem;
   display: flex;
@@ -565,13 +581,53 @@
 
 .cx-badge {
   display: inline-flex;
-  padding: 0.375rem 0.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
   border-radius: 9999px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.03em;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(4px);
+}
+
+.cx-badge-waiting {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+}
+
+.cx-badge-called {
+  background: #FF3A44 !important;
+  color: #FFFFFF !important;
+  border-color: #FF3A44 !important;
+  box-shadow: 0 0 12px rgba(255, 58, 68, 0.5);
+}
+
+.cx-badge-serving {
+  background: #FF9C00 !important;
+  color: #010E3E !important;
+  border-color: #FF9C00 !important;
+}
+
+.cx-badge-completed {
+  background: #2DA771 !important;
+  color: #FFFFFF !important;
+  border-color: #2DA771 !important;
+}
+
+.cx-badge-cancelled,
+.cx-badge-no_show {
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFCDD2;
+}
+
+.cx-badge-scheduled {
   background: rgba(255, 255, 255, 0.25);
+  color: #FFFFFF;
 }
 
 .cx-error-box {
