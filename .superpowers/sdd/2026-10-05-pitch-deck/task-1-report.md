@@ -103,9 +103,27 @@ python3 -c 'import json; print(json.load(open("docs/presentation/package.json"))
 
 Результат: `{'pptxgenjs': '^4.0.1'}`. `package-lock.json` подтверждает `pptxgenjs` 4.0.1. Новые зависимости не добавлялись. В worktree `node_modules` отсутствует, поэтому генератор не запускался.
 
+## Fix review follow-up
+
+Добавлена компактная локальная fact matrix `FACTS` в `docs/presentation/generate_deck.js`. Она фиксирует проверенные значения для последующей пересборки генератора и не меняет текущую логику или содержимое deck.
+
+Скопированные phone frames сохранены как стабильные assets в `docs/presentation/assets/frames/`; они нужны Task 2 для последующей компоновки UI-мокапов.
+
+Focused syntax check:
+
+```bash
+node --check docs/presentation/generate_deck.js
+```
+
+Результат:
+
+```text
+(exit code 0, no output)
+```
+
 ## Git
 
-Изменения Task 1 закоммичены на ветке `feature/pitch-deck-rebuild`.
+Изменения Task 1 и review fix закоммичены на ветке `feature/pitch-deck-rebuild`.
 
 ## Concerns
 
