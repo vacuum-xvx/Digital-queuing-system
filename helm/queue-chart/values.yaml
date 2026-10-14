@@ -1,0 +1,96 @@
+imagePullSecrets:
+  - name: dockerhub-secret
+postgres:
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  credentials:
+    dbName: postcode
+    user: postcode
+    password: ""
+  persistence:
+    storageClass: local-path
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+backend:
+  replicaCount: 2
+  image:
+    repository: vacuumxvx/queue-backend
+    tag: "v-34a60e7"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  config:
+    appEnv: production
+    logLevel: INFO
+    corsAllowedOrigin: "http://localhost,http://localhost:5173,http://144.31.181.192,https://pointers-team.tech"
+    notificationProviderUrl: "http://notification-demo:8082/notify"
+    notificationTimeoutSeconds: "2"
+    notificationRetryIntervalMs: "1000"
+    notificationMaxAttempts: "3"
+    allowTestAppointmentConfirm: "true"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: "true"
+frontend:
+  replicaCount: 2
+  image:
+    repository: vacuumxvx/queue-frontend
+    tag: "v-34a60e7"
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+  hosts:
+    - pointers-team.tech
+secrets:
+  # OAuth 2.0 (Яндекс ID)
+  yandexClientId: ""
+  yandexClientSecret: ""
+  oauthRedirectBaseUrl: "https://pointers-team.tech"
+  # Telegram Bot & Webhook
+  telegramBotToken: ""
+  telegramBotUsername: "poiters_inno_bot"
+  telegramWebhookSecret: ""
+  # WebPush VAPID
+  webPushVapidPublicKey: ""
+  webPushVapidPrivateKey: ""
+  webPushContact: "mailto:admin@pointers-team.tech"
+  # SMS-шлюзы (SMS Aero & SMS.RU)
+  smsaeroEmail: ""
+  smsaeroApiKey: ""
+  smsaeroSign: "SMS Aero"
+  smsruApiKey: ""
+  # SMTP-сервер (Яндекс Почта)
+  smtpHost: "smtp.yandex.ru"
+  smtpPort: "465"
+  smtpUser: ""
+  smtpPassword: ""
+  smtpFrom: "Почта России <egorasaev123@yandex.ru>"
+  smtpAppBaseUrl: "https://pointers-team.tech"
+  # RAG AI Консультант
+  ragAgentUrl: "http://rag-agent:8095"
