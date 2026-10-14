@@ -205,8 +205,8 @@ bash scripts/run_load_test.sh http://localhost:8080
 
 [Обёртка](../scripts/run_load_test.sh) использует локальный k6 или Docker с
 `--network host` (учитывайте поддержку этого режима на вашей ОС). Созданные талоны
-остаются в очереди. Скрипты [autopull](../scripts/autopull.sh) и
-[restore_backup](../scripts/restore_backup.sh) относятся к эксплуатации, не к QA.
+остаются в очереди. Скрипт [restore_backup](../scripts/restore_backup.sh)
+относится к эксплуатации, а не к QA.
 
 ## Демонстрационный сценарий
 

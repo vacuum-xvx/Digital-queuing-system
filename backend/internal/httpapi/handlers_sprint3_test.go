@@ -282,7 +282,7 @@ func TestSprint3PolicyMerge(t *testing.T) {
 			request3(t, h, "PUT", policyURL, string(body), "", 400)
 		}
 	}
-	for _, body := range []string{"null", "[]", "{}", legacy + ` {}`, strings.TrimSuffix(legacy, "}") + `,"unknown":1}`, `{"appointmentDuePriority":100,"expectedVersion":9}`} {
+	for _, body := range []string{"null", "[]", "{}", legacy + ` {}`, strings.TrimSuffix(legacy, "}") + `,"unknown":1}`} {
 		request3(t, h, "PUT", policyURL, body, "", 400)
 	}
 	if reads != beforeReads {

@@ -3,6 +3,11 @@
 !.env.example
 *.local
 bin/
+/backend/api
+/ansible/k3s.yaml
+/helm/queue-chart/values.private.yaml
+/k8s/*-secret.yaml
+!/k8s/*.example.yaml
 dist/
 coverage/
 coverage*
@@ -35,6 +40,7 @@ backups/
 *.exe
 scratch/
 frontend/tmp/test-output/
+/tmp/
 __pycache__/
 *.pyc
 models/

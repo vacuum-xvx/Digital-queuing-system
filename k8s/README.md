@@ -20,6 +20,7 @@ ArgoCD отслеживает:
 - `argocd-app.yaml` — Декларативный манифест ArgoCD Application `queue-system` (для первоначального бутстрапа).
 - `argocd-ingress.yaml` — Ingress-маршрут для веб-интерфейса ArgoCD (`/argocd`).
 - `notification-demo-deployment.yaml` — Демонстрационный мок-провайдер уведомлений.
-- `rag-agent-deployment.yaml`, `rag-secret.yaml` — AI/RAG микросервис.
+- `rag-agent-deployment.yaml`, `rag-secret.example.yaml` — AI/RAG микросервис и безопасный шаблон Secret. Перед применением создайте локальный `rag-secret.yaml`; он исключён из Git.
 - `observability/` — Манифесты системы мониторинга (Prometheus, Grafana, Loki, Promtail, Jaeger).
-- `legacy/` — **Архивные сырые манифесты**. Перенесены в архив во избежание конфликтов с Helm. Не применять в проде!
+
+Kubeconfig, join-токены и заполненные Secret-манифесты хранятся вне репозитория. Для Grafana заранее создайте Secret `grafana-admin` с ключом `password` в namespace `monitoring`.
